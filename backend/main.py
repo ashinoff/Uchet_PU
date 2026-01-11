@@ -13,7 +13,6 @@ from pydantic_settings import BaseSettings
 from typing import Optional, List
 from datetime import datetime, timedelta
 from jose import jwt
-from passlib.context import CryptContext
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import pandas as pd
 import io
@@ -126,14 +125,15 @@ class PUMovement(Base):
     comment = Column(Text)
 
 # ==================== АВТОРИЗАЦИЯ ====================
-pwd_context = CryptContext(schemes=["bcrypt"])
+import bcrypt as _bcrypt
+
 security = HTTPBearer()
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return _bcrypt.checkpw(plain.encode(), hashed.encode())
 
 def create_token(user_id: int) -> str:
     expire = datetime.utcnow() + timedelta(hours=24)
