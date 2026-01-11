@@ -1,6 +1,5 @@
 """
 Система учета ПУ - Backend
-Весь код в одном файле для простоты
 """
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,10 +13,10 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from jose import jwt
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import bcrypt as _bcrypt
 import pandas as pd
 import io
 import enum
-import os
 
 # ==================== КОНФИГ ====================
 class Settings(BaseSettings):
@@ -42,26 +41,23 @@ def get_db():
 
 # ==================== ENUM'ы ====================
 class UnitType(str, enum.Enum):
-    SUE = "SUE"              # Служба учета - видит ВСЁ
-    ENERGOSERVICE = "ENERGOSERVICE"  # Админ всех ЭСК
-    LAB = "LAB"              # Лаборатория
-    RES = "RES"              # РЭС
-    URRU = "URRU"            # Участок в РЭС
-    ESK = "ESK"              # ЭСК в РЭС
+    SUE = "SUE"          # Служба учета - видит ВСЁ
+    LAB = "LAB"          # Лаборатория - загружает реестры
+    ESK = "ESK"          # ЭСК (центральный) - админ всех ЭСК
+    RES = "RES"          # РЭС (7 штук)
+    RES_ESK = "RES_ESK"  # ЭСК в РЭС (7 штук)
 
 class RoleCode(str, enum.Enum):
-    SUE_ADMIN = "SUE_ADMIN"
-    ENERGOSERVICE_ADMIN = "ENERGOSERVICE_ADMIN"
-    LAB_USER = "LAB_USER"
-    URRU_USER = "URRU_USER"
-    ESK_USER = "ESK_USER"
+    SUE_ADMIN = "SUE_ADMIN"      # Видит всё, перемещает только РЭС
+    LAB_USER = "LAB_USER"        # Загружает реестры
+    ESK_ADMIN = "ESK_ADMIN"      # Видит все ЭСК, перемещает между ЭСК
 
 class PUStatus(str, enum.Enum):
-    NEW = "NEW"
-    IN_ESK = "IN_ESK"
-    IN_RES = "IN_RES"
-    INSTALLED = "INSTALLED"
-    DEFECT = "DEFECT"
+    NEW = "NEW"              # Новый
+    IN_ESK = "IN_ESK"        # В ЭСК
+    IN_RES = "IN_RES"        # В РЭС
+    INSTALLED = "INSTALLED"  # Установлен
+    DEFECT = "DEFECT"        # Брак
 
 # ==================== МОДЕЛИ БД ====================
 class Unit(Base):
@@ -125,8 +121,6 @@ class PUMovement(Base):
     comment = Column(Text)
 
 # ==================== АВТОРИЗАЦИЯ ====================
-import bcrypt as _bcrypt
-
 security = HTTPBearer()
 
 def hash_password(password: str) -> str:
@@ -139,10 +133,7 @@ def create_token(user_id: int) -> str:
     expire = datetime.utcnow() + timedelta(hours=24)
     return jwt.encode({"sub": str(user_id), "exp": expire}, settings.SECRET_KEY)
 
-def get_current_user(
-    creds: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
+def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)) -> User:
     try:
         payload = jwt.decode(creds.credentials, settings.SECRET_KEY, algorithms=["HS256"])
         user = db.query(User).filter(User.id == int(payload["sub"])).first()
@@ -155,8 +146,8 @@ def get_current_user(
 def is_sue_admin(user: User) -> bool:
     return user.role.code == RoleCode.SUE_ADMIN
 
-def is_energo_admin(user: User) -> bool:
-    return user.role.code == RoleCode.ENERGOSERVICE_ADMIN
+def is_esk_admin(user: User) -> bool:
+    return user.role.code == RoleCode.ESK_ADMIN
 
 def is_lab_user(user: User) -> bool:
     return user.role.code == RoleCode.LAB_USER
@@ -165,9 +156,12 @@ def get_visible_units(user: User, db: Session) -> List[int]:
     """Какие подразделения видит пользователь"""
     if is_sue_admin(user):
         return [u.id for u in db.query(Unit).all()]
-    if is_energo_admin(user):
-        return [u.id for u in db.query(Unit).filter(Unit.unit_type == UnitType.ESK).all()]
-    return [user.unit_id] if user.unit_id else []
+    if is_esk_admin(user):
+        # ЭСК видит только ЭСК подразделения
+        return [u.id for u in db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.RES_ESK])).all()]
+    if is_lab_user(user):
+        return [user.unit_id] if user.unit_id else []
+    return []
 
 # ==================== PYDANTIC СХЕМЫ ====================
 class LoginReq(BaseModel):
@@ -193,15 +187,6 @@ class UnitResp(BaseModel):
     code: str
     unit_type: str
 
-class PUItemResp(BaseModel):
-    id: int
-    serial_number: str
-    pu_type: Optional[str]
-    status: str
-    current_unit_name: Optional[str]
-    current_unit_id: Optional[int]
-    uploaded_at: Optional[datetime]
-
 class MoveReq(BaseModel):
     pu_item_ids: List[int]
     to_unit_id: int
@@ -211,7 +196,6 @@ class MoveReq(BaseModel):
 app = FastAPI(title="Система учета ПУ")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# Создание таблиц
 Base.metadata.create_all(bind=engine)
 
 # ==================== API ENDPOINTS ====================
@@ -231,13 +215,9 @@ def login(req: LoginReq, db: Session = Depends(get_db)):
 @app.get("/api/auth/me", response_model=UserResp)
 def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return UserResp(
-        id=user.id,
-        username=user.username,
-        full_name=user.full_name,
-        role_code=user.role.code.value,
-        role_name=user.role.name,
-        unit_id=user.unit_id,
-        unit_name=user.unit.name if user.unit else None,
+        id=user.id, username=user.username, full_name=user.full_name,
+        role_code=user.role.code.value, role_name=user.role.name,
+        unit_id=user.unit_id, unit_name=user.unit.name if user.unit else None,
         visible_units=get_visible_units(user, db)
     )
 
@@ -258,8 +238,7 @@ def get_users(db: Session = Depends(get_db), user: User = Depends(get_current_us
         raise HTTPException(403, "Нет доступа")
     users = db.query(User).all()
     return [{
-        "id": u.id, "username": u.username, "full_name": u.full_name,
-        "is_active": u.is_active,
+        "id": u.id, "username": u.username, "full_name": u.full_name, "is_active": u.is_active,
         "role": {"id": u.role.id, "name": u.role.name} if u.role else None,
         "unit": {"id": u.unit.id, "name": u.unit.name} if u.unit else None
     } for u in users]
@@ -269,11 +248,8 @@ def create_user(data: dict, db: Session = Depends(get_db), user: User = Depends(
     if not is_sue_admin(user):
         raise HTTPException(403, "Нет доступа")
     new_user = User(
-        username=data["username"],
-        password_hash=hash_password(data["password"]),
-        full_name=data["full_name"],
-        role_id=data["role_id"],
-        unit_id=data.get("unit_id")
+        username=data["username"], password_hash=hash_password(data["password"]),
+        full_name=data["full_name"], role_id=data["role_id"], unit_id=data.get("unit_id")
     )
     db.add(new_user)
     db.commit()
@@ -302,7 +278,7 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         if is_lab_user(user):
             regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
             q = q.filter(PUItem.register_id.in_(regs))
-        else:
+        elif is_esk_admin(user):
             q = q.filter(PUItem.current_unit_id.in_(visible))
     
     total = q.count()
@@ -310,7 +286,6 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
     in_res = q.filter(PUItem.status == PUStatus.IN_RES).count()
     installed = q.filter(PUItem.status == PUStatus.INSTALLED).count()
     
-    # Последние загрузки
     reg_q = db.query(PURegister)
     if is_lab_user(user):
         reg_q = reg_q.filter(PURegister.uploaded_by == user.id)
@@ -318,18 +293,11 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
     
     return {
         "total_pu": total, "in_esk": in_esk, "in_res": in_res, "installed": installed,
-        "recent_registers": [{
-            "id": r.id, "filename": r.filename, "items_count": r.items_count,
-            "uploaded_at": r.uploaded_at, "status": "completed"
-        } for r in recent]
+        "recent_registers": [{"id": r.id, "filename": r.filename, "items_count": r.items_count, "uploaded_at": r.uploaded_at, "status": "completed"} for r in recent]
     }
 
 @app.get("/api/pu/items")
-def get_items(
-    page: int = 1, size: int = 50,
-    search: Optional[str] = None, status: Optional[str] = None, unit_id: Optional[int] = None,
-    db: Session = Depends(get_db), user: User = Depends(get_current_user)
-):
+def get_items(page: int = 1, size: int = 50, search: Optional[str] = None, status: Optional[str] = None, unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     visible = get_visible_units(user, db)
     q = db.query(PUItem)
     
@@ -337,7 +305,7 @@ def get_items(
         if is_lab_user(user):
             regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
             q = q.filter(PUItem.register_id.in_(regs))
-        else:
+        elif is_esk_admin(user):
             q = q.filter(PUItem.current_unit_id.in_(visible))
     
     if search:
@@ -367,51 +335,41 @@ def get_registers(db: Session = Depends(get_db), user: User = Depends(get_curren
         q = q.filter(PURegister.uploaded_by == user.id)
     elif not is_sue_admin(user):
         return []
-    
     regs = q.order_by(PURegister.uploaded_at.desc()).all()
-    return [{
-        "id": r.id, "filename": r.filename, "items_count": r.items_count,
-        "uploaded_at": r.uploaded_at, "status": "completed"
-    } for r in regs]
+    return [{"id": r.id, "filename": r.filename, "items_count": r.items_count, "uploaded_at": r.uploaded_at, "status": "completed"} for r in regs]
 
 @app.post("/api/pu/upload")
 async def upload_register(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    # Только Лаборатория может загружать
     if not is_lab_user(user):
         raise HTTPException(403, "Только Лаборатория может загружать реестры")
     
     contents = await file.read()
-    
-    # Читаем Excel - ищем лист с данными
     xl = pd.ExcelFile(io.BytesIO(contents))
+    
+    # Ищем лист с данными
     df = None
     for sheet in xl.sheet_names:
         temp_df = pd.read_excel(xl, sheet_name=sheet)
-        # Ищем лист где есть колонка с "номер" или "Заводской"
         for col in temp_df.columns:
-            if 'номер' in str(col).lower() or 'завод' in str(col).lower():
+            if 'заводской' in str(col).lower() or 'номер' in str(col).lower():
                 df = temp_df
                 break
         if df is not None:
             break
-    
     if df is None:
-        df = pd.read_excel(io.BytesIO(contents))  # fallback на первый лист
+        df = pd.read_excel(io.BytesIO(contents))
     
     register = PURegister(filename=file.filename, uploaded_by=user.id, items_count=0)
     db.add(register)
     db.commit()
     
-    # Поиск колонок по названию
-    serial_col = None
-    type_col = None
-    unit_col = None
-    
+    # Поиск колонок
+    serial_col = type_col = unit_col = None
     for col in df.columns:
         col_lower = str(col).lower()
         if 'заводской' in col_lower or ('номер' in col_lower and 'пу' in col_lower):
             serial_col = col
-        elif 'тип' in col_lower and 'прибор' in col_lower:
+        elif 'тип' in col_lower:
             type_col = col
         elif 'подразделение' in col_lower:
             unit_col = col
@@ -419,166 +377,139 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
     if not serial_col:
         raise HTTPException(400, "Не найдена колонка 'Заводской номер ПУ'")
     
-    # Загрузка подразделений
-    units = {}
+    # Словарь подразделений
+    units_map = {}
     for u in db.query(Unit).all():
-        units[u.name.lower()] = u
-        units[u.code.lower()] = u
-        # Добавляем короткие названия
-        if 'адлер' in u.name.lower():
-            units['адлерский'] = u
-            units['адлерский рэс'] = u
-        if 'сочи' in u.name.lower():
-            units['сочинский'] = u
-            units['сочинский рэс'] = u
-        if 'дагомыс' in u.name.lower():
-            units['дагомысский'] = u
-            units['дагомысский рэс'] = u
-        if 'лазарев' in u.name.lower():
-            units['лазаревский'] = u
-            units['лазаревский рэс'] = u
-        if 'хост' in u.name.lower():
-            units['хостинский'] = u
-            units['хостинский рэс'] = u
-        if 'краснопол' in u.name.lower():
-            units['краснополянский'] = u
-            units['краснополянский рэс'] = u
-        if 'туапс' in u.name.lower():
-            units['туапсинский'] = u
-            units['туапсинский рэс'] = u
-        if u.unit_type == UnitType.ESK:
-            units['эск'] = u
+        units_map[u.name.lower()] = u
+        units_map[u.code.lower()] = u
+    # Короткие названия
+    for u in db.query(Unit).filter(Unit.unit_type == UnitType.RES).all():
+        short = u.name.lower().replace(' рэс', '').replace('ий', 'ий рэс')
+        units_map[u.name.lower()] = u
+    for u in db.query(Unit).filter(Unit.unit_type == UnitType.RES_ESK).all():
+        units_map['эск'] = u  # последний ЭСК как дефолт для "ЭСК"
     
     count = 0
     for _, row in df.iterrows():
         serial = str(row.get(serial_col, '')).strip()
-        if not serial or serial == 'nan' or serial == '':
+        if not serial or serial == 'nan':
             continue
         
-        # Тип ПУ
-        pu_type = None
-        if type_col:
-            pu_type = str(row.get(type_col, '')).strip()
-            if pu_type == 'nan':
-                pu_type = None
+        pu_type = str(row.get(type_col, '')).strip() if type_col else None
+        if pu_type == 'nan':
+            pu_type = None
         
-        # Подразделение
         target_unit = None
         if unit_col:
             unit_name = str(row.get(unit_col, '')).strip().lower()
             if unit_name and unit_name != 'nan':
-                target_unit = units.get(unit_name)
+                target_unit = units_map.get(unit_name)
+                # Пробуем найти по частичному совпадению
+                if not target_unit:
+                    for key, u in units_map.items():
+                        if unit_name in key or key in unit_name:
+                            target_unit = u
+                            break
         
         status = PUStatus.NEW
-        current_unit = target_unit
         if target_unit:
-            if target_unit.unit_type == UnitType.ESK:
+            if target_unit.unit_type in [UnitType.ESK, UnitType.RES_ESK]:
                 status = PUStatus.IN_ESK
-            elif target_unit.unit_type in [UnitType.RES, UnitType.URRU]:
+            elif target_unit.unit_type == UnitType.RES:
                 status = PUStatus.IN_RES
         
         item = PUItem(
-            register_id=register.id,
-            pu_type=pu_type[:500] if pu_type else None,
-            serial_number=serial,
-            target_unit_id=target_unit.id if target_unit else None,
-            current_unit_id=current_unit.id if current_unit else None,
-            status=status
+            register_id=register.id, pu_type=pu_type[:500] if pu_type else None,
+            serial_number=serial, target_unit_id=target_unit.id if target_unit else None,
+            current_unit_id=target_unit.id if target_unit else None, status=status
         )
         db.add(item)
         count += 1
     
     register.items_count = count
     db.commit()
-    
     return {"id": register.id, "filename": register.filename, "items_count": count, "uploaded_at": register.uploaded_at, "status": "completed"}
+
 @app.post("/api/pu/move")
 def move_items(req: MoveReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not (is_sue_admin(user) or is_energo_admin(user)):
-        raise HTTPException(403, "Нет прав на перемещение")
-    
     target = db.query(Unit).filter(Unit.id == req.to_unit_id).first()
     if not target:
         raise HTTPException(404, "Подразделение не найдено")
     
     items = db.query(PUItem).filter(PUItem.id.in_(req.pu_item_ids)).all()
     
+    # Проверка прав
+    if is_sue_admin(user):
+        # СУЭ может перемещать только ПУ которые НЕ в ЭСК
+        for item in items:
+            if item.current_unit and item.current_unit.unit_type in [UnitType.ESK, UnitType.RES_ESK]:
+                raise HTTPException(403, "СУЭ не может перемещать ПУ из ЭСК")
+        # И только в РЭС (не в ЭСК)
+        if target.unit_type in [UnitType.ESK, UnitType.RES_ESK]:
+            raise HTTPException(403, "СУЭ может перемещать только в РЭС")
+    elif is_esk_admin(user):
+        # ЭСК может перемещать только ПУ из ЭСК
+        for item in items:
+            if item.current_unit and item.current_unit.unit_type not in [UnitType.ESK, UnitType.RES_ESK]:
+                raise HTTPException(403, "ЭСК может перемещать только ПУ из ЭСК")
+        # И только в ЭСК
+        if target.unit_type not in [UnitType.ESK, UnitType.RES_ESK]:
+            raise HTTPException(403, "ЭСК может перемещать только в ЭСК")
+    else:
+        raise HTTPException(403, "Нет прав на перемещение")
+    
     for item in items:
-        # Лог перемещения
-        mov = PUMovement(
-            pu_item_id=item.id, from_unit_id=item.current_unit_id,
-            to_unit_id=target.id, moved_by=user.id, comment=req.comment
-        )
+        mov = PUMovement(pu_item_id=item.id, from_unit_id=item.current_unit_id, to_unit_id=target.id, moved_by=user.id, comment=req.comment)
         db.add(mov)
-        
-        # Обновляем ПУ
         item.current_unit_id = target.id
-        if target.unit_type == UnitType.ESK:
-            item.status = PUStatus.IN_ESK
-        else:
-            item.status = PUStatus.IN_RES
+        item.status = PUStatus.IN_ESK if target.unit_type in [UnitType.ESK, UnitType.RES_ESK] else PUStatus.IN_RES
     
     db.commit()
     return {"moved": len(items)}
 
 # ==================== ИНИЦИАЛИЗАЦИЯ БД ====================
 def init_db():
-    """Создание ролей, подразделений и админа"""
     db = SessionLocal()
     
-    # Роли
-    roles_data = [
-        ("СУЭ Администратор", RoleCode.SUE_ADMIN),
-        ("Энергосервис Админ", RoleCode.ENERGOSERVICE_ADMIN),
-        ("Лаборатория", RoleCode.LAB_USER),
-        ("УРРУ", RoleCode.URRU_USER),
-        ("ЭСК", RoleCode.ESK_USER),
-    ]
+    # Роли (3 штуки)
     roles = {}
-    for name, code in roles_data:
-        if not db.query(Role).filter(Role.code == code).first():
+    for name, code in [("СУЭ Администратор", RoleCode.SUE_ADMIN), ("Лаборатория", RoleCode.LAB_USER), ("ЭСК Администратор", RoleCode.ESK_ADMIN)]:
+        r = db.query(Role).filter(Role.code == code).first()
+        if not r:
             r = Role(name=name, code=code)
             db.add(r)
             db.flush()
-            roles[code] = r
-        else:
-            roles[code] = db.query(Role).filter(Role.code == code).first()
+        roles[code] = r
     
     # Подразделения
     units = {}
-    for name, code, utype in [
-        ("Служба учета электроэнергии", "SUE", UnitType.SUE),
-        ("Энергосервис", "ENERGOSERVICE", UnitType.ENERGOSERVICE),
-        ("Лаборатория", "LAB", UnitType.LAB),
-    ]:
-        if not db.query(Unit).filter(Unit.code == code).first():
+    
+    # Служебные
+    for name, code, utype in [("Служба учета", "SUE", UnitType.SUE), ("Лаборатория", "LAB", UnitType.LAB), ("ЭСК", "ESK", UnitType.ESK)]:
+        u = db.query(Unit).filter(Unit.code == code).first()
+        if not u:
             u = Unit(name=name, code=code, unit_type=utype)
             db.add(u)
             db.flush()
-            units[code] = u
-        else:
-            units[code] = db.query(Unit).filter(Unit.code == code).first()
+        units[code] = u
     
-    # 7 РЭС
+    # 7 РЭС + 7 ЭСК
     for res_name, res_code in [
-        ("Краснополянский РЭС", "RES_KRASNAYA"),
-        ("Адлерский РЭС", "RES_ADLER"),
-        ("Хостинский РЭС", "RES_HOSTA"),
-        ("Сочинский РЭС", "RES_SOCHI"),
-        ("Дагомысский РЭС", "RES_DAGOMYS"),
-        ("Лазаревский РЭС", "RES_LAZAREV"),
-        ("Туапсинский РЭС", "RES_TUAPSE"),
+        ("Адлерский РЭС", "RES_ADLER"), ("Дагомысский РЭС", "RES_DAGOMYS"), ("Краснополянский РЭС", "RES_KRASNAYA"),
+        ("Лазаревский РЭС", "RES_LAZAREV"), ("Сочинский РЭС", "RES_SOCHI"), ("Туапсинский РЭС", "RES_TUAPSE"), ("Хостинский РЭС", "RES_HOSTA")
     ]:
-        if not db.query(Unit).filter(Unit.code == res_code).first():
+        res = db.query(Unit).filter(Unit.code == res_code).first()
+        if not res:
             res = Unit(name=res_name, code=res_code, unit_type=UnitType.RES)
             db.add(res)
             db.flush()
-            
-            # УРРУ и ЭСК
-            short = res_code.split('_')[1]
-            urru = Unit(name=f"УРРУ {res_name.replace(' РЭС', '')}", code=f"URRU_{short}", unit_type=UnitType.URRU, parent_id=res.id)
-            esk = Unit(name=f"ЭСК {res_name.replace(' РЭС', '')}", code=f"ESK_{short}", unit_type=UnitType.ESK, parent_id=res.id)
-            db.add(urru)
+        
+        # ЭСК в РЭС
+        esk_code = res_code.replace("RES_", "ESK_")
+        esk_name = res_name.replace(" РЭС", " ЭСК")
+        esk = db.query(Unit).filter(Unit.code == esk_code).first()
+        if not esk:
+            esk = Unit(name=esk_name, code=esk_code, unit_type=UnitType.RES_ESK, parent_id=res.id)
             db.add(esk)
     
     # Пользователи
@@ -586,12 +517,11 @@ def init_db():
         db.add(User(username="admin", password_hash=hash_password("admin123"), full_name="Администратор СУЭ", role_id=roles[RoleCode.SUE_ADMIN].id, unit_id=units["SUE"].id))
     if not db.query(User).filter(User.username == "lab").first():
         db.add(User(username="lab", password_hash=hash_password("lab123"), full_name="Оператор Лаборатории", role_id=roles[RoleCode.LAB_USER].id, unit_id=units["LAB"].id))
-    if not db.query(User).filter(User.username == "energo").first():
-        db.add(User(username="energo", password_hash=hash_password("energo123"), full_name="Админ Энергосервис", role_id=roles[RoleCode.ENERGOSERVICE_ADMIN].id, unit_id=units["ENERGOSERVICE"].id))
+    if not db.query(User).filter(User.username == "esk").first():
+        db.add(User(username="esk", password_hash=hash_password("esk123"), full_name="Администратор ЭСК", role_id=roles[RoleCode.ESK_ADMIN].id, unit_id=units["ESK"].id))
     
     db.commit()
     db.close()
     print("✅ БД инициализирована!")
-
 
 init_db()
