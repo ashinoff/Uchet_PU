@@ -222,6 +222,7 @@ function PUListPage() {
   const [pages, setPages] = useState(1)
   const [selected, setSelected] = useState([])
   const [moveModal, setMoveModal] = useState(false)
+  const [deleteModal, setDeleteModal] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { api.get('/units').then(r => setUnits(r.data)) }, [])
@@ -242,7 +243,16 @@ function PUListPage() {
     setMoveModal(false)
     load()
   }
-
+  const handleDelete = async (adminCode) => {
+    try {
+      await api.post('/pu/delete', { pu_item_ids: selected, admin_code: adminCode })
+      setSelected([])
+      setDeleteModal(false)
+      load()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка удаления')
+    }
+  }
   const statusLabels = { NEW: 'Новый', IN_ESK: 'В ЭСК', IN_RES: 'В РЭС', INSTALLED: 'Установлен', DEFECT: 'Брак' }
 
   return (
@@ -267,11 +277,12 @@ function PUListPage() {
         )}
       </div>
 
-      {selected.length > 0 && canMove && (
+      {selected.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
           <span className="text-blue-700 font-medium">Выбрано: {selected.length}</span>
           <div className="flex gap-2">
-            <button onClick={() => setMoveModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➡️ Переместить</button>
+            {canMove && <button onClick={() => setMoveModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➡️ Переместить</button>}
+            {isSueAdmin && <button onClick={() => setDeleteModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">🗑️ Удалить</button>}
             <button onClick={() => setSelected([])} className="px-4 py-2 bg-gray-100 rounded-lg">Отменить</button>
           </div>
         </div>
@@ -316,6 +327,7 @@ function PUListPage() {
       </div>
 
       {moveModal && <MoveModal units={units} onClose={() => setMoveModal(false)} onMove={handleMove} count={selected.length} />}
+      {deleteModal && <DeleteModal onClose={() => setDeleteModal(false)} onDelete={handleDelete} count={selected.length} />}
     </div>
   )
 }
@@ -339,6 +351,22 @@ function MoveModal({ units, onClose, onMove, count }) {
       </div>
     </div>
   )
+ function DeleteModal({ onClose, onDelete, count }) {
+  const [code, setCode] = useState('')
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold mb-4 text-red-600">🗑️ Удалить {count} ПУ?</h2>
+        <p className="text-gray-600 mb-4">Это действие нельзя отменить. Введите код администратора:</p>
+        <input type="password" placeholder="Код админа" value={code} onChange={e => setCode(e.target.value)} className="w-full px-3 py-2 border rounded-lg mb-4" />
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+          <button onClick={() => code && onDelete(code)} className="px-4 py-2 bg-red-600 text-white rounded-lg">Удалить</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 }
 
 // ==================== ЗАГРУЗКА РЕЕСТРА ====================
