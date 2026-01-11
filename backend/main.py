@@ -376,49 +376,98 @@ def get_registers(db: Session = Depends(get_db), user: User = Depends(get_curren
 
 @app.post("/api/pu/upload")
 async def upload_register(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not (is_lab_user(user) or is_sue_admin(user)):
-        raise HTTPException(403, "Только Лаборатория может загружать")
+    # Только Лаборатория может загружать
+    if not is_lab_user(user):
+        raise HTTPException(403, "Только Лаборатория может загружать реестры")
     
     contents = await file.read()
-    df = pd.read_excel(io.BytesIO(contents))
+    
+    # Читаем Excel - ищем лист с данными
+    xl = pd.ExcelFile(io.BytesIO(contents))
+    df = None
+    for sheet in xl.sheet_names:
+        temp_df = pd.read_excel(xl, sheet_name=sheet)
+        # Ищем лист где есть колонка с "номер" или "Заводской"
+        for col in temp_df.columns:
+            if 'номер' in str(col).lower() or 'завод' in str(col).lower():
+                df = temp_df
+                break
+        if df is not None:
+            break
+    
+    if df is None:
+        df = pd.read_excel(io.BytesIO(contents))  # fallback на первый лист
     
     register = PURegister(filename=file.filename, uploaded_by=user.id, items_count=0)
     db.add(register)
     db.commit()
     
-    # Поиск колонок
-    cols = {c.lower(): c for c in df.columns}
+    # Поиск колонок по названию
     serial_col = None
     type_col = None
     unit_col = None
     
-    for key, col in cols.items():
-        if 'номер' in key or 'серий' in key or 'завод' in key:
+    for col in df.columns:
+        col_lower = str(col).lower()
+        if 'заводской' in col_lower or ('номер' in col_lower and 'пу' in col_lower):
             serial_col = col
-        if 'тип' in key:
+        elif 'тип' in col_lower and 'прибор' in col_lower:
             type_col = col
-        if 'подразделение' in key or 'рэс' in key or 'эск' in key:
+        elif 'подразделение' in col_lower:
             unit_col = col
     
     if not serial_col:
-        serial_col = df.columns[2] if len(df.columns) > 2 else df.columns[0]
+        raise HTTPException(400, "Не найдена колонка 'Заводской номер ПУ'")
     
     # Загрузка подразделений
-    units = {u.name.lower(): u for u in db.query(Unit).all()}
+    units = {}
+    for u in db.query(Unit).all():
+        units[u.name.lower()] = u
+        units[u.code.lower()] = u
+        # Добавляем короткие названия
+        if 'адлер' in u.name.lower():
+            units['адлерский'] = u
+            units['адлерский рэс'] = u
+        if 'сочи' in u.name.lower():
+            units['сочинский'] = u
+            units['сочинский рэс'] = u
+        if 'дагомыс' in u.name.lower():
+            units['дагомысский'] = u
+            units['дагомысский рэс'] = u
+        if 'лазарев' in u.name.lower():
+            units['лазаревский'] = u
+            units['лазаревский рэс'] = u
+        if 'хост' in u.name.lower():
+            units['хостинский'] = u
+            units['хостинский рэс'] = u
+        if 'краснопол' in u.name.lower():
+            units['краснополянский'] = u
+            units['краснополянский рэс'] = u
+        if 'туапс' in u.name.lower():
+            units['туапсинский'] = u
+            units['туапсинский рэс'] = u
+        if u.unit_type == UnitType.ESK:
+            units['эск'] = u
     
     count = 0
     for _, row in df.iterrows():
         serial = str(row.get(serial_col, '')).strip()
-        if not serial or serial == 'nan':
+        if not serial or serial == 'nan' or serial == '':
             continue
         
+        # Тип ПУ
+        pu_type = None
+        if type_col:
+            pu_type = str(row.get(type_col, '')).strip()
+            if pu_type == 'nan':
+                pu_type = None
+        
+        # Подразделение
         target_unit = None
         if unit_col:
             unit_name = str(row.get(unit_col, '')).strip().lower()
-            for key, unit in units.items():
-                if key in unit_name or unit_name in key:
-                    target_unit = unit
-                    break
+            if unit_name and unit_name != 'nan':
+                target_unit = units.get(unit_name)
         
         status = PUStatus.NEW
         current_unit = target_unit
@@ -430,7 +479,7 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
         
         item = PUItem(
             register_id=register.id,
-            pu_type=str(row.get(type_col, ''))[:500] if type_col else None,
+            pu_type=pu_type[:500] if pu_type else None,
             serial_number=serial,
             target_unit_id=target_unit.id if target_unit else None,
             current_unit_id=current_unit.id if current_unit else None,
@@ -443,7 +492,6 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
     db.commit()
     
     return {"id": register.id, "filename": register.filename, "items_count": count, "uploaded_at": register.uploaded_at, "status": "completed"}
-
 @app.post("/api/pu/move")
 def move_items(req: MoveReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not (is_sue_admin(user) or is_energo_admin(user)):
