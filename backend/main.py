@@ -1,0 +1,549 @@
+"""
+Система учета ПУ - Backend
+Весь код в одном файле для простоты
+"""
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.sql import func
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings
+from typing import Optional, List
+from datetime import datetime, timedelta
+from jose import jwt
+from passlib.context import CryptContext
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import pandas as pd
+import io
+import enum
+import os
+
+# ==================== КОНФИГ ====================
+class Settings(BaseSettings):
+    DATABASE_URL: str = "postgresql://user:pass@localhost/pu_system"
+    SECRET_KEY: str = "your-secret-key-change-me"
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+
+# ==================== БАЗА ДАННЫХ ====================
+engine = create_engine(settings.DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# ==================== ENUM'ы ====================
+class UnitType(str, enum.Enum):
+    SUE = "SUE"              # Служба учета - видит ВСЁ
+    ENERGOSERVICE = "ENERGOSERVICE"  # Админ всех ЭСК
+    LAB = "LAB"              # Лаборатория
+    RES = "RES"              # РЭС
+    URRU = "URRU"            # Участок в РЭС
+    ESK = "ESK"              # ЭСК в РЭС
+
+class RoleCode(str, enum.Enum):
+    SUE_ADMIN = "SUE_ADMIN"
+    ENERGOSERVICE_ADMIN = "ENERGOSERVICE_ADMIN"
+    LAB_USER = "LAB_USER"
+    URRU_USER = "URRU_USER"
+    ESK_USER = "ESK_USER"
+
+class PUStatus(str, enum.Enum):
+    NEW = "NEW"
+    IN_ESK = "IN_ESK"
+    IN_RES = "IN_RES"
+    INSTALLED = "INSTALLED"
+    DEFECT = "DEFECT"
+
+# ==================== МОДЕЛИ БД ====================
+class Unit(Base):
+    __tablename__ = "units"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(200), nullable=False)
+    code = Column(String(50), unique=True)
+    unit_type = Column(SQLEnum(UnitType))
+    parent_id = Column(Integer, ForeignKey("units.id"))
+    is_active = Column(Boolean, default=True)
+
+class Role(Base):
+    __tablename__ = "roles"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100))
+    code = Column(SQLEnum(RoleCode), unique=True)
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    username = Column(String(50), unique=True)
+    password_hash = Column(String(255))
+    full_name = Column(String(200))
+    role_id = Column(Integer, ForeignKey("roles.id"))
+    unit_id = Column(Integer, ForeignKey("units.id"))
+    is_active = Column(Boolean, default=True)
+    role = relationship("Role")
+    unit = relationship("Unit")
+
+class PURegister(Base):
+    __tablename__ = "pu_registers"
+    id = Column(Integer, primary_key=True)
+    filename = Column(String(255))
+    uploaded_by = Column(Integer, ForeignKey("users.id"))
+    uploaded_at = Column(DateTime, server_default=func.now())
+    items_count = Column(Integer, default=0)
+    uploader = relationship("User")
+
+class PUItem(Base):
+    __tablename__ = "pu_items"
+    id = Column(Integer, primary_key=True)
+    register_id = Column(Integer, ForeignKey("pu_registers.id"))
+    pu_type = Column(String(500))
+    serial_number = Column(String(100), index=True)
+    target_unit_id = Column(Integer, ForeignKey("units.id"))
+    current_unit_id = Column(Integer, ForeignKey("units.id"))
+    status = Column(SQLEnum(PUStatus), default=PUStatus.NEW)
+    created_at = Column(DateTime, server_default=func.now())
+    register = relationship("PURegister")
+    target_unit = relationship("Unit", foreign_keys=[target_unit_id])
+    current_unit = relationship("Unit", foreign_keys=[current_unit_id])
+
+class PUMovement(Base):
+    __tablename__ = "pu_movements"
+    id = Column(Integer, primary_key=True)
+    pu_item_id = Column(Integer, ForeignKey("pu_items.id"))
+    from_unit_id = Column(Integer, ForeignKey("units.id"))
+    to_unit_id = Column(Integer, ForeignKey("units.id"))
+    moved_by = Column(Integer, ForeignKey("users.id"))
+    moved_at = Column(DateTime, server_default=func.now())
+    comment = Column(Text)
+
+# ==================== АВТОРИЗАЦИЯ ====================
+pwd_context = CryptContext(schemes=["bcrypt"])
+security = HTTPBearer()
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+def create_token(user_id: int) -> str:
+    expire = datetime.utcnow() + timedelta(hours=24)
+    return jwt.encode({"sub": str(user_id), "exp": expire}, settings.SECRET_KEY)
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    try:
+        payload = jwt.decode(creds.credentials, settings.SECRET_KEY, algorithms=["HS256"])
+        user = db.query(User).filter(User.id == int(payload["sub"])).first()
+        if not user or not user.is_active:
+            raise HTTPException(401, "Не авторизован")
+        return user
+    except:
+        raise HTTPException(401, "Неверный токен")
+
+def is_sue_admin(user: User) -> bool:
+    return user.role.code == RoleCode.SUE_ADMIN
+
+def is_energo_admin(user: User) -> bool:
+    return user.role.code == RoleCode.ENERGOSERVICE_ADMIN
+
+def is_lab_user(user: User) -> bool:
+    return user.role.code == RoleCode.LAB_USER
+
+def get_visible_units(user: User, db: Session) -> List[int]:
+    """Какие подразделения видит пользователь"""
+    if is_sue_admin(user):
+        return [u.id for u in db.query(Unit).all()]
+    if is_energo_admin(user):
+        return [u.id for u in db.query(Unit).filter(Unit.unit_type == UnitType.ESK).all()]
+    return [user.unit_id] if user.unit_id else []
+
+# ==================== PYDANTIC СХЕМЫ ====================
+class LoginReq(BaseModel):
+    username: str
+    password: str
+
+class TokenResp(BaseModel):
+    access_token: str
+
+class UserResp(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    role_code: str
+    role_name: str
+    unit_id: Optional[int]
+    unit_name: Optional[str]
+    visible_units: List[int] = []
+
+class UnitResp(BaseModel):
+    id: int
+    name: str
+    code: str
+    unit_type: str
+
+class PUItemResp(BaseModel):
+    id: int
+    serial_number: str
+    pu_type: Optional[str]
+    status: str
+    current_unit_name: Optional[str]
+    current_unit_id: Optional[int]
+    uploaded_at: Optional[datetime]
+
+class MoveReq(BaseModel):
+    pu_item_ids: List[int]
+    to_unit_id: int
+    comment: Optional[str] = None
+
+# ==================== ПРИЛОЖЕНИЕ ====================
+app = FastAPI(title="Система учета ПУ")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+# Создание таблиц
+Base.metadata.create_all(bind=engine)
+
+# ==================== API ENDPOINTS ====================
+
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "Система учета ПУ"}
+
+# --- Auth ---
+@app.post("/api/auth/login", response_model=TokenResp)
+def login(req: LoginReq, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == req.username).first()
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(401, "Неверный логин или пароль")
+    return {"access_token": create_token(user.id)}
+
+@app.get("/api/auth/me", response_model=UserResp)
+def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return UserResp(
+        id=user.id,
+        username=user.username,
+        full_name=user.full_name,
+        role_code=user.role.code.value,
+        role_name=user.role.name,
+        unit_id=user.unit_id,
+        unit_name=user.unit.name if user.unit else None,
+        visible_units=get_visible_units(user, db)
+    )
+
+# --- Справочники ---
+@app.get("/api/units", response_model=List[UnitResp])
+def get_units(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    units = db.query(Unit).filter(Unit.is_active == True).all()
+    return [UnitResp(id=u.id, name=u.name, code=u.code, unit_type=u.unit_type.value) for u in units]
+
+@app.get("/api/roles")
+def get_roles(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return [{"id": r.id, "name": r.name, "code": r.code.value} for r in db.query(Role).all()]
+
+# --- Пользователи (только СУЭ) ---
+@app.get("/api/users")
+def get_users(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    users = db.query(User).all()
+    return [{
+        "id": u.id, "username": u.username, "full_name": u.full_name,
+        "is_active": u.is_active,
+        "role": {"id": u.role.id, "name": u.role.name} if u.role else None,
+        "unit": {"id": u.unit.id, "name": u.unit.name} if u.unit else None
+    } for u in users]
+
+@app.post("/api/users")
+def create_user(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    new_user = User(
+        username=data["username"],
+        password_hash=hash_password(data["password"]),
+        full_name=data["full_name"],
+        role_id=data["role_id"],
+        unit_id=data.get("unit_id")
+    )
+    db.add(new_user)
+    db.commit()
+    return {"id": new_user.id}
+
+@app.put("/api/users/{user_id}")
+def update_user(user_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(404, "Не найден")
+    for k, v in data.items():
+        if k != "password" and hasattr(u, k):
+            setattr(u, k, v)
+    db.commit()
+    return {"ok": True}
+
+# --- ПУ ---
+@app.get("/api/pu/dashboard")
+def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    visible = get_visible_units(user, db)
+    
+    q = db.query(PUItem)
+    if not is_sue_admin(user):
+        if is_lab_user(user):
+            regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
+            q = q.filter(PUItem.register_id.in_(regs))
+        else:
+            q = q.filter(PUItem.current_unit_id.in_(visible))
+    
+    total = q.count()
+    in_esk = q.filter(PUItem.status == PUStatus.IN_ESK).count()
+    in_res = q.filter(PUItem.status == PUStatus.IN_RES).count()
+    installed = q.filter(PUItem.status == PUStatus.INSTALLED).count()
+    
+    # Последние загрузки
+    reg_q = db.query(PURegister)
+    if is_lab_user(user):
+        reg_q = reg_q.filter(PURegister.uploaded_by == user.id)
+    recent = reg_q.order_by(PURegister.uploaded_at.desc()).limit(5).all()
+    
+    return {
+        "total_pu": total, "in_esk": in_esk, "in_res": in_res, "installed": installed,
+        "recent_registers": [{
+            "id": r.id, "filename": r.filename, "items_count": r.items_count,
+            "uploaded_at": r.uploaded_at, "status": "completed"
+        } for r in recent]
+    }
+
+@app.get("/api/pu/items")
+def get_items(
+    page: int = 1, size: int = 50,
+    search: Optional[str] = None, status: Optional[str] = None, unit_id: Optional[int] = None,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    visible = get_visible_units(user, db)
+    q = db.query(PUItem)
+    
+    if not is_sue_admin(user):
+        if is_lab_user(user):
+            regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
+            q = q.filter(PUItem.register_id.in_(regs))
+        else:
+            q = q.filter(PUItem.current_unit_id.in_(visible))
+    
+    if search:
+        q = q.filter(PUItem.serial_number.ilike(f"%{search}%"))
+    if status:
+        q = q.filter(PUItem.status == status)
+    if unit_id:
+        q = q.filter(PUItem.current_unit_id == unit_id)
+    
+    total = q.count()
+    items = q.order_by(PUItem.created_at.desc()).offset((page-1)*size).limit(size).all()
+    
+    return {
+        "items": [{
+            "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
+            "status": i.status.value, "current_unit_id": i.current_unit_id,
+            "current_unit_name": i.current_unit.name if i.current_unit else None,
+            "uploaded_at": i.register.uploaded_at if i.register else None
+        } for i in items],
+        "total": total, "page": page, "size": size, "pages": (total + size - 1) // size
+    }
+
+@app.get("/api/pu/registers")
+def get_registers(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    q = db.query(PURegister)
+    if is_lab_user(user):
+        q = q.filter(PURegister.uploaded_by == user.id)
+    elif not is_sue_admin(user):
+        return []
+    
+    regs = q.order_by(PURegister.uploaded_at.desc()).all()
+    return [{
+        "id": r.id, "filename": r.filename, "items_count": r.items_count,
+        "uploaded_at": r.uploaded_at, "status": "completed"
+    } for r in regs]
+
+@app.post("/api/pu/upload")
+async def upload_register(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not (is_lab_user(user) or is_sue_admin(user)):
+        raise HTTPException(403, "Только Лаборатория может загружать")
+    
+    contents = await file.read()
+    df = pd.read_excel(io.BytesIO(contents))
+    
+    register = PURegister(filename=file.filename, uploaded_by=user.id, items_count=0)
+    db.add(register)
+    db.commit()
+    
+    # Поиск колонок
+    cols = {c.lower(): c for c in df.columns}
+    serial_col = None
+    type_col = None
+    unit_col = None
+    
+    for key, col in cols.items():
+        if 'номер' in key or 'серий' in key or 'завод' in key:
+            serial_col = col
+        if 'тип' in key:
+            type_col = col
+        if 'подразделение' in key or 'рэс' in key or 'эск' in key:
+            unit_col = col
+    
+    if not serial_col:
+        serial_col = df.columns[2] if len(df.columns) > 2 else df.columns[0]
+    
+    # Загрузка подразделений
+    units = {u.name.lower(): u for u in db.query(Unit).all()}
+    
+    count = 0
+    for _, row in df.iterrows():
+        serial = str(row.get(serial_col, '')).strip()
+        if not serial or serial == 'nan':
+            continue
+        
+        target_unit = None
+        if unit_col:
+            unit_name = str(row.get(unit_col, '')).strip().lower()
+            for key, unit in units.items():
+                if key in unit_name or unit_name in key:
+                    target_unit = unit
+                    break
+        
+        status = PUStatus.NEW
+        current_unit = target_unit
+        if target_unit:
+            if target_unit.unit_type == UnitType.ESK:
+                status = PUStatus.IN_ESK
+            elif target_unit.unit_type in [UnitType.RES, UnitType.URRU]:
+                status = PUStatus.IN_RES
+        
+        item = PUItem(
+            register_id=register.id,
+            pu_type=str(row.get(type_col, ''))[:500] if type_col else None,
+            serial_number=serial,
+            target_unit_id=target_unit.id if target_unit else None,
+            current_unit_id=current_unit.id if current_unit else None,
+            status=status
+        )
+        db.add(item)
+        count += 1
+    
+    register.items_count = count
+    db.commit()
+    
+    return {"id": register.id, "filename": register.filename, "items_count": count, "uploaded_at": register.uploaded_at, "status": "completed"}
+
+@app.post("/api/pu/move")
+def move_items(req: MoveReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not (is_sue_admin(user) or is_energo_admin(user)):
+        raise HTTPException(403, "Нет прав на перемещение")
+    
+    target = db.query(Unit).filter(Unit.id == req.to_unit_id).first()
+    if not target:
+        raise HTTPException(404, "Подразделение не найдено")
+    
+    items = db.query(PUItem).filter(PUItem.id.in_(req.pu_item_ids)).all()
+    
+    for item in items:
+        # Лог перемещения
+        mov = PUMovement(
+            pu_item_id=item.id, from_unit_id=item.current_unit_id,
+            to_unit_id=target.id, moved_by=user.id, comment=req.comment
+        )
+        db.add(mov)
+        
+        # Обновляем ПУ
+        item.current_unit_id = target.id
+        if target.unit_type == UnitType.ESK:
+            item.status = PUStatus.IN_ESK
+        else:
+            item.status = PUStatus.IN_RES
+    
+    db.commit()
+    return {"moved": len(items)}
+
+# ==================== ИНИЦИАЛИЗАЦИЯ БД ====================
+def init_db():
+    """Создание ролей, подразделений и админа"""
+    db = SessionLocal()
+    
+    # Роли
+    roles_data = [
+        ("СУЭ Администратор", RoleCode.SUE_ADMIN),
+        ("Энергосервис Админ", RoleCode.ENERGOSERVICE_ADMIN),
+        ("Лаборатория", RoleCode.LAB_USER),
+        ("УРРУ", RoleCode.URRU_USER),
+        ("ЭСК", RoleCode.ESK_USER),
+    ]
+    roles = {}
+    for name, code in roles_data:
+        if not db.query(Role).filter(Role.code == code).first():
+            r = Role(name=name, code=code)
+            db.add(r)
+            db.flush()
+            roles[code] = r
+        else:
+            roles[code] = db.query(Role).filter(Role.code == code).first()
+    
+    # Подразделения
+    units = {}
+    for name, code, utype in [
+        ("Служба учета электроэнергии", "SUE", UnitType.SUE),
+        ("Энергосервис", "ENERGOSERVICE", UnitType.ENERGOSERVICE),
+        ("Лаборатория", "LAB", UnitType.LAB),
+    ]:
+        if not db.query(Unit).filter(Unit.code == code).first():
+            u = Unit(name=name, code=code, unit_type=utype)
+            db.add(u)
+            db.flush()
+            units[code] = u
+        else:
+            units[code] = db.query(Unit).filter(Unit.code == code).first()
+    
+    # 7 РЭС
+    for res_name, res_code in [
+        ("Краснополянский РЭС", "RES_KRASNAYA"),
+        ("Адлерский РЭС", "RES_ADLER"),
+        ("Хостинский РЭС", "RES_HOSTA"),
+        ("Сочинский РЭС", "RES_SOCHI"),
+        ("Дагомысский РЭС", "RES_DAGOMYS"),
+        ("Лазаревский РЭС", "RES_LAZAREV"),
+        ("Туапсинский РЭС", "RES_TUAPSE"),
+    ]:
+        if not db.query(Unit).filter(Unit.code == res_code).first():
+            res = Unit(name=res_name, code=res_code, unit_type=UnitType.RES)
+            db.add(res)
+            db.flush()
+            
+            # УРРУ и ЭСК
+            short = res_code.split('_')[1]
+            urru = Unit(name=f"УРРУ {res_name.replace(' РЭС', '')}", code=f"URRU_{short}", unit_type=UnitType.URRU, parent_id=res.id)
+            esk = Unit(name=f"ЭСК {res_name.replace(' РЭС', '')}", code=f"ESK_{short}", unit_type=UnitType.ESK, parent_id=res.id)
+            db.add(urru)
+            db.add(esk)
+    
+    # Пользователи
+    if not db.query(User).filter(User.username == "admin").first():
+        db.add(User(username="admin", password_hash=hash_password("admin123"), full_name="Администратор СУЭ", role_id=roles[RoleCode.SUE_ADMIN].id, unit_id=units["SUE"].id))
+    if not db.query(User).filter(User.username == "lab").first():
+        db.add(User(username="lab", password_hash=hash_password("lab123"), full_name="Оператор Лаборатории", role_id=roles[RoleCode.LAB_USER].id, unit_id=units["LAB"].id))
+    if not db.query(User).filter(User.username == "energo").first():
+        db.add(User(username="energo", password_hash=hash_password("energo123"), full_name="Админ Энергосервис", role_id=roles[RoleCode.ENERGOSERVICE_ADMIN].id, unit_id=units["ENERGOSERVICE"].id))
+    
+    db.commit()
+    db.close()
+    print("✅ БД инициализирована!")
+
+if __name__ == "__main__":
+    init_db()
