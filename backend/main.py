@@ -545,5 +545,5 @@ def init_db():
     db.close()
     print("✅ БД инициализирована!")
 
-if __name__ == "__main__":
-    init_db()
+
+init_db()
