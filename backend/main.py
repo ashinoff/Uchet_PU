@@ -467,6 +467,28 @@ def move_items(req: MoveReq, db: Session = Depends(get_db), user: User = Depends
     db.commit()
     return {"moved": len(items)}
 
+@app.post("/api/pu/delete")
+def delete_items(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет прав на удаление")
+    
+    # Проверка кода админа
+    if data.get("admin_code") != "2233":
+        raise HTTPException(403, "Неверный код администратора")
+    
+    item_ids = data.get("pu_item_ids", [])
+    if not item_ids:
+        raise HTTPException(400, "Не выбраны ПУ")
+    
+    # Удаляем перемещения
+    db.query(PUMovement).filter(PUMovement.pu_item_id.in_(item_ids)).delete(synchronize_session=False)
+    
+    # Удаляем ПУ
+    deleted = db.query(PUItem).filter(PUItem.id.in_(item_ids)).delete(synchronize_session=False)
+    
+    db.commit()
+    return {"deleted": deleted}
+
 # ==================== ИНИЦИАЛИЗАЦИЯ БД ====================
 def init_db():
     db = SessionLocal()
