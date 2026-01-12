@@ -34,11 +34,14 @@ function AuthProvider({ children }) {
   const canDelete = isSueAdmin
   const canManageUsers = isSueAdmin
   const canApprove = isResUser || isSueAdmin
+  const canCreateTZ = isSueAdmin
+  const canManageReferences = isSueAdmin
+  const canManageMasters = isEskAdmin
 
   return <AuthContext.Provider value={{ 
     user, loading, login, logout, 
     isSueAdmin, isLabUser, isEskAdmin, isResUser, isEskUser,
-    canUpload, canMove, canDelete, canManageUsers, canApprove 
+    canUpload, canMove, canDelete, canManageUsers, canApprove, canCreateTZ, canManageReferences, canManageMasters
   }}>{children}</AuthContext.Provider>
 }
 
@@ -66,6 +69,8 @@ function Main() {
           {page === 'pu' && <PUListPage />}
           {page === 'upload' && <UploadPage />}
           {page === 'approval' && <ApprovalPage />}
+          {page === 'tz' && <TZPage />}
+          {page === 'requests' && <RequestsPage />}
           {page === 'settings' && <SettingsPage />}
         </div>
       </div>
@@ -75,7 +80,7 @@ function Main() {
 
 // ==================== САЙДБАР ====================
 function Sidebar({ page, setPage }) {
-  const { user, logout, canUpload, canManageUsers, canApprove, isEskUser, isEskAdmin } = useAuth()
+  const { user, logout, canUpload, canManageUsers, canApprove, canCreateTZ, isEskAdmin, isSueAdmin } = useAuth()
   const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
@@ -89,7 +94,9 @@ function Sidebar({ page, setPage }) {
     { id: 'pu', label: '📦 Приборы учета', show: true },
     { id: 'upload', label: '📤 Загрузка', show: canUpload },
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
-    { id: 'settings', label: '⚙️ Настройки', show: canManageUsers },
+    { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
+    { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin },
+    { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin },
   ].filter(i => i.show)
 
   return (
@@ -172,7 +179,7 @@ function LoginPage() {
 
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
 function HomePage({ setPage }) {
-  const { user, canUpload, canManageUsers, canApprove } = useAuth()
+  const { user, canUpload, canManageUsers, canApprove, isSueAdmin, isEskAdmin } = useAuth()
   const [stats, setStats] = useState(null)
 
   useEffect(() => { api.get('/pu/dashboard').then(r => setStats(r.data)) }, [])
@@ -181,7 +188,9 @@ function HomePage({ setPage }) {
     { id: 'pu', icon: '📦', label: 'Приборы учета', desc: 'Просмотр и управление', show: true },
     { id: 'upload', icon: '📤', label: 'Загрузить реестр', desc: 'Импорт из Excel', show: canUpload },
     { id: 'approval', icon: '✅', label: 'Согласование', desc: 'СМР от ЭСК', show: canApprove },
-    { id: 'settings', icon: '⚙️', label: 'Настройки', desc: 'Пользователи', show: canManageUsers },
+    { id: 'tz', icon: '📋', label: 'Тех. задания', desc: 'Формирование ТЗ', show: isSueAdmin },
+    { id: 'requests', icon: '📝', label: 'Заявки ЭСК', desc: 'Формирование заявок', show: isSueAdmin },
+    { id: 'settings', icon: '⚙️', label: 'Настройки', desc: 'Справочники', show: canManageUsers || isEskAdmin },
   ].filter(s => s.show)
 
   return (
@@ -214,7 +223,7 @@ function HomePage({ setPage }) {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">Быстрый доступ</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {shortcuts.map(s => (
             <button key={s.id} onClick={() => setPage(s.id)} className="bg-white p-6 rounded-xl border hover:shadow-md text-left">
               <div className="text-3xl mb-3">{s.icon}</div>
@@ -224,22 +233,6 @@ function HomePage({ setPage }) {
           ))}
         </div>
       </div>
-
-      {stats?.recent_registers?.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold mb-4">Последние загрузки</h2>
-          <div className="bg-white rounded-xl border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Файл</th><th className="px-4 py-3 text-left">Кол-во</th><th className="px-4 py-3 text-left">Дата</th></tr></thead>
-              <tbody>
-                {stats.recent_registers.map(r => (
-                  <tr key={r.id} className="border-t"><td className="px-4 py-3">{r.filename}</td><td className="px-4 py-3">{r.items_count}</td><td className="px-4 py-3 text-gray-500">{new Date(r.uploaded_at).toLocaleDateString('ru')}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -265,6 +258,8 @@ function PUListPage() {
   const [status, setStatus] = useState('')
   const [unitFilter, setUnitFilter] = useState('')
   const [excludeEsk, setExcludeEsk] = useState(false)
+  const [contractSearch, setContractSearch] = useState('')
+  const [lsSearch, setLsSearch] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(1)
@@ -284,12 +279,16 @@ function PUListPage() {
     if (status) params.status = status
     if (unitFilter) params.unit_id = unitFilter
     if (excludeEsk) params.exclude_esk = true
+    if (contractSearch) params.contract = contractSearch
+    if (lsSearch) params.ls = lsSearch
     const r = await api.get('/pu/items', { params })
     setItems(r.data.items)
     setTotal(r.data.total)
     setPages(r.data.pages)
     setLoading(false)
   }
+
+  const handleSearch = () => { setPage(1); load() }
 
   const handleMove = async (toUnitId, comment) => {
     await api.post('/pu/move', { pu_item_ids: selected, to_unit_id: toUnitId, comment })
@@ -312,12 +311,21 @@ function PUListPage() {
   const statusLabels = { SKLAD: 'Склад', TECHPRIS: 'Техприс', ZAMENA: 'Замена', IZHC: 'ИЖЦ', INSTALLED: 'Установлен' }
   const statusColors = { SKLAD: 'bg-gray-100', TECHPRIS: 'bg-green-100 text-green-800', ZAMENA: 'bg-yellow-100 text-yellow-800', IZHC: 'bg-purple-100 text-purple-800', INSTALLED: 'bg-emerald-100 text-emerald-800' }
 
-  // Фильтруем подразделения для перемещения по роли
+  // Фильтруем подразделения для списка и перемещения
+  const visibleUnits = isEskAdmin 
+    ? units.filter(u => u.unit_type === 'ESK' || u.unit_type === 'ESK_UNIT')
+    : units
+
   const moveUnits = units.filter(u => {
     if (isSueAdmin) return u.unit_type === 'RES'
     if (isEskAdmin) return u.unit_type === 'ESK' || u.unit_type === 'ESK_UNIT'
     return false
   })
+
+  // Для ЭСК только Техприс и Склад
+  const statusOptions = isEskAdmin 
+    ? [{ value: 'SKLAD', label: 'Склад' }, { value: 'TECHPRIS', label: 'Техприс' }]
+    : Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))
 
   return (
     <div className="space-y-4">
@@ -326,25 +334,31 @@ function PUListPage() {
         <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
       </div>
 
-      <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-3">
-        <input type="text" placeholder="Поиск по номеру ПУ..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-48 px-3 py-2 border rounded-lg" />
-        <button onClick={() => { setPage(1); load() }} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Найти</button>
-        <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }} className="px-3 py-2 border rounded-lg">
-          <option value="">Все статусы</option>
-          {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        {(isSueAdmin || isEskAdmin) && (
-          <select value={unitFilter} onChange={e => { setUnitFilter(e.target.value); setPage(1) }} className="px-3 py-2 border rounded-lg">
-            <option value="">Все подразделения</option>
-            {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+      <div className="bg-white rounded-xl border p-4 space-y-3">
+        <div className="flex flex-wrap gap-3">
+          <input type="text" placeholder="Поиск по номеру ПУ..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-48 px-3 py-2 border rounded-lg" />
+          <input type="text" placeholder="Договор ТП..." value={contractSearch} onChange={e => setContractSearch(e.target.value)} className="w-40 px-3 py-2 border rounded-lg" />
+          {!isEskAdmin && <input type="text" placeholder="Номер ЛС..." value={lsSearch} onChange={e => setLsSearch(e.target.value)} className="w-40 px-3 py-2 border rounded-lg" />}
+          <button onClick={handleSearch} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Найти</button>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }} className="px-3 py-2 border rounded-lg">
+            <option value="">Все статусы</option>
+            {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-        )}
-        {isSueAdmin && (
-          <label className="flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer">
-            <input type="checkbox" checked={excludeEsk} onChange={e => { setExcludeEsk(e.target.checked); setPage(1) }} />
-            <span>Без ЭСК</span>
-          </label>
-        )}
+          {(isSueAdmin || isEskAdmin) && (
+            <select value={unitFilter} onChange={e => { setUnitFilter(e.target.value); setPage(1) }} className="px-3 py-2 border rounded-lg">
+              <option value="">Все подразделения</option>
+              {visibleUnits.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
+          {isSueAdmin && (
+            <label className="flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer">
+              <input type="checkbox" checked={excludeEsk} onChange={e => { setExcludeEsk(e.target.checked); setPage(1) }} />
+              <span>Без ЭСК</span>
+            </label>
+          )}
+        </div>
       </div>
 
       {selected.length > 0 && (
@@ -451,16 +465,47 @@ function PUCardModal({ itemId, onClose }) {
   const [item, setItem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState({})
   const [ttrRes, setTtrRes] = useState([])
   const [ttrEsk, setTtrEsk] = useState([])
+  const [masters, setMasters] = useState([])
 
   useEffect(() => {
     api.get(`/pu/items/${itemId}`).then(r => { setItem(r.data); setLoading(false) })
     api.get('/ttr/res').then(r => setTtrRes(r.data))
     api.get('/ttr/esk').then(r => setTtrEsk(r.data))
+    api.get('/masters').then(r => setMasters(r.data))
   }, [itemId])
 
+  // Автоформат договора с дефисами
+  const formatContract = (value) => {
+    const digits = value.replace(/\D/g, '')
+    let formatted = ''
+    if (digits.length > 0) formatted += digits.slice(0, 5)
+    if (digits.length > 5) formatted += '-' + digits.slice(5, 7)
+    if (digits.length > 7) formatted += '-' + digits.slice(7, 15)
+    if (digits.length > 15) formatted += '-' + digits.slice(15, 16)
+    return formatted
+  }
+
+  const validate = () => {
+    const errs = {}
+    if (item.status !== 'SKLAD') {
+      // Обязательные поля для не-склада
+      if (item.status === 'TECHPRIS') {
+        if (!item.contract_number) errs.contract_number = 'Обязательно'
+        else if (!/^\d{5}-\d{2}-\d{8}-\d$/.test(item.contract_number)) errs.contract_number = 'Формат: ххххх-хх-хххххххх-х'
+      }
+      if ((item.status === 'ZAMENA' || item.status === 'IZHC') && !item.ls_number) {
+        errs.ls_number = 'Обязательно'
+      }
+    }
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
   const handleSave = async () => {
+    if (!validate()) return
     setSaving(true)
     try {
       await api.put(`/pu/items/${itemId}`, item)
@@ -471,7 +516,13 @@ function PUCardModal({ itemId, onClose }) {
     setSaving(false)
   }
 
-  const update = (field, value) => setItem({ ...item, [field]: value })
+  const update = (field, value) => {
+    if (field === 'contract_number') {
+      value = formatContract(value)
+    }
+    setItem({ ...item, [field]: value })
+    if (errors[field]) setErrors({ ...errors, [field]: null })
+  }
 
   if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
 
@@ -479,13 +530,16 @@ function PUCardModal({ itemId, onClose }) {
   const isRes = item?.current_unit_type === 'RES'
   const canEdit = isSueAdmin || (isResUser && isRes) || ((isEskUser || isEskAdmin) && isEsk)
 
-  const statusOptions = [
-    { value: 'SKLAD', label: 'На складе' },
-    { value: 'TECHPRIS', label: 'Техприс' },
-    { value: 'ZAMENA', label: 'Замена' },
-    { value: 'IZHC', label: 'ИЖЦ' },
-    { value: 'INSTALLED', label: 'Установлен' },
-  ]
+  // Для ЭСК только Техприс и Склад
+  const statusOptions = isEsk 
+    ? [{ value: 'SKLAD', label: 'На складе' }, { value: 'TECHPRIS', label: 'Техприс' }]
+    : [
+        { value: 'SKLAD', label: 'На складе' },
+        { value: 'TECHPRIS', label: 'Техприс' },
+        { value: 'ZAMENA', label: 'Замена' },
+        { value: 'IZHC', label: 'ИЖЦ' },
+        { value: 'INSTALLED', label: 'Установлен' },
+      ]
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -522,7 +576,7 @@ function PUCardModal({ itemId, onClose }) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Фазность</label>
-              <select value={item.faza || ''} onChange={e => update('faza', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+              <select value={item.faza || ''} onChange={e => update('faza', e.target.value)} disabled={!canEdit || item.status === 'SKLAD'} className="w-full px-3 py-2 border rounded-lg">
                 <option value="">—</option>
                 <option value="1ф">1 фаза</option>
                 <option value="3ф">3 фазы</option>
@@ -530,7 +584,7 @@ function PUCardModal({ itemId, onClose }) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Напряжение</label>
-              <select value={item.voltage || ''} onChange={e => update('voltage', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+              <select value={item.voltage || ''} onChange={e => update('voltage', e.target.value)} disabled={!canEdit || item.status === 'SKLAD'} className="w-full px-3 py-2 border rounded-lg">
                 <option value="">—</option>
                 <option value="0.23">0,23 кВ</option>
                 <option value="0.4">0,4 кВ</option>
@@ -540,15 +594,24 @@ function PUCardModal({ itemId, onClose }) {
             </div>
           </div>
 
-          {/* Для Техприс */}
-          {(item.status === 'TECHPRIS' || isEsk) && (
+          {/* Для Техприс (РЭС и ЭСК) */}
+          {item.status === 'TECHPRIS' && (
             <>
               <hr />
               <h3 className="font-medium">Данные техприсоединения</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Номер договора</label>
-                  <input type="text" value={item.contract_number || ''} onChange={e => update('contract_number', e.target.value)} disabled={!canEdit} placeholder="ххххх-хх-хххххххх-х" className="w-full px-3 py-2 border rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Номер договора *</label>
+                  <input 
+                    type="text" 
+                    value={item.contract_number || ''} 
+                    onChange={e => update('contract_number', e.target.value)} 
+                    disabled={!canEdit} 
+                    placeholder="ххххх-хх-хххххххх-х" 
+                    maxLength={19}
+                    className={`w-full px-3 py-2 border rounded-lg ${errors.contract_number ? 'border-red-500' : ''}`} 
+                  />
+                  {errors.contract_number && <span className="text-red-500 text-xs">{errors.contract_number}</span>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">Мощность, кВт</label>
@@ -576,13 +639,20 @@ function PUCardModal({ itemId, onClose }) {
             </>
           )}
 
-          {/* Для Замена и ИЖЦ */}
-          {(item.status === 'ZAMENA' || item.status === 'IZHC') && (
+          {/* Для Замена и ИЖЦ (только РЭС) */}
+          {(item.status === 'ZAMENA' || item.status === 'IZHC') && isRes && (
             <>
               <hr />
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Лицевой счет (ЛС)</label>
-                <input type="text" value={item.ls_number || ''} onChange={e => update('ls_number', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg" />
+                <label className="block text-sm font-medium text-gray-600 mb-1">Лицевой счет (ЛС) *</label>
+                <input 
+                  type="text" 
+                  value={item.ls_number || ''} 
+                  onChange={e => update('ls_number', e.target.value)} 
+                  disabled={!canEdit} 
+                  className={`w-full px-3 py-2 border rounded-lg ${errors.ls_number ? 'border-red-500' : ''}`} 
+                />
+                {errors.ls_number && <span className="text-red-500 text-xs">{errors.ls_number}</span>}
               </div>
             </>
           )}
@@ -633,7 +703,7 @@ function PUCardModal({ itemId, onClose }) {
           )}
 
           {/* ТТР для ЭСК */}
-          {isEsk && (
+          {isEsk && item.status !== 'SKLAD' && (
             <>
               <hr />
               <h3 className="font-medium">ТТР (для ЭСК)</h3>
@@ -653,9 +723,18 @@ function PUCardModal({ itemId, onClose }) {
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Дата СМР</label>
-                <input type="date" value={item.smr_date || ''} onChange={e => update('smr_date', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">СМР выполнил (мастер)</label>
+                  <select value={item.smr_master_id || ''} onChange={e => update('smr_master_id', parseInt(e.target.value) || null)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+                    <option value="">—</option>
+                    {masters.filter(m => !item.current_unit_id || m.unit_id === item.current_unit_id).map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Дата СМР</label>
+                  <input type="date" value={item.smr_date || ''} onChange={e => update('smr_date', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
               </div>
             </>
           )}
@@ -667,7 +746,7 @@ function PUCardModal({ itemId, onClose }) {
           </div>
 
           {/* Согласование */}
-          {item.approval_status && (
+          {item.approval_status && item.approval_status !== 'NONE' && (
             <div className={`p-3 rounded-lg ${item.approval_status === 'APPROVED' ? 'bg-green-50 text-green-700' : item.approval_status === 'PENDING' ? 'bg-yellow-50 text-yellow-700' : 'bg-gray-50'}`}>
               Статус согласования: {item.approval_status === 'APPROVED' ? '✅ Согласовано' : item.approval_status === 'PENDING' ? '⏳ На согласовании' : '—'}
             </div>
@@ -828,23 +907,354 @@ function ApprovalPage() {
   )
 }
 
+// ==================== ТЕХНИЧЕСКИЕ ЗАДАНИЯ ====================
+function TZPage() {
+  const { isSueAdmin } = useAuth()
+  const [tab, setTab] = useState('list')
+  const [tzList, setTzList] = useState([])
+  const [pendingItems, setPendingItems] = useState([])
+  const [units, setUnits] = useState([])
+  const [selectedStatus, setSelectedStatus] = useState('TECHPRIS')
+  const [selectedUnit, setSelectedUnit] = useState('')
+  const [selectedItems, setSelectedItems] = useState([])
+  const [tzNumber, setTzNumber] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    api.get('/tz/list').then(r => setTzList(r.data))
+    api.get('/units').then(r => setUnits(r.data.filter(u => u.unit_type === 'RES')))
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'create') {
+      loadPending()
+    }
+  }, [tab, selectedStatus, selectedUnit])
+
+  const loadPending = () => {
+    const params = { status: selectedStatus }
+    if (selectedUnit) params.unit_id = selectedUnit
+    api.get('/tz/pending', { params }).then(r => setPendingItems(r.data))
+  }
+
+  const handleCreate = async () => {
+    if (!tzNumber || selectedItems.length === 0) {
+      alert('Введите номер ТЗ и выберите ПУ')
+      return
+    }
+    setLoading(true)
+    try {
+      await api.post('/tz/create', { tz_number: tzNumber, item_ids: selectedItems })
+      setTzNumber('')
+      setSelectedItems([])
+      api.get('/tz/list').then(r => setTzList(r.data))
+      loadPending()
+      alert('ТЗ создано!')
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка')
+    }
+    setLoading(false)
+  }
+
+  if (!isSueAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Технические задания</h1>
+
+      <div className="flex gap-2 border-b">
+        <button onClick={() => setTab('list')} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>📋 Реестр ТЗ</button>
+        <button onClick={() => setTab('create')} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
+      </div>
+
+      {tab === 'list' && (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          {tzList.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">Нет сформированных ТЗ</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left">Номер ТЗ</th>
+                  <th className="px-4 py-3 text-left">Тип</th>
+                  <th className="px-4 py-3 text-left">РЭС</th>
+                  <th className="px-4 py-3 text-left">Кол-во ПУ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tzList.map((tz, idx) => (
+                  <tr key={idx} className="border-t hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium">{tz.tz_number}</td>
+                    <td className="px-4 py-3">{tz.status}</td>
+                    <td className="px-4 py-3">{tz.unit_name || '—'}</td>
+                    <td className="px-4 py-3">{tz.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === 'create' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-4">
+            <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="px-3 py-2 border rounded-lg">
+              <option value="TECHPRIS">Техприс</option>
+              <option value="ZAMENA">Замена</option>
+              <option value="IZHC">ИЖЦ</option>
+            </select>
+            <select value={selectedUnit} onChange={e => setSelectedUnit(e.target.value)} className="px-3 py-2 border rounded-lg">
+              <option value="">Все РЭС</option>
+              {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <input type="text" placeholder="Номер ТЗ (напр. 1с/01-25)" value={tzNumber} onChange={e => setTzNumber(e.target.value)} className="px-3 py-2 border rounded-lg flex-1" />
+            <button onClick={handleCreate} disabled={loading || selectedItems.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+              {loading ? 'Создание...' : `Создать ТЗ (${selectedItems.length})`}
+            </button>
+          </div>
+
+          <div className="bg-white rounded-xl border overflow-hidden">
+            {pendingItems.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Нет ПУ без ТЗ для выбранных параметров</div>
+            ) : (
+              <>
+                <div className="px-4 py-2 bg-gray-50 border-b flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Найдено: {pendingItems.length}</span>
+                  <button onClick={() => setSelectedItems(selectedItems.length === pendingItems.length ? [] : pendingItems.map(i => i.id))} className="text-sm text-blue-600">
+                    {selectedItems.length === pendingItems.length ? 'Снять все' : 'Выбрать все'}
+                  </button>
+                </div>
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="w-10 px-4 py-3"></th>
+                      <th className="px-4 py-3 text-left">Серийный номер</th>
+                      <th className="px-4 py-3 text-left">Тип</th>
+                      <th className="px-4 py-3 text-left">РЭС</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingItems.map(i => (
+                      <tr key={i.id} className="border-t hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => setSelectedItems(s => s.includes(i.id) ? s.filter(x => x !== i.id) : [...s, i.id])} />
+                        </td>
+                        <td className="px-4 py-3 font-mono">{i.serial_number}</td>
+                        <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{i.pu_type || '—'}</td>
+                        <td className="px-4 py-3">{i.current_unit_name || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==================== ЗАЯВКИ ЭСК ====================
+function RequestsPage() {
+  const { isSueAdmin } = useAuth()
+  const [tab, setTab] = useState('list')
+  const [requestsList, setRequestsList] = useState([])
+  const [pendingItems, setPendingItems] = useState([])
+  const [units, setUnits] = useState([])
+  const [selectedUnit, setSelectedUnit] = useState('')
+  const [selectedItems, setSelectedItems] = useState([])
+  const [requestNumber, setRequestNumber] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    api.get('/requests/list').then(r => setRequestsList(r.data))
+    api.get('/units').then(r => setUnits(r.data.filter(u => u.unit_type === 'ESK_UNIT')))
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'create') {
+      loadPending()
+    }
+  }, [tab, selectedUnit])
+
+  const loadPending = () => {
+    const params = {}
+    if (selectedUnit) params.unit_id = selectedUnit
+    api.get('/requests/pending', { params }).then(r => setPendingItems(r.data))
+  }
+
+  const handleCreate = async () => {
+    if (!requestNumber || selectedItems.length === 0) {
+      alert('Введите номер заявки и выберите ПУ')
+      return
+    }
+    setLoading(true)
+    try {
+      await api.post('/requests/create', { request_number: requestNumber, item_ids: selectedItems })
+      setRequestNumber('')
+      setSelectedItems([])
+      api.get('/requests/list').then(r => setRequestsList(r.data))
+      loadPending()
+      alert('Заявка создана!')
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка')
+    }
+    setLoading(false)
+  }
+
+  if (!isSueAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Заявки ЭСК</h1>
+
+      <div className="flex gap-2 border-b">
+        <button onClick={() => setTab('list')} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>📋 Реестр заявок</button>
+        <button onClick={() => setTab('create')} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
+      </div>
+
+      {tab === 'list' && (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          {requestsList.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">Нет сформированных заявок</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left">Номер заявки</th>
+                  <th className="px-4 py-3 text-left">ЭСК</th>
+                  <th className="px-4 py-3 text-left">Кол-во ПУ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requestsList.map((req, idx) => (
+                  <tr key={idx} className="border-t hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium">{req.request_number}</td>
+                    <td className="px-4 py-3">{req.unit_name || '—'}</td>
+                    <td className="px-4 py-3">{req.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === 'create' && (
+        <div className="space-y-4">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+            <span className="text-yellow-700">⚠️ Только согласованные ПУ от ЭСК доступны для формирования заявки</span>
+          </div>
+
+          <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-4">
+            <select value={selectedUnit} onChange={e => setSelectedUnit(e.target.value)} className="px-3 py-2 border rounded-lg">
+              <option value="">Все ЭСК</option>
+              {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <input type="text" placeholder="Номер заявки" value={requestNumber} onChange={e => setRequestNumber(e.target.value)} className="px-3 py-2 border rounded-lg flex-1" />
+            <button onClick={handleCreate} disabled={loading || selectedItems.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+              {loading ? 'Создание...' : `Создать заявку (${selectedItems.length})`}
+            </button>
+          </div>
+
+          <div className="bg-white rounded-xl border overflow-hidden">
+            {pendingItems.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Нет согласованных ПУ для заявки</div>
+            ) : (
+              <>
+                <div className="px-4 py-2 bg-gray-50 border-b flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Найдено: {pendingItems.length}</span>
+                  <button onClick={() => setSelectedItems(selectedItems.length === pendingItems.length ? [] : pendingItems.map(i => i.id))} className="text-sm text-blue-600">
+                    {selectedItems.length === pendingItems.length ? 'Снять все' : 'Выбрать все'}
+                  </button>
+                </div>
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="w-10 px-4 py-3"></th>
+                      <th className="px-4 py-3 text-left">Серийный номер</th>
+                      <th className="px-4 py-3 text-left">ЭСК</th>
+                      <th className="px-4 py-3 text-left">Договор</th>
+                      <th className="px-4 py-3 text-left">Потребитель</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingItems.map(i => (
+                      <tr key={i.id} className="border-t hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => setSelectedItems(s => s.includes(i.id) ? s.filter(x => x !== i.id) : [...s, i.id])} />
+                        </td>
+                        <td className="px-4 py-3 font-mono">{i.serial_number}</td>
+                        <td className="px-4 py-3">{i.current_unit_name || '—'}</td>
+                        <td className="px-4 py-3">{i.contract_number || '—'}</td>
+                        <td className="px-4 py-3">{i.consumer || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ==================== НАСТРОЙКИ ====================
 function SettingsPage() {
-  const { canManageUsers, isSueAdmin } = useAuth()
-  const [tab, setTab] = useState('users')
+  const { canManageUsers, isSueAdmin, isEskAdmin } = useAuth()
+  const [tab, setTab] = useState(isSueAdmin ? 'users' : 'masters')
+
+  if (!canManageUsers && !isEskAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
+
+  const tabs = [
+    { id: 'users', label: '👥 Пользователи', show: isSueAdmin },
+    { id: 'masters', label: '👷 Мастера ЭСК', show: isEskAdmin || isSueAdmin },
+    { id: 'ttr-res', label: '📐 ТТР (РЭС)', show: isSueAdmin },
+    { id: 'ttr-esk', label: '📐 ТТР (ЭСК)', show: isSueAdmin || isEskAdmin },
+    { id: 'materials', label: '🔧 Материалы', show: isSueAdmin },
+    { id: 'pu-types', label: '📦 Типы ПУ', show: isSueAdmin },
+    { id: 'system', label: '⚠️ Система', show: isSueAdmin },
+  ].filter(t => t.show)
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Настройки</h1>
+
+      <div className="flex gap-2 border-b flex-wrap">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} className={`px-4 py-2 border-b-2 whitespace-nowrap ${tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'users' && <UsersTab />}
+      {tab === 'masters' && <MastersTab />}
+      {tab === 'ttr-res' && <TTRResTab />}
+      {tab === 'ttr-esk' && <TTREskTab />}
+      {tab === 'materials' && <MaterialsTab />}
+      {tab === 'pu-types' && <PUTypesTab />}
+      {tab === 'system' && <SystemTab />}
+    </div>
+  )
+}
+
+// --- Пользователи ---
+function UsersTab() {
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [units, setUnits] = useState([])
   const [modal, setModal] = useState(null)
-  const [clearModal, setClearModal] = useState(false)
 
   useEffect(() => {
-    if (canManageUsers) {
-      api.get('/users').then(r => setUsers(r.data))
-      api.get('/roles').then(r => setRoles(r.data))
-      api.get('/units').then(r => setUnits(r.data))
-    }
-  }, [canManageUsers])
+    api.get('/users').then(r => setUsers(r.data))
+    api.get('/roles').then(r => setRoles(r.data))
+    api.get('/units').then(r => setUnits(r.data))
+  }, [])
 
   const toggleActive = async (u) => {
     await api.put(`/users/${u.id}`, { is_active: !u.is_active })
@@ -861,72 +1271,35 @@ function SettingsPage() {
     setModal(null)
   }
 
-  const handleClearDB = async (code) => {
-    try {
-      await api.post('/pu/clear-database', { admin_code: code })
-      alert('База очищена')
-      setClearModal(false)
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Ошибка')
-    }
-  }
-
-  if (!canManageUsers) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
-
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Настройки</h1>
-
-      <div className="flex gap-2 border-b">
-        <button onClick={() => setTab('users')} className={`px-4 py-2 border-b-2 ${tab === 'users' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>Пользователи</button>
-        {isSueAdmin && <button onClick={() => setTab('system')} className={`px-4 py-2 border-b-2 ${tab === 'system' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>Система</button>}
+    <>
+      <div className="flex justify-end">
+        <button onClick={() => setModal({ user: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
       </div>
 
-      {tab === 'users' && (
-        <>
-          <div className="flex justify-end">
-            <button onClick={() => setModal({ user: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
-          </div>
-
-          <div className="bg-white rounded-xl border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Логин</th><th className="px-4 py-3 text-left">ФИО</th><th className="px-4 py-3 text-left">Роль</th><th className="px-4 py-3 text-left">Подразделение</th><th className="px-4 py-3 text-left">Статус</th><th className="w-24"></th></tr></thead>
-              <tbody>
-                {users.map(u => (
-                  <tr key={u.id} className={`border-t ${!u.is_active ? 'opacity-50' : ''}`}>
-                    <td className="px-4 py-3 font-medium">{u.username}</td>
-                    <td className="px-4 py-3">{u.full_name}</td>
-                    <td className="px-4 py-3">{u.role?.name}</td>
-                    <td className="px-4 py-3">{u.unit?.name || '—'}</td>
-                    <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${u.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>{u.is_active ? 'Активен' : 'Неактивен'}</span></td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => setModal({ user: u })} className="mr-2">✏️</button>
-                      <button onClick={() => toggleActive(u)}>{u.is_active ? '🚫' : '✅'}</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {tab === 'system' && (
-        <div className="bg-white rounded-xl border p-6 space-y-4">
-          <h2 className="font-semibold text-red-600">⚠️ Опасная зона</h2>
-          <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
-            <div>
-              <div className="font-medium">Очистить базу данных</div>
-              <div className="text-sm text-gray-500">Удалить все ПУ и загрузки</div>
-            </div>
-            <button onClick={() => setClearModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">Очистить</button>
-          </div>
-        </div>
-      )}
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Логин</th><th className="px-4 py-3 text-left">ФИО</th><th className="px-4 py-3 text-left">Роль</th><th className="px-4 py-3 text-left">Подразделение</th><th className="px-4 py-3 text-left">Статус</th><th className="w-24"></th></tr></thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id} className={`border-t ${!u.is_active ? 'opacity-50' : ''}`}>
+                <td className="px-4 py-3 font-medium">{u.username}</td>
+                <td className="px-4 py-3">{u.full_name}</td>
+                <td className="px-4 py-3">{u.role?.name}</td>
+                <td className="px-4 py-3">{u.unit?.name || '—'}</td>
+                <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${u.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>{u.is_active ? 'Активен' : 'Неактивен'}</span></td>
+                <td className="px-4 py-3">
+                  <button onClick={() => setModal({ user: u })} className="mr-2">✏️</button>
+                  <button onClick={() => toggleActive(u)}>{u.is_active ? '🚫' : '✅'}</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {modal && <UserModal user={modal.user} roles={roles} units={units} onClose={() => setModal(null)} onSave={handleSave} />}
-      {clearModal && <ClearDBModal onClose={() => setClearModal(false)} onClear={handleClearDB} />}
-    </div>
+    </>
   )
 }
 
@@ -954,6 +1327,431 @@ function UserModal({ user, roles, units, onClose, onSave }) {
           <button onClick={() => onSave({ ...form, role_id: parseInt(form.role_id), unit_id: form.unit_id ? parseInt(form.unit_id) : null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// --- Мастера ЭСК ---
+function MastersTab() {
+  const { isSueAdmin } = useAuth()
+  const [masters, setMasters] = useState([])
+  const [units, setUnits] = useState([])
+  const [modal, setModal] = useState(null)
+
+  useEffect(() => {
+    api.get('/masters').then(r => setMasters(r.data))
+    api.get('/units').then(r => setUnits(r.data.filter(u => u.unit_type === 'ESK_UNIT')))
+  }, [])
+
+  const handleSave = async (data) => {
+    if (modal.master) {
+      await api.put(`/masters/${modal.master.id}`, data)
+    } else {
+      await api.post('/masters', data)
+    }
+    api.get('/masters').then(r => setMasters(r.data))
+    setModal(null)
+  }
+
+  const handleDelete = async (id) => {
+    if (confirm('Удалить мастера?')) {
+      await api.delete(`/masters/${id}`)
+      api.get('/masters').then(r => setMasters(r.data))
+    }
+  }
+
+  return (
+    <>
+      <div className="flex justify-end">
+        <button onClick={() => setModal({ master: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+      </div>
+
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">ФИО</th><th className="px-4 py-3 text-left">Подразделение ЭСК</th><th className="w-24"></th></tr></thead>
+          <tbody>
+            {masters.map(m => (
+              <tr key={m.id} className="border-t">
+                <td className="px-4 py-3">{m.full_name}</td>
+                <td className="px-4 py-3">{m.unit_name || '—'}</td>
+                <td className="px-4 py-3">
+                  <button onClick={() => setModal({ master: m })} className="mr-2">✏️</button>
+                  <button onClick={() => handleDelete(m.id)}>🗑️</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">{modal.master ? 'Редактировать' : 'Новый мастер'}</h2>
+            <MasterForm master={modal.master} units={units} onSave={handleSave} onClose={() => setModal(null)} />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function MasterForm({ master, units, onSave, onClose }) {
+  const [form, setForm] = useState({ full_name: master?.full_name || '', unit_id: master?.unit_id || '' })
+  return (
+    <div className="space-y-3">
+      <input type="text" placeholder="ФИО мастера" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <select value={form.unit_id} onChange={e => setForm({ ...form, unit_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="">Выберите подразделение...</option>
+        {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select>
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+        <button onClick={() => onSave({ ...form, unit_id: parseInt(form.unit_id) })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+      </div>
+    </div>
+  )
+}
+
+// --- ТТР РЭС ---
+function TTRResTab() {
+  const [items, setItems] = useState([])
+  const [modal, setModal] = useState(null)
+  const [filter, setFilter] = useState('')
+
+  useEffect(() => { api.get('/ttr/res').then(r => setItems(r.data)) }, [])
+
+  const handleSave = async (data) => {
+    if (modal.item) {
+      await api.put(`/ttr/res/${modal.item.id}`, data)
+    } else {
+      await api.post('/ttr/res', data)
+    }
+    api.get('/ttr/res').then(r => setItems(r.data))
+    setModal(null)
+  }
+
+  const filtered = items.filter(i => !filter || i.ttr_type === filter)
+
+  return (
+    <>
+      <div className="flex justify-between">
+        <select value={filter} onChange={e => setFilter(e.target.value)} className="px-3 py-2 border rounded-lg">
+          <option value="">Все типы</option>
+          <option value="OU">Организация учета</option>
+          <option value="OL">Обустройство линии</option>
+          <option value="OR">Распред. щит</option>
+        </select>
+        <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+      </div>
+
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Код</th><th className="px-4 py-3 text-left">Название</th><th className="px-4 py-3 text-left">Тип</th><th className="w-24"></th></tr></thead>
+          <tbody>
+            {filtered.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="px-4 py-3 font-mono">{i.code}</td>
+                <td className="px-4 py-3">{i.name}</td>
+                <td className="px-4 py-3">{i.ttr_type === 'OU' ? 'Орг. учета' : i.ttr_type === 'OL' ? 'Обуст. линии' : 'Распред. щит'}</td>
+                <td className="px-4 py-3">
+                  <button onClick={() => setModal({ item: i })}>✏️</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">{modal.item ? 'Редактировать' : 'Новый ТТР'}</h2>
+            <TTRResForm item={modal.item} onSave={handleSave} onClose={() => setModal(null)} />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function TTRResForm({ item, onSave, onClose }) {
+  const [form, setForm] = useState({ code: item?.code || '', name: item?.name || '', ttr_type: item?.ttr_type || 'OU' })
+  return (
+    <div className="space-y-3">
+      <input type="text" placeholder="Код (напр. ТТР-1 ОУ)" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <input type="text" placeholder="Название" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <select value={form.ttr_type} onChange={e => setForm({ ...form, ttr_type: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="OU">Организация учета</option>
+        <option value="OL">Обустройство линии</option>
+        <option value="OR">Распред. щит</option>
+      </select>
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+        <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+      </div>
+    </div>
+  )
+}
+
+// --- ТТР ЭСК ---
+function TTREskTab() {
+  const { isSueAdmin } = useAuth()
+  const [items, setItems] = useState([])
+  const [modal, setModal] = useState(null)
+
+  useEffect(() => { api.get('/ttr/esk').then(r => setItems(r.data)) }, [])
+
+  const handleSave = async (data) => {
+    if (modal.item) {
+      await api.put(`/ttr/esk/${modal.item.id}`, data)
+    } else {
+      await api.post('/ttr/esk', data)
+    }
+    api.get('/ttr/esk').then(r => setItems(r.data))
+    setModal(null)
+  }
+
+  return (
+    <>
+      {isSueAdmin && (
+        <div className="flex justify-end">
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Код</th><th className="px-4 py-3 text-left">Название</th><th className="px-4 py-3 text-left">Цена (₽)</th><th className="px-4 py-3 text-left">С трубост.</th>{isSueAdmin && <th className="w-16"></th>}</tr></thead>
+          <tbody>
+            {items.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="px-4 py-3 font-mono">{i.code}</td>
+                <td className="px-4 py-3">{i.name}</td>
+                <td className="px-4 py-3">{i.price?.toLocaleString()}</td>
+                <td className="px-4 py-3">{i.price_with_truba?.toLocaleString()}</td>
+                {isSueAdmin && (
+                  <td className="px-4 py-3">
+                    <button onClick={() => setModal({ item: i })}>✏️</button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">{modal.item ? 'Редактировать' : 'Новый ТТР ЭСК'}</h2>
+            <TTREskForm item={modal.item} onSave={handleSave} onClose={() => setModal(null)} />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function TTREskForm({ item, onSave, onClose }) {
+  const [form, setForm] = useState({ code: item?.code || '', name: item?.name || '', price: item?.price || 0, price_with_truba: item?.price_with_truba || 0 })
+  return (
+    <div className="space-y-3">
+      <input type="text" placeholder="Код (напр. ТТР-ЭСК-1)" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <input type="text" placeholder="Название" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <input type="number" placeholder="Цена (₽)" value={form.price} onChange={e => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg" />
+      <input type="number" placeholder="Цена с трубостойкой (₽)" value={form.price_with_truba} onChange={e => setForm({ ...form, price_with_truba: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg" />
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+        <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+      </div>
+    </div>
+  )
+}
+
+// --- Материалы ---
+function MaterialsTab() {
+  const [items, setItems] = useState([])
+  const [modal, setModal] = useState(null)
+
+  useEffect(() => { api.get('/materials').then(r => setItems(r.data)) }, [])
+
+  const handleSave = async (data) => {
+    if (modal.item) {
+      await api.put(`/materials/${modal.item.id}`, data)
+    } else {
+      await api.post('/materials', data)
+    }
+    api.get('/materials').then(r => setItems(r.data))
+    setModal(null)
+  }
+
+  return (
+    <>
+      <div className="flex justify-end">
+        <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+      </div>
+
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Название</th><th className="px-4 py-3 text-left">Ед. изм.</th><th className="w-16"></th></tr></thead>
+          <tbody>
+            {items.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="px-4 py-3">{i.name}</td>
+                <td className="px-4 py-3">{i.unit}</td>
+                <td className="px-4 py-3">
+                  <button onClick={() => setModal({ item: i })}>✏️</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">{modal.item ? 'Редактировать' : 'Новый материал'}</h2>
+            <MaterialForm item={modal.item} onSave={handleSave} onClose={() => setModal(null)} />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function MaterialForm({ item, onSave, onClose }) {
+  const [form, setForm] = useState({ name: item?.name || '', unit: item?.unit || 'шт' })
+  return (
+    <div className="space-y-3">
+      <input type="text" placeholder="Название материала" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <input type="text" placeholder="Ед. измерения (шт, м, кг)" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+        <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+      </div>
+    </div>
+  )
+}
+
+// --- Типы ПУ ---
+function PUTypesTab() {
+  const [items, setItems] = useState([])
+  const [modal, setModal] = useState(null)
+
+  useEffect(() => { api.get('/pu-types').then(r => setItems(r.data)) }, [])
+
+  const handleSave = async (data) => {
+    if (modal.item) {
+      await api.put(`/pu-types/${modal.item.id}`, data)
+    } else {
+      await api.post('/pu-types', data)
+    }
+    api.get('/pu-types').then(r => setItems(r.data))
+    setModal(null)
+  }
+
+  const handleDelete = async (id) => {
+    if (confirm('Удалить?')) {
+      await api.delete(`/pu-types/${id}`)
+      api.get('/pu-types').then(r => setItems(r.data))
+    }
+  }
+
+  return (
+    <>
+      <div className="flex justify-end">
+        <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+      </div>
+
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Паттерн</th><th className="px-4 py-3 text-left">Фазность</th><th className="px-4 py-3 text-left">Напряжение</th><th className="px-4 py-3 text-left">Для ЭСК</th><th className="w-24"></th></tr></thead>
+          <tbody>
+            {items.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="px-4 py-3 font-mono">{i.pattern}</td>
+                <td className="px-4 py-3">{i.faza || '—'}</td>
+                <td className="px-4 py-3">{i.voltage || '—'}</td>
+                <td className="px-4 py-3">{i.for_esk ? '✓' : ''}</td>
+                <td className="px-4 py-3">
+                  <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
+                  <button onClick={() => handleDelete(i.id)}>🗑️</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">{modal.item ? 'Редактировать' : 'Новый тип ПУ'}</h2>
+            <PUTypeForm item={modal.item} onSave={handleSave} onClose={() => setModal(null)} />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function PUTypeForm({ item, onSave, onClose }) {
+  const [form, setForm] = useState({ pattern: item?.pattern || '', faza: item?.faza || '', voltage: item?.voltage || '', for_esk: item?.for_esk || false })
+  return (
+    <div className="space-y-3">
+      <input type="text" placeholder="Паттерн (напр. НАРТИС И100 SP)" value={form.pattern} onChange={e => setForm({ ...form, pattern: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <select value={form.faza} onChange={e => setForm({ ...form, faza: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="">Фазность...</option>
+        <option value="1ф">1 фаза</option>
+        <option value="3ф">3 фазы</option>
+      </select>
+      <select value={form.voltage} onChange={e => setForm({ ...form, voltage: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="">Напряжение...</option>
+        <option value="0.23">0,23 кВ</option>
+        <option value="0.4">0,4 кВ</option>
+        <option value="6">6 кВ</option>
+        <option value="10">10 кВ</option>
+      </select>
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={form.for_esk} onChange={e => setForm({ ...form, for_esk: e.target.checked })} />
+        <span>Для ЭСК</span>
+      </label>
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+        <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+      </div>
+    </div>
+  )
+}
+
+// --- Система ---
+function SystemTab() {
+  const [clearModal, setClearModal] = useState(false)
+
+  const handleClearDB = async (code) => {
+    try {
+      await api.post('/pu/clear-database', { admin_code: code })
+      alert('База очищена')
+      setClearModal(false)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка')
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border p-6 space-y-4">
+      <h2 className="font-semibold text-red-600">⚠️ Опасная зона</h2>
+      <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
+        <div>
+          <div className="font-medium">Очистить базу данных</div>
+          <div className="text-sm text-gray-500">Удалить все ПУ и загрузки</div>
+        </div>
+        <button onClick={() => setClearModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">Очистить</button>
+      </div>
+
+      {clearModal && <ClearDBModal onClose={() => setClearModal(false)} onClear={handleClearDB} />}
     </div>
   )
 }
