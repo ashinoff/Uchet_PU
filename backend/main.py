@@ -857,6 +857,306 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         "contract_number": i.contract_number, "consumer": i.consumer
     } for i in items]
 
+# ==================== API: СПРАВОЧНИКИ (CRUD) ====================
+
+# --- Мастера ЭСК ---
+@app.post("/api/masters")
+def create_master(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_esk_admin(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    master = ESKMaster(full_name=data["full_name"], unit_id=data["unit_id"])
+    db.add(master)
+    db.commit()
+    return {"id": master.id}
+
+@app.put("/api/masters/{master_id}")
+def update_master(master_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_esk_admin(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    m = db.query(ESKMaster).filter(ESKMaster.id == master_id).first()
+    if not m:
+        raise HTTPException(404, "Не найден")
+    for k, v in data.items():
+        if hasattr(m, k):
+            setattr(m, k, v)
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/api/masters/{master_id}")
+def delete_master(master_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_esk_admin(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    db.query(ESKMaster).filter(ESKMaster.id == master_id).delete()
+    db.commit()
+    return {"ok": True}
+
+# --- ТТР РЭС ---
+@app.post("/api/ttr/res")
+def create_ttr_res(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    ttr = TTR_RES(code=data["code"], name=data["name"], ttr_type=data["ttr_type"], pu_types=data.get("pu_types", ""))
+    db.add(ttr)
+    db.commit()
+    return {"id": ttr.id}
+
+@app.put("/api/ttr/res/{ttr_id}")
+def update_ttr_res(ttr_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    t = db.query(TTR_RES).filter(TTR_RES.id == ttr_id).first()
+    if not t:
+        raise HTTPException(404, "Не найден")
+    for k, v in data.items():
+        if hasattr(t, k):
+            setattr(t, k, v)
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/api/ttr/res/{ttr_id}")
+def delete_ttr_res(ttr_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    db.query(TTR_RES).filter(TTR_RES.id == ttr_id).update({"is_active": False})
+    db.commit()
+    return {"ok": True}
+
+# --- ТТР ЭСК ---
+@app.post("/api/ttr/esk")
+def create_ttr_esk(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    ttr = TTR_ESK(code=data["code"], name=data["name"], price=data.get("price", 0), price_with_truba=data.get("price_with_truba", 0))
+    db.add(ttr)
+    db.commit()
+    return {"id": ttr.id}
+
+@app.put("/api/ttr/esk/{ttr_id}")
+def update_ttr_esk(ttr_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    t = db.query(TTR_ESK).filter(TTR_ESK.id == ttr_id).first()
+    if not t:
+        raise HTTPException(404, "Не найден")
+    for k, v in data.items():
+        if hasattr(t, k):
+            setattr(t, k, v)
+    db.commit()
+    return {"ok": True}
+
+# --- Материалы ---
+@app.get("/api/materials")
+def get_materials(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    items = db.query(Material).filter(Material.is_active == True).all()
+    return [{"id": m.id, "name": m.name, "unit": m.unit} for m in items]
+
+@app.post("/api/materials")
+def create_material(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    m = Material(name=data["name"], unit=data.get("unit", "шт"))
+    db.add(m)
+    db.commit()
+    return {"id": m.id}
+
+@app.put("/api/materials/{mat_id}")
+def update_material(mat_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    m = db.query(Material).filter(Material.id == mat_id).first()
+    if not m:
+        raise HTTPException(404, "Не найден")
+    for k, v in data.items():
+        if hasattr(m, k):
+            setattr(m, k, v)
+    db.commit()
+    return {"ok": True}
+
+# --- Материалы к ТТР ---
+@app.get("/api/ttr/res/{ttr_id}/materials")
+def get_ttr_materials(ttr_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    items = db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).all()
+    result = []
+    for tm in items:
+        mat = db.query(Material).filter(Material.id == tm.material_id).first()
+        if mat:
+            result.append({"id": tm.id, "material_id": mat.id, "material_name": mat.name, "unit": mat.unit, "quantity": tm.quantity})
+    return result
+
+@app.post("/api/ttr/res/{ttr_id}/materials")
+def set_ttr_materials(ttr_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    # data = {"materials": [{"material_id": 1, "quantity": 5}, ...]}
+    db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).delete()
+    for m in data.get("materials", []):
+        tm = TTR_Material(ttr_res_id=ttr_id, material_id=m["material_id"], quantity=m["quantity"])
+        db.add(tm)
+    db.commit()
+    return {"ok": True}
+
+# --- Справочник типов ПУ ---
+@app.get("/api/pu-types")
+def get_pu_types(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    items = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
+    return [{"id": p.id, "pattern": p.pattern, "faza": p.faza, "voltage": p.voltage, "for_esk": p.for_esk} for p in items]
+
+@app.post("/api/pu-types")
+def create_pu_type(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    p = PUTypeReference(pattern=data["pattern"], faza=data.get("faza"), voltage=data.get("voltage"), for_esk=data.get("for_esk", False))
+    db.add(p)
+    db.commit()
+    return {"id": p.id}
+
+@app.put("/api/pu-types/{type_id}")
+def update_pu_type(type_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    p = db.query(PUTypeReference).filter(PUTypeReference.id == type_id).first()
+    if not p:
+        raise HTTPException(404, "Не найден")
+    for k, v in data.items():
+        if hasattr(p, k):
+            setattr(p, k, v)
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/api/pu-types/{type_id}")
+def delete_pu_type(type_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    db.query(PUTypeReference).filter(PUTypeReference.id == type_id).update({"is_active": False})
+    db.commit()
+    return {"ok": True}
+
+# ==================== API: ТЗ и ЗАЯВКИ ====================
+
+@app.get("/api/tz/list")
+def get_tz_list(tz_type: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Список ТЗ"""
+    q = db.query(PUItem).filter(PUItem.tz_number != None, PUItem.tz_number != "")
+    if tz_type:
+        q = q.filter(PUItem.status == tz_type)
+    
+    # Группируем по номеру ТЗ
+    items = q.all()
+    tz_map = {}
+    for item in items:
+        if item.tz_number not in tz_map:
+            tz_map[item.tz_number] = {
+                "tz_number": item.tz_number,
+                "status": item.status.value,
+                "unit_name": item.current_unit.name if item.current_unit else None,
+                "count": 0,
+                "items": []
+            }
+        tz_map[item.tz_number]["count"] += 1
+        tz_map[item.tz_number]["items"].append(item.id)
+    
+    return list(tz_map.values())
+
+@app.get("/api/tz/pending")
+def get_pending_for_tz(status: str, unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """ПУ без ТЗ для формирования"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может формировать ТЗ")
+    
+    q = db.query(PUItem).filter(
+        PUItem.status == status,
+        (PUItem.tz_number == None) | (PUItem.tz_number == "")
+    )
+    if unit_id:
+        q = q.filter(PUItem.current_unit_id == unit_id)
+    
+    # Только РЭС
+    res_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.RES)
+    q = q.filter(PUItem.current_unit_id.in_(res_units))
+    
+    items = q.all()
+    return [{
+        "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
+        "current_unit_name": i.current_unit.name if i.current_unit else None,
+        "current_unit_id": i.current_unit_id
+    } for i in items]
+
+@app.post("/api/tz/create")
+def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Создать ТЗ"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может формировать ТЗ")
+    
+    tz_number = data["tz_number"]
+    item_ids = data["item_ids"]
+    
+    # Проверяем уникальность номера ТЗ
+    existing = db.query(PUItem).filter(PUItem.tz_number == tz_number).first()
+    if existing:
+        raise HTTPException(400, f"ТЗ с номером {tz_number} уже существует")
+    
+    updated = db.query(PUItem).filter(PUItem.id.in_(item_ids)).update({"tz_number": tz_number}, synchronize_session=False)
+    db.commit()
+    
+    return {"created": updated, "tz_number": tz_number}
+
+@app.get("/api/requests/list")
+def get_requests_list(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Список заявок ЭСК"""
+    q = db.query(PUItem).filter(PUItem.request_number != None, PUItem.request_number != "")
+    
+    items = q.all()
+    req_map = {}
+    for item in items:
+        if item.request_number not in req_map:
+            req_map[item.request_number] = {
+                "request_number": item.request_number,
+                "unit_name": item.current_unit.name if item.current_unit else None,
+                "count": 0
+            }
+        req_map[item.request_number]["count"] += 1
+    
+    return list(req_map.values())
+
+@app.get("/api/requests/pending")
+def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Согласованные ПУ для заявки ЭСК"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может формировать заявки")
+    
+    q = db.query(PUItem).filter(
+        PUItem.approval_status == ApprovalStatus.APPROVED,
+        (PUItem.request_number == None) | (PUItem.request_number == "")
+    )
+    
+    # Только ЭСК
+    esk_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.ESK_UNIT)
+    q = q.filter(PUItem.current_unit_id.in_(esk_units))
+    
+    if unit_id:
+        q = q.filter(PUItem.current_unit_id == unit_id)
+    
+    items = q.all()
+    return [{
+        "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
+        "current_unit_name": i.current_unit.name if i.current_unit else None,
+        "contract_number": i.contract_number, "consumer": i.consumer
+    } for i in items]
+
+@app.post("/api/requests/create")
+def create_request(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Создать заявку ЭСК"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может формировать заявки")
+    
+    request_number = data["request_number"]
+    item_ids = data["item_ids"]
+    
+    updated = db.query(PUItem).filter(PUItem.id.in_(item_ids)).update({"request_number": request_number}, synchronize_session=False)
+    db.commit()
+    
+    return {"created": updated, "request_number": request_number}
+
 # ==================== ИНИЦИАЛИЗАЦИЯ БД ====================
 def init_db():
     db = SessionLocal()
