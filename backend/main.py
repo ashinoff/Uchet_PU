@@ -1157,6 +1157,159 @@ def create_request(data: dict, db: Session = Depends(get_db), user: User = Depen
     
     return {"created": updated, "request_number": request_number}
 
+# ==================== API: ИМПОРТ ДАННЫХ ИЗ EXCEL ====================
+
+@app.post("/api/pu/import-techpris")
+async def import_techpris_data(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Импорт данных Техприс по номеру договора"""
+    contents = await file.read()
+    xl = pd.ExcelFile(io.BytesIO(contents))
+    df = pd.read_excel(xl, header=None)
+    
+    # Ищем заголовки
+    header_row = None
+    cols = {}
+    
+    for idx, row in df.iterrows():
+        for col_idx, cell in enumerate(row):
+            cell_str = str(cell).lower().strip()
+            if 'номер договора' in cell_str or 'договор' in cell_str:
+                cols['contract'] = col_idx
+                header_row = idx
+            elif 'потребитель' in cell_str:
+                cols['consumer'] = col_idx
+            elif 'адрес' in cell_str and 'объект' in cell_str:
+                cols['address'] = col_idx
+            elif 'pmax' in cell_str or 'мощность' in cell_str:
+                cols['power'] = col_idx
+            elif 'дата заключения' in cell_str:
+                cols['contract_date'] = col_idx
+            elif 'планируемая дата' in cell_str or 'дата исполнения' in cell_str:
+                cols['plan_date'] = col_idx
+        if header_row is not None and len(cols) >= 2:
+            break
+    
+    if 'contract' not in cols:
+        raise HTTPException(400, "Не найдена колонка 'Номер договора'")
+    
+    # Читаем данные после заголовка
+    data_rows = df.iloc[header_row + 1:].reset_index(drop=True)
+    
+    # Строим словарь: номер договора -> данные
+    import_data = {}
+    for _, row in data_rows.iterrows():
+        contract = str(row.iloc[cols['contract']]).strip() if cols.get('contract') is not None else None
+        if not contract or contract == 'nan' or len(contract) < 10:
+            continue
+        
+        # Нормализуем формат договора
+        contract_clean = re.sub(r'[^\d]', '', contract)
+        if len(contract_clean) >= 16:
+            contract_formatted = f"{contract_clean[:5]}-{contract_clean[5:7]}-{contract_clean[7:15]}-{contract_clean[15:16]}"
+        else:
+            contract_formatted = contract
+        
+        import_data[contract_formatted] = {
+            'consumer': str(row.iloc[cols['consumer']]).strip() if cols.get('consumer') is not None else None,
+            'address': str(row.iloc[cols['address']]).strip() if cols.get('address') is not None else None,
+            'power': row.iloc[cols['power']] if cols.get('power') is not None else None,
+            'contract_date': row.iloc[cols['contract_date']] if cols.get('contract_date') is not None else None,
+            'plan_date': row.iloc[cols['plan_date']] if cols.get('plan_date') is not None else None,
+        }
+    
+    # Обновляем ПУ
+    updated = 0
+    items = db.query(PUItem).filter(
+        PUItem.status == PUStatus.TECHPRIS,
+        PUItem.contract_number != None
+    ).all()
+    
+    for item in items:
+        if item.contract_number in import_data:
+            data = import_data[item.contract_number]
+            if data['consumer'] and data['consumer'] != 'nan':
+                item.consumer = data['consumer']
+            if data['address'] and data['address'] != 'nan':
+                item.address = data['address']
+            if data['power'] and str(data['power']) != 'nan':
+                try:
+                    item.power = float(data['power'])
+                except:
+                    pass
+            if data['contract_date'] and str(data['contract_date']) != 'nan':
+                try:
+                    if isinstance(data['contract_date'], pd.Timestamp):
+                        item.contract_date = data['contract_date'].date()
+                    elif isinstance(data['contract_date'], datetime):
+                        item.contract_date = data['contract_date'].date()
+                except:
+                    pass
+            if data['plan_date'] and str(data['plan_date']) != 'nan':
+                try:
+                    if isinstance(data['plan_date'], pd.Timestamp):
+                        item.plan_date = data['plan_date'].date()
+                    elif isinstance(data['plan_date'], datetime):
+                        item.plan_date = data['plan_date'].date()
+                except:
+                    pass
+            updated += 1
+    
+    db.commit()
+    return {"updated": updated, "total_in_file": len(import_data)}
+
+
+@app.post("/api/pu/import-zamena")
+async def import_zamena_data(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Импорт данных Замена/ИЖЦ по номеру счётчика"""
+    contents = await file.read()
+    xl = pd.ExcelFile(io.BytesIO(contents))
+    df = pd.read_excel(xl, header=None)
+    
+    # Ищем заголовки
+    cols = {}
+    header_row = None
+    
+    for idx, row in df.iterrows():
+        for col_idx, cell in enumerate(row):
+            cell_str = str(cell).lower().strip()
+            if 'номер счетчика' in cell_str or 'номер пу' in cell_str or 'заводской' in cell_str:
+                cols['serial'] = col_idx
+                header_row = idx
+            elif 'лс' in cell_str or 'лицевой' in cell_str:
+                cols['ls'] = col_idx
+        if header_row is not None and 'serial' in cols:
+            break
+    
+    if 'serial' not in cols:
+        raise HTTPException(400, "Не найдена колонка 'Номер счетчика'")
+    if 'ls' not in cols:
+        raise HTTPException(400, "Не найдена колонка 'ЛС'")
+    
+    # Читаем данные
+    data_rows = df.iloc[header_row + 1:].reset_index(drop=True)
+    
+    # Строим словарь: номер счётчика -> ЛС
+    import_data = {}
+    for _, row in data_rows.iterrows():
+        serial = str(row.iloc[cols['serial']]).strip()
+        ls = str(row.iloc[cols['ls']]).strip()
+        if serial and serial != 'nan' and ls and ls != 'nan':
+            import_data[serial] = ls
+    
+    # Обновляем ПУ
+    updated = 0
+    items = db.query(PUItem).filter(
+        PUItem.status.in_([PUStatus.ZAMENA, PUStatus.IZHC])
+    ).all()
+    
+    for item in items:
+        if item.serial_number in import_data:
+            item.ls_number = import_data[item.serial_number]
+            updated += 1
+    
+    db.commit()
+    return {"updated": updated, "total_in_file": len(import_data)}
+
 # ==================== ИНИЦИАЛИЗАЦИЯ БД ====================
 def init_db():
     db = SessionLocal()
