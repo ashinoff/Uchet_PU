@@ -2,7 +2,7 @@
 Система учета ПУ - Backend
 ЭТАП 1: Базовая структура
 """
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum as SQLEnum, Float, Date
 from sqlalchemy.ext.declarative import declarative_base
