@@ -68,6 +68,7 @@ function Main() {
           {page === 'home' && <HomePage setPage={setPage} />}
           {page === 'pu' && <PUListPage />}
           {page === 'upload' && <UploadPage />}
+          {page === 'import' && <ImportPage />}
           {page === 'approval' && <ApprovalPage />}
           {page === 'tz' && <TZPage />}
           {page === 'requests' && <RequestsPage />}
@@ -80,7 +81,7 @@ function Main() {
 
 // ==================== САЙДБАР ====================
 function Sidebar({ page, setPage }) {
-  const { user, logout, canUpload, canManageUsers, canApprove, canCreateTZ, isEskAdmin, isSueAdmin } = useAuth()
+  const { user, logout, canUpload, canManageUsers, canApprove, canCreateTZ, isEskAdmin, isSueAdmin, isResUser } = useAuth()
   const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
@@ -93,6 +94,7 @@ function Sidebar({ page, setPage }) {
     { id: 'home', label: '🏠 Главная', show: true },
     { id: 'pu', label: '📦 Приборы учета', show: true },
     { id: 'upload', label: '📤 Загрузка', show: canUpload },
+    { id: 'import', label: '📥 Импорт данных', show: isSueAdmin || isResUser },  // <-- ДОБАВИТЬ
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
     { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
     { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin },
@@ -756,6 +758,11 @@ function PUCardModal({ itemId, onClose }) {
         {canEdit && (
           <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex justify-end gap-2">
             <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg">Отмена</button>
+            {isEsk && item.status === 'TECHPRIS' && item.approval_status !== 'APPROVED' && item.approval_status !== 'PENDING' && (
+              <button onClick={handleSendApproval} disabled={saving} className="px-4 py-2 bg-orange-500 text-white rounded-lg disabled:opacity-50">
+                📤 На согласование
+              </button>
+            )}
             <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">{saving ? 'Сохранение...' : 'Сохранить'}</button>
           </div>
         )}
@@ -833,6 +840,98 @@ function UploadPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ==================== ИМПОРТ ДАННЫХ ====================
+function ImportPage() {
+  const { isSueAdmin, isResUser } = useAuth()
+  const [tab, setTab] = useState('techpris')
+  const [file, setFile] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const handleImport = async () => {
+    if (!file) return
+    setLoading(true)
+    setResult(null)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const endpoint = tab === 'techpris' ? '/pu/import-techpris' : '/pu/import-zamena'
+      const r = await api.post(endpoint, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      setResult(r.data)
+      setFile(null)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка импорта')
+    }
+    setLoading(false)
+  }
+
+  if (!isSueAdmin && !isResUser) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Импорт данных</h1>
+
+      <div className="flex gap-2 border-b">
+        <button onClick={() => { setTab('techpris'); setResult(null); setFile(null) }} className={`px-4 py-2 border-b-2 ${tab === 'techpris' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>
+          📋 Техприс (по договору)
+        </button>
+        <button onClick={() => { setTab('zamena'); setResult(null); setFile(null) }} className={`px-4 py-2 border-b-2 ${tab === 'zamena' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>
+          🔄 Замена / ИЖЦ (по номеру ПУ)
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border p-6">
+        {result ? (
+          <div className="text-center">
+            <div className="text-4xl mb-4">✅</div>
+            <h3 className="text-xl font-semibold">Обновлено: {result.updated} из {result.total_in_file}</h3>
+            <p className="text-gray-500 mt-2">ПУ в файле: {result.total_in_file}, обновлено: {result.updated}</p>
+            <button onClick={() => setResult(null)} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Загрузить ещё</button>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="text-4xl mb-4">{tab === 'techpris' ? '📋' : '🔄'}</div>
+            <h3 className="font-semibold mb-2">
+              {tab === 'techpris' ? 'Импорт данных техприсоединения' : 'Импорт ЛС для Замены/ИЖЦ'}
+            </h3>
+            <p className="text-gray-500 text-sm mb-4">
+              {tab === 'techpris' 
+                ? 'Файл должен содержать: Номер договора, Потребитель, Адрес объекта, Pmax, Дата заключения, Планируемая дата' 
+                : 'Файл должен содержать: Номер счетчика, ЛС / ЛС СТЕК'}
+            </p>
+            {file ? <p className="mb-4 font-medium">{file.name}</p> : <p className="mb-4 text-gray-400">Выберите Excel файл (.xlsx, .xls)</p>}
+            <div className="flex justify-center gap-3">
+              <label className="px-4 py-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200">
+                {file ? 'Выбрать другой' : 'Выбрать файл'}
+                <input type="file" accept=".xlsx,.xls" onChange={e => setFile(e.target.files[0])} className="hidden" />
+              </label>
+              {file && <button onClick={handleImport} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">{loading ? 'Импорт...' : 'Импортировать'}</button>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+        <h4 className="font-medium text-yellow-800 mb-2">ℹ️ Как это работает:</h4>
+        <ul className="text-sm text-yellow-700 space-y-1">
+          {tab === 'techpris' ? (
+            <>
+              <li>• Система ищет ПУ со статусом "Техприс" по номеру договора</li>
+              <li>• Обновляет: потребитель, адрес, мощность, даты</li>
+              <li>• Формат договора: xxxxx-xx-xxxxxxxx-x</li>
+            </>
+          ) : (
+            <>
+              <li>• Система ищет ПУ со статусом "Замена" или "ИЖЦ" по серийному номеру</li>
+              <li>• Обновляет поле "Лицевой счёт" (ЛС)</li>
+            </>
+          )}
+        </ul>
+      </div>
     </div>
   )
 }
@@ -1512,6 +1611,19 @@ function TTREskTab() {
     setModal(null)
   }
 
+const handleSendApproval = async () => {
+  if (!validate()) return
+  setSaving(true)
+  try {
+    await api.put(`/pu/items/${itemId}`, item)
+    await api.post(`/pu/items/${itemId}/send-approval`)
+    onClose()
+  } catch (err) {
+    alert(err.response?.data?.detail || 'Ошибка отправки')
+  }
+  setSaving(false)
+}
+  
   return (
     <>
       {isSueAdmin && (
