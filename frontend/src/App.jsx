@@ -68,7 +68,6 @@ function Main() {
           {page === 'home' && <HomePage setPage={setPage} />}
           {page === 'pu' && <PUListPage />}
           {page === 'upload' && <UploadPage />}
-          {page === 'import' && <ImportPage />}
           {page === 'approval' && <ApprovalPage />}
           {page === 'tz' && <TZPage />}
           {page === 'requests' && <RequestsPage />}
@@ -565,6 +564,18 @@ function PUCardModal({ itemId, onClose }) {
   e.target.value = '' // сброс input
 }
 
+  const handleSendApproval = async () => {
+  if (!validate()) return
+  setSaving(true)
+  try {
+    await api.put(`/pu/items/${itemId}`, item)
+    await api.post(`/pu/items/${itemId}/send-approval`)
+    onClose()
+  } catch (err) {
+    alert(err.response?.data?.detail || 'Ошибка отправки')
+  }
+  setSaving(false)
+}
   
   const update = (field, value) => {
     if (field === 'contract_number') {
@@ -1583,19 +1594,6 @@ function TTREskTab() {
     api.get('/ttr/esk').then(r => setItems(r.data))
     setModal(null)
   }
-
-const handleSendApproval = async () => {
-  if (!validate()) return
-  setSaving(true)
-  try {
-    await api.put(`/pu/items/${itemId}`, item)
-    await api.post(`/pu/items/${itemId}/send-approval`)
-    onClose()
-  } catch (err) {
-    alert(err.response?.data?.detail || 'Ошибка отправки')
-  }
-  setSaving(false)
-}
   
   return (
     <>
