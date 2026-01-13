@@ -1310,6 +1310,137 @@ async def import_zamena_data(file: UploadFile = File(...), db: Session = Depends
     db.commit()
     return {"updated": updated, "total_in_file": len(import_data)}
 
+
+@app.post("/pu/import-lookup-techpris")
+async def import_lookup_techpris(
+    file: UploadFile = File(...),
+    contract_number: str = Form(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Поиск данных по номеру договора в Excel файле"""
+    import pandas as pd
+    from io import BytesIO
+    
+    content = await file.read()
+    df = pd.read_excel(BytesIO(content), header=None)
+    
+    # Ищем строку с заголовками
+    header_row = None
+    for idx, row in df.iterrows():
+        if any('Номер договора' in str(cell) for cell in row.values):
+            header_row = idx
+            break
+    
+    if header_row is None:
+        return {"found": False}
+    
+    # Переименовываем колонки
+    df.columns = df.iloc[header_row]
+    df = df.iloc[header_row + 1:].reset_index(drop=True)
+    
+    # Ищем нужные колонки
+    col_map = {}
+    for col in df.columns:
+        col_str = str(col).strip().lower()
+        if 'номер договора' in col_str:
+            col_map['contract'] = col
+        elif 'потребитель' in col_str:
+            col_map['consumer'] = col
+        elif 'адрес объекта' in col_str:
+            col_map['address'] = col
+        elif 'pmax' in col_str or 'мощность' in col_str:
+            col_map['power'] = col
+        elif 'дата заключения' in col_str:
+            col_map['contract_date'] = col
+        elif 'планируемая дата' in col_str:
+            col_map['plan_date'] = col
+    
+    if 'contract' not in col_map:
+        return {"found": False}
+    
+    # Нормализуем номер договора для поиска
+    contract_clean = contract_number.replace('-', '').replace(' ', '')
+    
+    for idx, row in df.iterrows():
+        cell_value = str(row.get(col_map['contract'], '')).replace('-', '').replace(' ', '')
+        if contract_clean in cell_value or cell_value in contract_clean:
+            result = {"found": True}
+            if 'consumer' in col_map:
+                val = row.get(col_map['consumer'])
+                if pd.notna(val): result['consumer'] = str(val)
+            if 'address' in col_map:
+                val = row.get(col_map['address'])
+                if pd.notna(val): result['address'] = str(val)
+            if 'power' in col_map:
+                val = row.get(col_map['power'])
+                if pd.notna(val): 
+                    try: result['power'] = float(val)
+                    except: pass
+            if 'contract_date' in col_map:
+                val = row.get(col_map['contract_date'])
+                if pd.notna(val):
+                    if hasattr(val, 'strftime'): result['contract_date'] = val.strftime('%Y-%m-%d')
+                    else: result['contract_date'] = str(val)[:10]
+            if 'plan_date' in col_map:
+                val = row.get(col_map['plan_date'])
+                if pd.notna(val):
+                    if hasattr(val, 'strftime'): result['plan_date'] = val.strftime('%Y-%m-%d')
+                    else: result['plan_date'] = str(val)[:10]
+            return result
+    
+    return {"found": False}
+
+
+@app.post("/pu/import-lookup-zamena")
+async def import_lookup_zamena(
+    file: UploadFile = File(...),
+    serial_number: str = Form(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Поиск ЛС по серийному номеру счётчика в Excel файле"""
+    import pandas as pd
+    from io import BytesIO
+    
+    content = await file.read()
+    df = pd.read_excel(BytesIO(content), header=None)
+    
+    # Ищем строку с заголовками
+    header_row = None
+    for idx, row in df.iterrows():
+        if any('Номер счетчика' in str(cell) for cell in row.values):
+            header_row = idx
+            break
+    
+    if header_row is None:
+        return {"found": False}
+    
+    df.columns = df.iloc[header_row]
+    df = df.iloc[header_row + 1:].reset_index(drop=True)
+    
+    # Ищем колонки
+    col_serial = None
+    col_ls = None
+    for col in df.columns:
+        col_str = str(col).strip().lower()
+        if 'номер счетчика' in col_str or 'номер счётчика' in col_str:
+            col_serial = col
+        elif 'лс' in col_str or 'стек' in col_str:
+            col_ls = col
+    
+    if not col_serial or not col_ls:
+        return {"found": False}
+    
+    # Ищем по серийному номеру
+    serial_clean = serial_number.strip().lower()
+    for idx, row in df.iterrows():
+        cell_value = str(row.get(col_serial, '')).strip().lower()
+        if serial_clean == cell_value or serial_clean in cell_value:
+            ls_val = row.get(col_ls)
+            if pd.notna(ls_val):
+                return {"found": True, "ls_number": str(ls_val).strip()}
+    
+    return {"found": False}
+
 # ==================== ИНИЦИАЛИЗАЦИЯ БД ====================
 def init_db():
     db = SessionLocal()
