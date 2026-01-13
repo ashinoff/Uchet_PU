@@ -94,7 +94,6 @@ function Sidebar({ page, setPage }) {
     { id: 'home', label: '🏠 Главная', show: true },
     { id: 'pu', label: '📦 Приборы учета', show: true },
     { id: 'upload', label: '📤 Загрузка', show: canUpload },
-    { id: 'import', label: '📥 Импорт данных', show: isSueAdmin || isResUser },  // <-- ДОБАВИТЬ
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
     { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
     { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin },
@@ -471,6 +470,7 @@ function PUCardModal({ itemId, onClose }) {
   const [ttrRes, setTtrRes] = useState([])
   const [ttrEsk, setTtrEsk] = useState([])
   const [masters, setMasters] = useState([])
+  const [importing, setImporting] = useState(false)
 
   useEffect(() => {
     api.get(`/pu/items/${itemId}`).then(r => { setItem(r.data); setLoading(false) })
@@ -518,6 +518,54 @@ function PUCardModal({ itemId, onClose }) {
     setSaving(false)
   }
 
+  const handleImport = async (e) => {
+  const file = e.target.files[0]
+  if (!file) return
+  setImporting(true)
+  const formData = new FormData()
+  formData.append('file', file)
+  
+  try {
+    if (item.status === 'TECHPRIS') {
+      // Импорт по номеру договора
+      if (!item.contract_number) {
+        alert('Сначала введите номер договора')
+        setImporting(false)
+        return
+      }
+      formData.append('contract_number', item.contract_number)
+      const r = await api.post('/pu/import-lookup-techpris', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      if (r.data.found) {
+        setItem({ ...item, 
+          consumer: r.data.consumer || item.consumer,
+          address: r.data.address || item.address,
+          power: r.data.power || item.power,
+          contract_date: r.data.contract_date || item.contract_date,
+          plan_date: r.data.plan_date || item.plan_date
+        })
+        alert('✅ Данные загружены')
+      } else {
+        alert('Договор не найден в файле')
+      }
+    } else if (item.status === 'ZAMENA' || item.status === 'IZHC') {
+      // Импорт по серийному номеру
+      formData.append('serial_number', item.serial_number)
+      const r = await api.post('/pu/import-lookup-zamena', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      if (r.data.found) {
+        setItem({ ...item, ls_number: r.data.ls_number })
+        alert('✅ ЛС загружен')
+      } else {
+        alert('Счётчик не найден в файле')
+      }
+    }
+  } catch (err) {
+    alert(err.response?.data?.detail || 'Ошибка импорта')
+  }
+  setImporting(false)
+  e.target.value = '' // сброс input
+}
+
+  
   const update = (field, value) => {
     if (field === 'contract_number') {
       value = formatContract(value)
@@ -600,7 +648,15 @@ function PUCardModal({ itemId, onClose }) {
           {item.status === 'TECHPRIS' && (
             <>
               <hr />
-              <h3 className="font-medium">Данные техприсоединения</h3>
+              <div className="flex justify-between items-center">
+                <h3 className="font-medium">Данные техприсоединения</h3>
+                {canEdit && (
+                  <label className={`px-3 py-1 text-sm rounded-lg cursor-pointer ${importing ? 'bg-gray-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+                    {importing ? '⏳ Загрузка...' : '📥 Импорт из Excel'}
+                    <input type="file" accept=".xlsx,.xls" onChange={handleImport} disabled={importing} className="hidden" />
+                  </label>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">Номер договора *</label>
@@ -645,8 +701,17 @@ function PUCardModal({ itemId, onClose }) {
           {(item.status === 'ZAMENA' || item.status === 'IZHC') && isRes && (
             <>
               <hr />
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Лицевой счет (ЛС) *</label>
+              <div className="flex justify-between items-center mb-2">
+               <h3 className="font-medium">Данные для замены/ИЖЦ</h3>
+               {canEdit && (
+                 <label className={`px-3 py-1 text-sm rounded-lg cursor-pointer ${importing ? 'bg-gray-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+                   {importing ? '⏳ Загрузка...' : '📥 Импорт из 1С'}
+                   <input type="file" accept=".xlsx,.xls" onChange={handleImport} disabled={importing} className="hidden" />
+                 </label>
+               )}
+             </div>
+             <div>
+               <label className="block text-sm font-medium text-gray-600 mb-1">Лицевой счет (ЛС) *</label>
                 <input 
                   type="text" 
                   value={item.ls_number || ''} 
@@ -840,98 +905,6 @@ function UploadPage() {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-// ==================== ИМПОРТ ДАННЫХ ====================
-function ImportPage() {
-  const { isSueAdmin, isResUser } = useAuth()
-  const [tab, setTab] = useState('techpris')
-  const [file, setFile] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState(null)
-
-  const handleImport = async () => {
-    if (!file) return
-    setLoading(true)
-    setResult(null)
-    const formData = new FormData()
-    formData.append('file', file)
-    try {
-      const endpoint = tab === 'techpris' ? '/pu/import-techpris' : '/pu/import-zamena'
-      const r = await api.post(endpoint, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-      setResult(r.data)
-      setFile(null)
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Ошибка импорта')
-    }
-    setLoading(false)
-  }
-
-  if (!isSueAdmin && !isResUser) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
-
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Импорт данных</h1>
-
-      <div className="flex gap-2 border-b">
-        <button onClick={() => { setTab('techpris'); setResult(null); setFile(null) }} className={`px-4 py-2 border-b-2 ${tab === 'techpris' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>
-          📋 Техприс (по договору)
-        </button>
-        <button onClick={() => { setTab('zamena'); setResult(null); setFile(null) }} className={`px-4 py-2 border-b-2 ${tab === 'zamena' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>
-          🔄 Замена / ИЖЦ (по номеру ПУ)
-        </button>
-      </div>
-
-      <div className="bg-white rounded-xl border p-6">
-        {result ? (
-          <div className="text-center">
-            <div className="text-4xl mb-4">✅</div>
-            <h3 className="text-xl font-semibold">Обновлено: {result.updated} из {result.total_in_file}</h3>
-            <p className="text-gray-500 mt-2">ПУ в файле: {result.total_in_file}, обновлено: {result.updated}</p>
-            <button onClick={() => setResult(null)} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Загрузить ещё</button>
-          </div>
-        ) : (
-          <div className="text-center">
-            <div className="text-4xl mb-4">{tab === 'techpris' ? '📋' : '🔄'}</div>
-            <h3 className="font-semibold mb-2">
-              {tab === 'techpris' ? 'Импорт данных техприсоединения' : 'Импорт ЛС для Замены/ИЖЦ'}
-            </h3>
-            <p className="text-gray-500 text-sm mb-4">
-              {tab === 'techpris' 
-                ? 'Файл должен содержать: Номер договора, Потребитель, Адрес объекта, Pmax, Дата заключения, Планируемая дата' 
-                : 'Файл должен содержать: Номер счетчика, ЛС / ЛС СТЕК'}
-            </p>
-            {file ? <p className="mb-4 font-medium">{file.name}</p> : <p className="mb-4 text-gray-400">Выберите Excel файл (.xlsx, .xls)</p>}
-            <div className="flex justify-center gap-3">
-              <label className="px-4 py-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200">
-                {file ? 'Выбрать другой' : 'Выбрать файл'}
-                <input type="file" accept=".xlsx,.xls" onChange={e => setFile(e.target.files[0])} className="hidden" />
-              </label>
-              {file && <button onClick={handleImport} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">{loading ? 'Импорт...' : 'Импортировать'}</button>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-        <h4 className="font-medium text-yellow-800 mb-2">ℹ️ Как это работает:</h4>
-        <ul className="text-sm text-yellow-700 space-y-1">
-          {tab === 'techpris' ? (
-            <>
-              <li>• Система ищет ПУ со статусом "Техприс" по номеру договора</li>
-              <li>• Обновляет: потребитель, адрес, мощность, даты</li>
-              <li>• Формат договора: xxxxx-xx-xxxxxxxx-x</li>
-            </>
-          ) : (
-            <>
-              <li>• Система ищет ПУ со статусом "Замена" или "ИЖЦ" по серийному номеру</li>
-              <li>• Обновляет поле "Лицевой счёт" (ЛС)</li>
-            </>
-          )}
-        </ul>
-      </div>
     </div>
   )
 }
