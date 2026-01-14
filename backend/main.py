@@ -609,6 +609,12 @@ def get_items(
         "total": total, "page": page, "size": size, "pages": (total + size - 1) // size
     }
 
+@app.get("/api/pu/detect-type")
+def detect_type(pu_type: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Определить фазность и напряжение по типу ПУ"""
+    result = detect_pu_type_params(pu_type, db)
+    return result
+
 @app.get("/api/pu/items/{item_id}")
 def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Полная карточка ПУ"""
@@ -670,6 +676,15 @@ def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db),
         ).first()
         if existing:
             raise HTTPException(400, f"Договор уже существует в системе (ПУ {existing.serial_number})")
+    
+    # Автозаполнение фазности и напряжения при смене статуса со Склада
+    if data.status and data.status != 'SKLAD' and item.status == PUStatus.SKLAD:
+        detected = detect_pu_type_params(item.pu_type, db)
+        if detected:
+            if not data.faza and not item.faza and detected.get('faza'):
+                data.faza = detected['faza']
+            if not data.voltage and not item.voltage and detected.get('voltage'):
+                data.voltage = detected['voltage']
     
     # Обновляем поля
     for key, value in data.dict(exclude_unset=True).items():
