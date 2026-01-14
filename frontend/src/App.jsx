@@ -601,9 +601,10 @@ function PUCardModal({ itemId, onClose }) {
 
   if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
 
-  const isEsk = item?.current_unit_type === 'ESK_UNIT' || item?.current_unit_type === 'ESK'
-  const isRes = item?.current_unit_type === 'RES'
-  const canEdit = isSueAdmin || (isResUser && isRes) || ((isEskUser || isEskAdmin) && isEsk)
+    const isEsk = item?.current_unit_type === 'ESK_UNIT' || item?.current_unit_type === 'ESK'
+    const isRes = item?.current_unit_type === 'RES'
+// СУЭ только просмотр, РЭС редактирует свои, ЭСК редактирует свои
+    const canEdit = (isResUser && isRes) || ((isEskUser || isEskAdmin) && isEsk)
 
   // Для ЭСК только Техприс и Склад
   const statusOptions = isEsk 
