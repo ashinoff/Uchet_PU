@@ -1750,15 +1750,14 @@ function PUTypesTab() {
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Паттерн</th><th className="px-4 py-3 text-left">Фазность</th><th className="px-4 py-3 text-left">Напряжение</th><th className="px-4 py-3 text-left">Для ЭСК</th><th className="w-24"></th></tr></thead>
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Паттерн</th><th className="px-4 py-3 text-left">Фазность</th><th className="px-4 py-3 text-left">Напряжение</th><th className="w-24"></th></tr></thead>
           <tbody>
             {items.map(i => (
               <tr key={i.id} className="border-t">
                 <td className="px-4 py-3 font-mono">{i.pattern}</td>
                 <td className="px-4 py-3">{i.faza || '—'}</td>
                 <td className="px-4 py-3">{i.voltage || '—'}</td>
-                <td className="px-4 py-3">{i.for_esk ? '✓' : ''}</td>
-                <td className="px-4 py-3">
+                 <td className="px-4 py-3">
                   <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
                   <button onClick={() => handleDelete(i.id)}>🗑️</button>
                 </td>
@@ -1781,7 +1780,7 @@ function PUTypesTab() {
 }
 
 function PUTypeForm({ item, onSave, onClose }) {
-  const [form, setForm] = useState({ pattern: item?.pattern || '', faza: item?.faza || '', voltage: item?.voltage || '', for_esk: item?.for_esk || false })
+  const [form, setForm] = useState({ pattern: item?.pattern || '', faza: item?.faza || '', voltage: item?.voltage || '' })
   return (
     <div className="space-y-3">
       <input type="text" placeholder="Паттерн (напр. НАРТИС И100 SP)" value={form.pattern} onChange={e => setForm({ ...form, pattern: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
@@ -1797,10 +1796,6 @@ function PUTypeForm({ item, onSave, onClose }) {
         <option value="6">6 кВ</option>
         <option value="10">10 кВ</option>
       </select>
-      <label className="flex items-center gap-2">
-        <input type="checkbox" checked={form.for_esk} onChange={e => setForm({ ...form, for_esk: e.target.checked })} />
-        <span>Для ЭСК</span>
-      </label>
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
         <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
