@@ -1311,28 +1311,28 @@ async def import_zamena_data(file: UploadFile = File(...), db: Session = Depends
     return {"updated": updated, "total_in_file": len(import_data)}
 
 
-@app.post("/pu/import-lookup-techpris")
+@app.post("/api/pu/import-lookup-techpris")
 async def import_lookup_techpris(
     file: UploadFile = File(...),
     contract_number: str = Form(...),
     current_user: User = Depends(get_current_user)
 ):
     """Поиск данных по номеру договора в Excel файле"""
-    import pandas as pd
-    from io import BytesIO
-    
     content = await file.read()
-    df = pd.read_excel(BytesIO(content), header=None)
+    df = pd.read_excel(io.BytesIO(content), header=None)
     
     # Ищем строку с заголовками
     header_row = None
     for idx, row in df.iterrows():
-        if any('Номер договора' in str(cell) for cell in row.values):
-            header_row = idx
+        for cell in row.values:
+            if 'номер договора' in str(cell).lower():
+                header_row = idx
+                break
+        if header_row is not None:
             break
     
     if header_row is None:
-        return {"found": False}
+        return {"found": False, "error": "Заголовок не найден"}
     
     # Переименовываем колонки
     df.columns = df.iloc[header_row]
@@ -1341,15 +1341,17 @@ async def import_lookup_techpris(
     # Ищем нужные колонки
     col_map = {}
     for col in df.columns:
-        col_str = str(col).strip().lower()
+        col_str = str(col).strip().lower() if pd.notna(col) else ''
         if 'номер договора' in col_str:
             col_map['contract'] = col
         elif 'потребитель' in col_str:
             col_map['consumer'] = col
-        elif 'адрес объекта' in col_str:
+        elif 'адрес' in col_str:
             col_map['address'] = col
-        elif 'pmax' in col_str or 'мощность' in col_str:
+        elif 'pmax' in col_str:
             col_map['power'] = col
+        elif 'p(запраш' in col_str:
+            col_map['power_req'] = col
         elif 'дата заключения' in col_str:
             col_map['contract_date'] = col
         elif 'планируемая дата' in col_str:
@@ -1358,88 +1360,113 @@ async def import_lookup_techpris(
     if 'contract' not in col_map:
         return {"found": False}
     
-    # Нормализуем номер договора для поиска
-    contract_clean = contract_number.replace('-', '').replace(' ', '')
+    # Нормализуем номер договора
+    contract_clean = contract_number.replace('-', '').replace(' ', '').lower()
     
     for idx, row in df.iterrows():
-        cell_value = str(row.get(col_map['contract'], '')).replace('-', '').replace(' ', '')
-        if contract_clean in cell_value or cell_value in contract_clean:
+        cell_value = str(row.get(col_map['contract'], '')).replace('-', '').replace(' ', '').lower()
+        if not cell_value or cell_value == 'nan' or len(cell_value) < 10:
+            continue
+        
+        if contract_clean == cell_value or contract_clean in cell_value:
             result = {"found": True}
+            
             if 'consumer' in col_map:
                 val = row.get(col_map['consumer'])
-                if pd.notna(val): result['consumer'] = str(val)
+                if pd.notna(val) and str(val) != 'nan':
+                    result['consumer'] = str(val).strip()
+            
             if 'address' in col_map:
                 val = row.get(col_map['address'])
-                if pd.notna(val): result['address'] = str(val)
-            if 'power' in col_map:
-                val = row.get(col_map['power'])
-                if pd.notna(val): 
-                    try: result['power'] = float(val)
-                    except: pass
+                if pd.notna(val) and str(val) != 'nan':
+                    result['address'] = str(val).strip()
+            
+            power_col = col_map.get('power_req') or col_map.get('power')
+            if power_col:
+                val = row.get(power_col)
+                if pd.notna(val) and str(val) != 'nan':
+                    try:
+                        result['power'] = float(val)
+                    except:
+                        pass
+            
             if 'contract_date' in col_map:
                 val = row.get(col_map['contract_date'])
-                if pd.notna(val):
-                    if hasattr(val, 'strftime'): result['contract_date'] = val.strftime('%Y-%m-%d')
-                    else: result['contract_date'] = str(val)[:10]
+                if pd.notna(val) and str(val) != 'nan':
+                    try:
+                        if hasattr(val, 'strftime'):
+                            result['contract_date'] = val.strftime('%Y-%m-%d')
+                        else:
+                            result['contract_date'] = str(val)[:10]
+                    except:
+                        pass
+            
             if 'plan_date' in col_map:
                 val = row.get(col_map['plan_date'])
-                if pd.notna(val):
-                    if hasattr(val, 'strftime'): result['plan_date'] = val.strftime('%Y-%m-%d')
-                    else: result['plan_date'] = str(val)[:10]
+                if pd.notna(val) and str(val) != 'nan':
+                    try:
+                        if hasattr(val, 'strftime'):
+                            result['plan_date'] = val.strftime('%Y-%m-%d')
+                        else:
+                            result['plan_date'] = str(val)[:10]
+                    except:
+                        pass
+            
             return result
     
     return {"found": False}
 
 
-@app.post("/pu/import-lookup-zamena")
+@app.post("/api/pu/import-lookup-zamena")
 async def import_lookup_zamena(
     file: UploadFile = File(...),
     serial_number: str = Form(...),
     current_user: User = Depends(get_current_user)
 ):
-    """Поиск ЛС по серийному номеру счётчика в Excel файле"""
-    import pandas as pd
-    from io import BytesIO
-    
+    """Поиск ЛС по серийному номеру счётчика в выгрузке 1С"""
     content = await file.read()
-    df = pd.read_excel(BytesIO(content), header=None)
+    df = pd.read_excel(io.BytesIO(content), header=None)
     
-    # Ищем строку с заголовками
-    header_row = None
-    for idx, row in df.iterrows():
-        if any('Номер счетчика' in str(cell) for cell in row.values):
-            header_row = idx
-            break
-    
-    if header_row is None:
-        return {"found": False}
-    
-    df.columns = df.iloc[header_row]
-    df = df.iloc[header_row + 1:].reset_index(drop=True)
-    
-    # Ищем колонки
+    # Ищем колонки с заголовками "Номер счетчика" и "ЛС / ЛС СТЕК"
     col_serial = None
     col_ls = None
-    for col in df.columns:
-        col_str = str(col).strip().lower()
-        if 'номер счетчика' in col_str or 'номер счётчика' in col_str:
-            col_serial = col
-        elif 'лс' in col_str or 'стек' in col_str:
-            col_ls = col
+    header_row = None
     
-    if not col_serial or not col_ls:
-        return {"found": False}
+    # Проходим первые 10 строк в поисках заголовков
+    for idx in range(min(10, len(df))):
+        row = df.iloc[idx]
+        for col_idx, cell in enumerate(row.values):
+            cell_str = str(cell).lower().strip() if pd.notna(cell) else ''
+            if 'номер счетчика' in cell_str or 'номер счётчика' in cell_str:
+                col_serial = col_idx
+                header_row = idx
+            elif 'лс' in cell_str and ('стек' in cell_str or col_idx < 10):
+                col_ls = col_idx
     
-    # Ищем по серийному номеру
+    if col_serial is None:
+        return {"found": False, "error": "Колонка 'Номер счетчика' не найдена"}
+    if col_ls is None:
+        return {"found": False, "error": "Колонка 'ЛС / ЛС СТЕК' не найдена"}
+    
+    # Нормализуем серийный номер для поиска
     serial_clean = serial_number.strip().lower()
-    for idx, row in df.iterrows():
-        cell_value = str(row.get(col_serial, '')).strip().lower()
-        if serial_clean == cell_value or serial_clean in cell_value:
-            ls_val = row.get(col_ls)
-            if pd.notna(ls_val):
+    
+    # Ищем в данных (после заголовка)
+    for idx in range(header_row + 1, len(df)):
+        row = df.iloc[idx]
+        cell_value = str(row.iloc[col_serial]).strip().lower() if pd.notna(row.iloc[col_serial]) else ''
+        
+        # Пропускаем пустые
+        if not cell_value or cell_value == 'nan':
+            continue
+        
+        # Сравниваем (точное совпадение или содержит)
+        if serial_clean == cell_value or serial_clean in cell_value or cell_value in serial_clean:
+            ls_val = row.iloc[col_ls]
+            if pd.notna(ls_val) and str(ls_val) != 'nan':
                 return {"found": True, "ls_number": str(ls_val).strip()}
     
-    return {"found": False}
+    return {"found": False, "error": f"Счётчик {serial_number} не найден в файле"}
 
 # ==================== ИНИЦИАЛИЗАЦИЯ БД ====================
 def init_db():
