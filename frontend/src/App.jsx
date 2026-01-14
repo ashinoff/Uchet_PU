@@ -577,13 +577,27 @@ function PUCardModal({ itemId, onClose }) {
   setSaving(false)
 }
   
-  const update = (field, value) => {
-    if (field === 'contract_number') {
-      value = formatContract(value)
-    }
-    setItem({ ...item, [field]: value })
-    if (errors[field]) setErrors({ ...errors, [field]: null })
+  const update = async (field, value) => {
+  if (field === 'contract_number') {
+    value = formatContract(value)
   }
+  
+  let newItem = { ...item, [field]: value }
+  
+  // Автозаполнение при смене статуса со Склада
+  if (field === 'status' && value !== 'SKLAD' && item.status === 'SKLAD') {
+    if (!item.faza || !item.voltage) {
+      try {
+        const r = await api.get('/pu/detect-type', { params: { pu_type: item.pu_type } })
+        if (r.data.faza && !item.faza) newItem.faza = r.data.faza
+        if (r.data.voltage && !item.voltage) newItem.voltage = r.data.voltage
+      } catch (err) { /* игнорируем */ }
+    }
+  }
+  
+  setItem(newItem)
+  if (errors[field]) setErrors({ ...errors, [field]: null })
+}
 
   if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
 
