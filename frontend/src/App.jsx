@@ -203,11 +203,11 @@ function HomePage({ setPage }) {
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <StatCard label="Всего ПУ" value={stats.total_pu} color="blue" />
+          <StatCard label="Установлено" value={stats.techpris + stats.zamena + stats.izhc} color="emerald" />
           <StatCard label="На складе" value={stats.sklad} color="gray" />
           <StatCard label="Техприс" value={stats.techpris} color="green" />
           <StatCard label="Замена" value={stats.zamena} color="yellow" />
           <StatCard label="ИЖЦ" value={stats.izhc} color="purple" />
-          <StatCard label="Установлено" value={stats.installed} color="emerald" />
         </div>
       )}
 
@@ -614,7 +614,6 @@ function PUCardModal({ itemId, onClose }) {
         { value: 'TECHPRIS', label: 'Техприс' },
         { value: 'ZAMENA', label: 'Замена' },
         { value: 'IZHC', label: 'ИЖЦ' },
-        { value: 'INSTALLED', label: 'Установлен' },
       ]
 
   return (
