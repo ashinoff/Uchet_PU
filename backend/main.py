@@ -659,9 +659,12 @@ def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db),
     if not item:
         raise HTTPException(404, "ПУ не найден")
     
-    # Проверка доступа
+    # Проверка доступа - СУЭ только просмотр, не может редактировать
+    if is_sue_admin(user):
+        raise HTTPException(403, "СУЭ может только просматривать карточки ПУ")
+    
     visible = get_visible_units(user, db)
-    if item.current_unit_id not in visible and not is_sue_admin(user):
+    if item.current_unit_id not in visible:
         raise HTTPException(403, "Нет доступа к этому ПУ")
     
     # Валидация договора
