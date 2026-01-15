@@ -831,10 +831,16 @@ function PUCardModal({ itemId, onClose }) {
             </>
           )}
 
-          {/* Номер ТЗ */}
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Номер ТЗ / Заявки</label>
-            <input type="text" value={item.tz_number || item.request_number || ''} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
+          {/* Номер ТЗ и Заявки */}
+            <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-600 mb-1">Номер ТЗ</label>
+              <input type="text" value={item.tz_number || '—'} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-600 mb-1">Номер заявки ЭСК</label>
+              <input type="text" value={item.request_number || '—'} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
+            </div>
           </div>
 
           {/* Согласование */}
@@ -1013,8 +1019,8 @@ function TZPage() {
   const [units, setUnits] = useState([])
   const [selectedStatus, setSelectedStatus] = useState('TECHPRIS')
   const [selectedUnit, setSelectedUnit] = useState('')
+  const [selectedPower, setSelectedPower] = useState('')
   const [selectedItems, setSelectedItems] = useState([])
-  const [tzNumber, setTzNumber] = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -1023,30 +1029,45 @@ function TZPage() {
   }, [])
 
   useEffect(() => {
-    if (tab === 'create') {
+    if (tab === 'create' && selectedUnit && selectedPower) {
       loadPending()
+    } else if (tab === 'create') {
+      setPendingItems([])
     }
-  }, [tab, selectedStatus, selectedUnit])
+  }, [tab, selectedStatus, selectedUnit, selectedPower])
 
   const loadPending = () => {
-    const params = { status: selectedStatus }
-    if (selectedUnit) params.unit_id = selectedUnit
+    const params = { status: selectedStatus, unit_id: selectedUnit, power_category: selectedPower }
     api.get('/tz/pending', { params }).then(r => setPendingItems(r.data))
   }
 
+  // Генерируем превью номера ТЗ
+  const getPreviewTzNumber = () => {
+    if (!selectedUnit || !selectedPower) return '—'
+    const unit = units.find(u => u.id === parseInt(selectedUnit))
+    if (!unit || !unit.short_code) return '—'
+    const now = new Date()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const year = String(now.getFullYear()).slice(-2)
+    return `${selectedPower}${unit.short_code}/${month}-${year}`
+  }
+
   const handleCreate = async () => {
-    if (!tzNumber || selectedItems.length === 0) {
-      alert('Введите номер ТЗ и выберите ПУ')
+    if (!selectedUnit || !selectedPower || selectedItems.length === 0) {
+      alert('Выберите РЭС, категорию мощности и ПУ')
       return
     }
     setLoading(true)
     try {
-      await api.post('/tz/create', { tz_number: tzNumber, item_ids: selectedItems })
-      setTzNumber('')
+      const r = await api.post('/tz/create', { 
+        item_ids: selectedItems, 
+        unit_id: parseInt(selectedUnit),
+        power_category: parseInt(selectedPower)
+      })
+      alert(`✅ Создано ТЗ: ${r.data.tz_number}`)
       setSelectedItems([])
       api.get('/tz/list').then(r => setTzList(r.data))
       loadPending()
-      alert('ТЗ создано!')
     } catch (err) {
       alert(err.response?.data?.detail || 'Ошибка')
     }
@@ -1095,24 +1116,40 @@ function TZPage() {
 
       {tab === 'create' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-4">
-            <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="px-3 py-2 border rounded-lg">
-              <option value="TECHPRIS">Техприс</option>
-              <option value="ZAMENA">Замена</option>
-              <option value="IZHC">ИЖЦ</option>
-            </select>
-            <select value={selectedUnit} onChange={e => setSelectedUnit(e.target.value)} className="px-3 py-2 border rounded-lg">
-              <option value="">Все РЭС</option>
-              {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-            <input type="text" placeholder="Номер ТЗ (напр. 1с/01-25)" value={tzNumber} onChange={e => setTzNumber(e.target.value)} className="px-3 py-2 border rounded-lg flex-1" />
-            <button onClick={handleCreate} disabled={loading || selectedItems.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-              {loading ? 'Создание...' : `Создать ТЗ (${selectedItems.length})`}
-            </button>
+          <div className="bg-white rounded-xl border p-4 space-y-4">
+            <div className="flex flex-wrap gap-4">
+              <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="px-3 py-2 border rounded-lg">
+                <option value="TECHPRIS">Техприс</option>
+                <option value="ZAMENA">Замена</option>
+                <option value="IZHC">ИЖЦ</option>
+              </select>
+              <select value={selectedUnit} onChange={e => { setSelectedUnit(e.target.value); setSelectedItems([]) }} className="px-3 py-2 border rounded-lg">
+                <option value="">Выберите РЭС...</option>
+                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              <select value={selectedPower} onChange={e => { setSelectedPower(e.target.value); setSelectedItems([]) }} className="px-3 py-2 border rounded-lg">
+                <option value="">Категория мощности...</option>
+                <option value="1">до 15 кВт (1)</option>
+                <option value="2">15-150 кВт (2)</option>
+                <option value="3">от 150 кВт (3)</option>
+              </select>
+            </div>
+            
+            <div className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+              <div>
+                <span className="text-sm text-gray-600">Номер ТЗ: </span>
+                <span className="font-bold text-blue-700 text-lg">{getPreviewTzNumber()}</span>
+              </div>
+              <button onClick={handleCreate} disabled={loading || selectedItems.length === 0 || !selectedUnit || !selectedPower} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+                {loading ? 'Создание...' : `Создать ТЗ (${selectedItems.length})`}
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border overflow-hidden">
-            {pendingItems.length === 0 ? (
+            {!selectedUnit || !selectedPower ? (
+              <div className="p-8 text-center text-gray-500">Выберите РЭС и категорию мощности</div>
+            ) : pendingItems.length === 0 ? (
               <div className="p-8 text-center text-gray-500">Нет ПУ без ТЗ для выбранных параметров</div>
             ) : (
               <>
@@ -1128,7 +1165,7 @@ function TZPage() {
                       <th className="w-10 px-4 py-3"></th>
                       <th className="px-4 py-3 text-left">Серийный номер</th>
                       <th className="px-4 py-3 text-left">Тип</th>
-                      <th className="px-4 py-3 text-left">РЭС</th>
+                      <th className="px-4 py-3 text-left">Мощность</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1139,7 +1176,7 @@ function TZPage() {
                         </td>
                         <td className="px-4 py-3 font-mono">{i.serial_number}</td>
                         <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{i.pu_type || '—'}</td>
-                        <td className="px-4 py-3">{i.current_unit_name || '—'}</td>
+                        <td className="px-4 py-3">{i.power ? `${i.power} кВт` : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1162,13 +1199,27 @@ function RequestsPage() {
   const [units, setUnits] = useState([])
   const [selectedUnit, setSelectedUnit] = useState('')
   const [selectedItems, setSelectedItems] = useState([])
-  const [requestNumber, setRequestNumber] = useState('')
   const [loading, setLoading] = useState(false)
+  const [nextNumber, setNextNumber] = useState('')
 
   useEffect(() => {
-    api.get('/requests/list').then(r => setRequestsList(r.data))
+    loadRequests()
     api.get('/units').then(r => setUnits(r.data.filter(u => u.unit_type === 'ESK_UNIT')))
   }, [])
+
+  const loadRequests = () => {
+    api.get('/requests/list').then(r => {
+      setRequestsList(r.data)
+      // Вычисляем следующий номер
+      const year = String(new Date().getFullYear()).slice(-2)
+      const thisYearRequests = r.data.filter(req => req.request_number?.endsWith(`-${year}`))
+      const maxNum = thisYearRequests.reduce((max, req) => {
+        const num = parseInt(req.request_number?.split('-')[0]) || 0
+        return num > max ? num : max
+      }, 0)
+      setNextNumber(`${maxNum + 1}-${year}`)
+    })
+  }
 
   useEffect(() => {
     if (tab === 'create') {
@@ -1183,18 +1234,17 @@ function RequestsPage() {
   }
 
   const handleCreate = async () => {
-    if (!requestNumber || selectedItems.length === 0) {
-      alert('Введите номер заявки и выберите ПУ')
+    if (selectedItems.length === 0) {
+      alert('Выберите ПУ')
       return
     }
     setLoading(true)
     try {
-      await api.post('/requests/create', { request_number: requestNumber, item_ids: selectedItems })
-      setRequestNumber('')
+      const r = await api.post('/requests/create', { item_ids: selectedItems })
+      alert(`✅ Создана заявка: ${r.data.request_number}`)
       setSelectedItems([])
-      api.get('/requests/list').then(r => setRequestsList(r.data))
+      loadRequests()
       loadPending()
-      alert('Заявка создана!')
     } catch (err) {
       alert(err.response?.data?.detail || 'Ошибка')
     }
@@ -1245,15 +1295,23 @@ function RequestsPage() {
             <span className="text-yellow-700">⚠️ Только согласованные ПУ от ЭСК доступны для формирования заявки</span>
           </div>
 
-          <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-4">
-            <select value={selectedUnit} onChange={e => setSelectedUnit(e.target.value)} className="px-3 py-2 border rounded-lg">
-              <option value="">Все ЭСК</option>
-              {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-            <input type="text" placeholder="Номер заявки" value={requestNumber} onChange={e => setRequestNumber(e.target.value)} className="px-3 py-2 border rounded-lg flex-1" />
-            <button onClick={handleCreate} disabled={loading || selectedItems.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-              {loading ? 'Создание...' : `Создать заявку (${selectedItems.length})`}
-            </button>
+          <div className="bg-white rounded-xl border p-4 space-y-4">
+            <div className="flex flex-wrap gap-4 items-center">
+              <select value={selectedUnit} onChange={e => setSelectedUnit(e.target.value)} className="px-3 py-2 border rounded-lg">
+                <option value="">Все ЭСК</option>
+                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+            
+            <div className="flex items-center justify-between bg-green-50 rounded-lg p-3">
+              <div>
+                <span className="text-sm text-gray-600">Следующий номер заявки: </span>
+                <span className="font-bold text-green-700 text-lg">{nextNumber}</span>
+              </div>
+              <button onClick={handleCreate} disabled={loading || selectedItems.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
+                {loading ? 'Создание...' : `Создать заявку (${selectedItems.length})`}
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border overflow-hidden">
