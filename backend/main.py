@@ -591,7 +591,7 @@ def get_items(
     if contract:
         q = q.filter(PUItem.contract_number.ilike(f"%{contract}%"))
     if ls:
-    q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
+        q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
 
 # Фильтр по типу реестра
 if filter == 'work':
