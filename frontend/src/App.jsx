@@ -207,15 +207,47 @@ function HomePage({ setPage }) {
       </div>
 
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <StatCard label="Всего ПУ" value={stats.total_pu} color="blue" />
-          <StatCard label="Установлено" value={stats.techpris + stats.zamena + stats.izhc} color="emerald" />
-          <StatCard label="На складе" value={stats.sklad} color="gray" />
-          <StatCard label="Техприс" value={stats.techpris} color="green" />
-          <StatCard label="Замена" value={stats.zamena} color="yellow" />
-          <StatCard label="ИЖЦ" value={stats.izhc} color="purple" />
-        </div>
-      )}
+  <div className="space-y-4">
+    {/* Все */}
+    <div>
+      <h3 className="text-sm font-medium text-gray-500 mb-2">📊 Все подразделения</h3>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StatCard label="Всего ПУ" value={stats.all.total} color="blue" />
+        <StatCard label="Установлено" value={stats.all.installed} color="emerald" />
+        <StatCard label="На складе" value={stats.all.sklad} color="gray" />
+        <StatCard label="Техприс" value={stats.all.techpris} color="green" />
+        <StatCard label="Замена" value={stats.all.zamena} color="yellow" />
+        <StatCard label="ИЖЦ" value={stats.all.izhc} color="purple" />
+      </div>
+    </div>
+    
+    {/* РЭС */}
+    <div>
+      <h3 className="text-sm font-medium text-gray-500 mb-2">🏢 РЭС (РСК)</h3>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StatCard label="Всего ПУ" value={stats.res.total} color="blue" />
+        <StatCard label="Установлено" value={stats.res.installed} color="emerald" />
+        <StatCard label="На складе" value={stats.res.sklad} color="gray" />
+        <StatCard label="Техприс" value={stats.res.techpris} color="green" />
+        <StatCard label="Замена" value={stats.res.zamena} color="yellow" />
+        <StatCard label="ИЖЦ" value={stats.res.izhc} color="purple" />
+      </div>
+    </div>
+    
+    {/* ЭСК */}
+    <div>
+      <h3 className="text-sm font-medium text-gray-500 mb-2">⚡ ЭСК</h3>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StatCard label="Всего ПУ" value={stats.esk.total} color="blue" />
+        <StatCard label="Установлено" value={stats.esk.installed} color="emerald" />
+        <StatCard label="На складе" value={stats.esk.sklad} color="gray" />
+        <StatCard label="Техприс" value={stats.esk.techpris} color="green" />
+        <StatCard label="Замена" value={stats.esk.zamena} color="yellow" />
+        <StatCard label="ИЖЦ" value={stats.esk.izhc} color="purple" />
+      </div>
+    </div>
+  </div>
+)}
 
       {stats?.pending_approval > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between">
@@ -263,7 +295,7 @@ function PUListPage({ filter = 'all' }) {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [unitFilter, setUnitFilter] = useState('')
-  const [excludeEsk, setExcludeEsk] = useState(false)
+  const [unitTypeFilter, setUnitTypeFilter] = useState('all')
   const [contractSearch, setContractSearch] = useState('')
   const [lsSearch, setLsSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -276,7 +308,7 @@ function PUListPage({ filter = 'all' }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { api.get('/units').then(r => setUnits(r.data)) }, [])
-  useEffect(() => { load() }, [page, status, unitFilter, excludeEsk])
+  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter])
 
   const load = async () => {
     setLoading(true)
@@ -284,7 +316,7 @@ function PUListPage({ filter = 'all' }) {
     if (search) params.search = search
     if (status) params.status = status
     if (unitFilter) params.unit_id = unitFilter
-    if (excludeEsk) params.exclude_esk = true
+    if (unitTypeFilter !== 'all') params.unit_type_filter = unitTypeFilter
     if (contractSearch) params.contract = contractSearch
     if (lsSearch) params.ls = lsSearch
     if (filter) params.filter = filter  // all, work, done
@@ -379,10 +411,11 @@ function PUListPage({ filter = 'all' }) {
             </select>
           )}
           {isSueAdmin && (
-            <label className="flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer">
-              <input type="checkbox" checked={excludeEsk} onChange={e => { setExcludeEsk(e.target.checked); setPage(1) }} />
-              <span>Без ЭСК</span>
-            </label>
+            <div className="flex items-center gap-1 px-2 py-1 border rounded-lg">
+              <button onClick={() => { setUnitTypeFilter('all'); setPage(1) }} className={`px-3 py-1 rounded ${unitTypeFilter === 'all' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>Все</button>
+              <button onClick={() => { setUnitTypeFilter('res'); setPage(1) }} className={`px-3 py-1 rounded ${unitTypeFilter === 'res' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>РЭС</button>
+              <button onClick={() => { setUnitTypeFilter('esk'); setPage(1) }} className={`px-3 py-1 rounded ${unitTypeFilter === 'esk' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>ЭСК</button>
+            </div>
           )}
         </div>
       </div>
