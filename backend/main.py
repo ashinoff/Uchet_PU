@@ -563,7 +563,7 @@ def get_items(
     search: Optional[str] = None, 
     status: Optional[str] = None, 
     unit_id: Optional[int] = None,
-    exclude_esk: Optional[bool] = None,
+    unit_type_filter: Optional[str] = None,  # all, res, esk
     contract: Optional[str] = None,
     ls: Optional[str] = None,
     filter: Optional[str] = None,  # all, work, done
@@ -585,9 +585,13 @@ def get_items(
         q = q.filter(PUItem.status == status)
     if unit_id:
         q = q.filter(PUItem.current_unit_id == unit_id)
-    if exclude_esk:
+    # Фильтр по типу подразделения
+    if unit_type_filter == 'res':
+        res_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.RES)
+        q = q.filter(PUItem.current_unit_id.in_(res_units))
+    elif unit_type_filter == 'esk':
         esk_units = db.query(Unit.id).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT]))
-        q = q.filter(~PUItem.current_unit_id.in_(esk_units))
+        q = q.filter(PUItem.current_unit_id.in_(esk_units))
     if contract:
         q = q.filter(PUItem.contract_number.ilike(f"%{contract}%"))
     if ls:
@@ -595,17 +599,18 @@ def get_items(
 
 # Фильтр по типу реестра
     if filter == 'work':
-    # В работе: не на складе И (нет ТЗ И нет Заявки)
-        q = q.filter(
-            PUItem.status != PUStatus.SKLAD,
-            (PUItem.tz_number == None) | (PUItem.tz_number == ""),
-            (PUItem.request_number == None) | (PUItem.request_number == "")
-        )
+        # В работе: не на складе И нет ТЗ И нет Заявки
+        q = q.filter(PUItem.status != PUStatus.SKLAD)
+        q = q.filter((PUItem.tz_number == None) | (PUItem.tz_number == ""))
+        q = q.filter((PUItem.request_number == None) | (PUItem.request_number == ""))
     elif filter == 'done':
-    # Завершённые: есть ТЗ ИЛИ есть Заявка
+        # Завершённые: есть ТЗ ИЛИ есть Заявка
+        from sqlalchemy import or_
         q = q.filter(
-            (PUItem.tz_number != None) & (PUItem.tz_number != "") |
-            (PUItem.request_number != None) & (PUItem.request_number != "")
+            or_(
+                (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+                (PUItem.request_number != None) & (PUItem.request_number != "")
+            )
         )
 
     total = q.count()
