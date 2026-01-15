@@ -563,9 +563,10 @@ def get_items(
     search: Optional[str] = None, 
     status: Optional[str] = None, 
     unit_id: Optional[int] = None,
-    exclude_esk: Optional[bool] = None,  # Фильтр "без ЭСК"
+    exclude_esk: Optional[bool] = None,
     contract: Optional[str] = None,
     ls: Optional[str] = None,
+    filter: Optional[str] = None,  # all, work, done
     db: Session = Depends(get_db), 
     user: User = Depends(get_current_user)
 ):
@@ -590,9 +591,24 @@ def get_items(
     if contract:
         q = q.filter(PUItem.contract_number.ilike(f"%{contract}%"))
     if ls:
-        q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
-    
-    total = q.count()
+    q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
+
+# Фильтр по типу реестра
+if filter == 'work':
+    # В работе: не на складе И (нет ТЗ И нет Заявки)
+    q = q.filter(
+        PUItem.status != PUStatus.SKLAD,
+        (PUItem.tz_number == None) | (PUItem.tz_number == ""),
+        (PUItem.request_number == None) | (PUItem.request_number == "")
+    )
+elif filter == 'done':
+    # Завершённые: есть ТЗ ИЛИ есть Заявка
+    q = q.filter(
+        (PUItem.tz_number != None) & (PUItem.tz_number != "") |
+        (PUItem.request_number != None) & (PUItem.request_number != "")
+    )
+
+total = q.count()
     items = q.order_by(PUItem.created_at.desc()).offset((page-1)*size).limit(size).all()
     
     return {
@@ -600,7 +616,9 @@ def get_items(
             "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
             "status": i.status.value, "current_unit_id": i.current_unit_id,
             "current_unit_name": i.current_unit.name if i.current_unit else None,
-            "tz_number": i.tz_number, "contract_number": i.contract_number,
+            "current_unit_type": i.current_unit.unit_type.value if i.current_unit else None,
+            "tz_number": i.tz_number, "request_number": i.request_number,
+            "contract_number": i.contract_number,
             "ls_number": i.ls_number, "consumer": i.consumer,
             "smr_date": i.smr_date.isoformat() if i.smr_date else None,
             "approval_status": i.approval_status.value if i.approval_status else None,
@@ -659,9 +677,11 @@ def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db),
     if not item:
         raise HTTPException(404, "ПУ не найден")
     
-    # Проверка доступа - СУЭ только просмотр, не может редактировать
+    # Проверка доступа - СУЭ и ЭСК Админ только просмотр
     if is_sue_admin(user):
         raise HTTPException(403, "СУЭ может только просматривать карточки ПУ")
+    if is_esk_admin(user):
+        raise HTTPException(403, "ЭСК Админ может только просматривать и перемещать ПУ")
     
     visible = get_visible_units(user, db)
     if item.current_unit_id not in visible:
@@ -862,6 +882,24 @@ def send_for_approval(item_id: int, db: Session = Depends(get_db), user: User = 
     item.approval_status = ApprovalStatus.PENDING
     db.commit()
     return {"ok": True}
+
+@app.post("/api/pu/send-approval-batch")
+def send_approval_batch(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Массовая отправка на согласование (ЭСК)"""
+    if not is_esk_user(user) and not is_esk_admin(user):
+        raise HTTPException(403, "Только ЭСК может отправлять на согласование")
+    
+    item_ids = data.get("item_ids", [])
+    if not item_ids:
+        raise HTTPException(400, "Не выбраны ПУ")
+    
+    updated = db.query(PUItem).filter(
+        PUItem.id.in_(item_ids),
+        PUItem.approval_status != ApprovalStatus.APPROVED  # Не трогаем уже согласованные
+    ).update({"approval_status": ApprovalStatus.PENDING}, synchronize_session=False)
+    
+    db.commit()
+    return {"updated": updated}
 
 @app.post("/api/pu/items/{item_id}/approve")
 def approve_item(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1106,6 +1144,24 @@ def get_tz_list(tz_type: Optional[str] = None, db: Session = Depends(get_db), us
     
     return list(tz_map.values())
 
+@app.get("/api/tz/{tz_number}/items")
+def get_tz_items(tz_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить все ПУ по номеру ТЗ"""
+    items = db.query(PUItem).filter(PUItem.tz_number == tz_number).all()
+    return [{
+        "id": i.id,
+        "serial_number": i.serial_number,
+        "pu_type": i.pu_type,
+        "status": i.status.value,
+        "current_unit_name": i.current_unit.name if i.current_unit else None,
+        "contract_number": i.contract_number,
+        "consumer": i.consumer,
+        "address": i.address,
+        "power": i.power,
+        "faza": i.faza,
+        "voltage": i.voltage
+    } for i in items]
+
 @app.get("/api/tz/pending")
 def get_pending_for_tz(
     status: str, 
@@ -1195,6 +1251,26 @@ def get_requests_list(db: Session = Depends(get_db), user: User = Depends(get_cu
     
     return list(req_map.values())
 
+@app.get("/api/requests/{request_number}/items")
+def get_request_items(request_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить все ПУ по номеру заявки"""
+    items = db.query(PUItem).filter(PUItem.request_number == request_number).all()
+    return [{
+        "id": i.id,
+        "serial_number": i.serial_number,
+        "pu_type": i.pu_type,
+        "status": i.status.value,
+        "current_unit_name": i.current_unit.name if i.current_unit else None,
+        "contract_number": i.contract_number,
+        "consumer": i.consumer,
+        "address": i.address,
+        "power": i.power,
+        "faza": i.faza,
+        "voltage": i.voltage,
+        "ttr_esk_id": i.ttr_esk_id,
+        "trubostoyka": i.trubostoyka
+    } for i in items]
+
 @app.get("/api/requests/pending")
 def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Согласованные ПУ для заявки ЭСК"""
@@ -1255,6 +1331,55 @@ def create_request(data: dict, db: Session = Depends(get_db), user: User = Depen
     db.commit()
     
     return {"created": updated, "request_number": request_number}
+
+
+@app.get("/api/memo/generate")
+def generate_memo(
+    tz_number: Optional[str] = None,
+    request_number: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Генерация данных для служебной записки"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может формировать служебки")
+    
+    if tz_number:
+        items = db.query(PUItem).filter(PUItem.tz_number == tz_number).all()
+        doc_type = "ТЗ"
+        doc_number = tz_number
+    elif request_number:
+        items = db.query(PUItem).filter(PUItem.request_number == request_number).all()
+        doc_type = "Заявка"
+        doc_number = request_number
+    else:
+        raise HTTPException(400, "Укажите номер ТЗ или заявки")
+    
+    if not items:
+        raise HTTPException(404, "ПУ не найдены")
+    
+    # Группируем по РЭС/ЭСК
+    units_data = {}
+    for item in items:
+        unit_name = item.current_unit.name if item.current_unit else "Не указано"
+        if unit_name not in units_data:
+            units_data[unit_name] = []
+        units_data[unit_name].append({
+            "serial_number": item.serial_number,
+            "pu_type": item.pu_type,
+            "contract_number": item.contract_number,
+            "consumer": item.consumer,
+            "address": item.address,
+            "power": item.power
+        })
+    
+    return {
+        "doc_type": doc_type,
+        "doc_number": doc_number,
+        "date": datetime.utcnow().strftime("%d.%m.%Y"),
+        "total_count": len(items),
+        "units": units_data
+    }
 
 # ==================== API: ИМПОРТ ДАННЫХ ИЗ EXCEL ====================
 
