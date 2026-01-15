@@ -208,44 +208,50 @@ function HomePage({ setPage }) {
 
       {stats && (
   <div className="space-y-4">
-    {/* Все */}
-    <div>
-      <h3 className="text-sm font-medium text-gray-500 mb-2">📊 Все подразделения</h3>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard label="Всего ПУ" value={stats.all.total} color="blue" />
-        <StatCard label="Установлено" value={stats.all.installed} color="emerald" />
-        <StatCard label="На складе" value={stats.all.sklad} color="gray" />
-        <StatCard label="Техприс" value={stats.all.techpris} color="green" />
-        <StatCard label="Замена" value={stats.all.zamena} color="yellow" />
-        <StatCard label="ИЖЦ" value={stats.all.izhc} color="purple" />
+    {/* Все — только для СУЭ */}
+    {isSueAdmin && (
+      <div>
+        <h3 className="text-sm font-medium text-gray-500 mb-2">📊 Все подразделения</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatCard label="Всего ПУ" value={stats.all.total} color="blue" />
+          <StatCard label="Установлено" value={stats.all.installed} color="emerald" />
+          <StatCard label="На складе" value={stats.all.sklad} color="gray" />
+          <StatCard label="Техприс" value={stats.all.techpris} color="green" />
+          <StatCard label="Замена" value={stats.all.zamena} color="yellow" />
+          <StatCard label="ИЖЦ" value={stats.all.izhc} color="purple" />
+        </div>
       </div>
-    </div>
+    )}
     
-    {/* РЭС */}
-    <div>
-      <h3 className="text-sm font-medium text-gray-500 mb-2">🏢 РЭС (РСК)</h3>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard label="Всего ПУ" value={stats.res.total} color="blue" />
-        <StatCard label="Установлено" value={stats.res.installed} color="emerald" />
-        <StatCard label="На складе" value={stats.res.sklad} color="gray" />
-        <StatCard label="Техприс" value={stats.res.techpris} color="green" />
-        <StatCard label="Замена" value={stats.res.zamena} color="yellow" />
-        <StatCard label="ИЖЦ" value={stats.res.izhc} color="purple" />
+    {/* РЭС — только для СУЭ */}
+    {isSueAdmin && (
+      <div>
+        <h3 className="text-sm font-medium text-gray-500 mb-2">🏢 РЭС (РСК)</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatCard label="Всего ПУ" value={stats.res.total} color="blue" />
+          <StatCard label="Установлено" value={stats.res.installed} color="emerald" />
+          <StatCard label="На складе" value={stats.res.sklad} color="gray" />
+          <StatCard label="Техприс" value={stats.res.techpris} color="green" />
+          <StatCard label="Замена" value={stats.res.zamena} color="yellow" />
+          <StatCard label="ИЖЦ" value={stats.res.izhc} color="purple" />
+        </div>
       </div>
-    </div>
+    )}
     
-    {/* ЭСК */}
-    <div>
-      <h3 className="text-sm font-medium text-gray-500 mb-2">⚡ ЭСК</h3>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard label="Всего ПУ" value={stats.esk.total} color="blue" />
-        <StatCard label="Установлено" value={stats.esk.installed} color="emerald" />
-        <StatCard label="На складе" value={stats.esk.sklad} color="gray" />
-        <StatCard label="Техприс" value={stats.esk.techpris} color="green" />
-        <StatCard label="Замена" value={stats.esk.zamena} color="yellow" />
-        <StatCard label="ИЖЦ" value={stats.esk.izhc} color="purple" />
+    {/* ЭСК — для СУЭ и ЭСК Админа */}
+    {(isSueAdmin || isEskAdmin) && (
+      <div>
+        <h3 className="text-sm font-medium text-gray-500 mb-2">⚡ ЭСК</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatCard label="Всего ПУ" value={stats.esk.total} color="blue" />
+          <StatCard label="Установлено" value={stats.esk.installed} color="emerald" />
+          <StatCard label="На складе" value={stats.esk.sklad} color="gray" />
+          <StatCard label="Техприс" value={stats.esk.techpris} color="green" />
+          <StatCard label="Замена" value={stats.esk.zamena} color="yellow" />
+          <StatCard label="ИЖЦ" value={stats.esk.izhc} color="purple" />
+        </div>
       </div>
-    </div>
+    )}
   </div>
 )}
 
@@ -308,7 +314,7 @@ function PUListPage({ filter = 'all' }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { api.get('/units').then(r => setUnits(r.data)) }, [])
-  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter])
+  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter])
 
   const load = async () => {
     setLoading(true)
