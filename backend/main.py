@@ -625,8 +625,7 @@ def get_items(
 
 # Фильтр по типу реестра
     if filter == 'work':
-        # В работе: не на складе И нет ТЗ И нет Заявки
-        q = q.filter(PUItem.status != PUStatus.SKLAD)
+        # В работе: нет ТЗ И нет Заявки (любой статус)
         q = q.filter((PUItem.tz_number == None) | (PUItem.tz_number == ""))
         q = q.filter((PUItem.request_number == None) | (PUItem.request_number == ""))
     elif filter == 'done':
