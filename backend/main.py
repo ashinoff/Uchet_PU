@@ -517,19 +517,45 @@ def update_user(user_id: int, data: dict, db: Session = Depends(get_db), user: U
 def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     visible = get_visible_units(user, db)
     
-    q = db.query(PUItem)
-    if is_lab_user(user):
-        regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
-        q = q.filter(PUItem.register_id.in_(regs))
-    elif not is_sue_admin(user):
-        q = q.filter(PUItem.current_unit_id.in_(visible))
+    # Получаем ID РЭС и ЭСК
+    res_unit_ids = [u.id for u in db.query(Unit).filter(Unit.unit_type == UnitType.RES).all()]
+    esk_unit_ids = [u.id for u in db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).all()]
     
-    total = q.count()
-    sklad = q.filter(PUItem.status == PUStatus.SKLAD).count()
-    techpris = q.filter(PUItem.status == PUStatus.TECHPRIS).count()
-    zamena = q.filter(PUItem.status == PUStatus.ZAMENA).count()
-    izhc = q.filter(PUItem.status == PUStatus.IZHC).count()
-    installed = q.filter(PUItem.status == PUStatus.INSTALLED).count()
+    def get_stats(unit_ids=None):
+        q = db.query(PUItem)
+        if is_lab_user(user):
+            regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
+            q = q.filter(PUItem.register_id.in_(regs))
+        elif not is_sue_admin(user):
+            q = q.filter(PUItem.current_unit_id.in_(visible))
+        
+        if unit_ids:
+            q = q.filter(PUItem.current_unit_id.in_(unit_ids))
+        
+        total = q.count()
+        sklad = q.filter(PUItem.status == PUStatus.SKLAD).count()
+        techpris = q.filter(PUItem.status == PUStatus.TECHPRIS).count()
+        zamena = q.filter(PUItem.status == PUStatus.ZAMENA).count()
+        izhc = q.filter(PUItem.status == PUStatus.IZHC).count()
+        installed = techpris + zamena + izhc
+        
+        return {
+            "total": total,
+            "installed": installed,
+            "sklad": sklad,
+            "techpris": techpris,
+            "zamena": zamena,
+            "izhc": izhc
+        }
+    
+    # Статистика по всем
+    stats_all = get_stats()
+    
+    # Статистика по РЭС
+    stats_res = get_stats(res_unit_ids)
+    
+    # Статистика по ЭСК
+    stats_esk = get_stats(esk_unit_ids)
     
     # Последние загрузки
     reg_q = db.query(PURegister)
@@ -537,10 +563,9 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         reg_q = reg_q.filter(PURegister.uploaded_by == user.id)
     recent = reg_q.order_by(PURegister.uploaded_at.desc()).limit(5).all()
     
-    # Количество на согласовании (для РЭС)
+    # Количество на согласовании
     pending_approval = 0
     if is_res_user(user) and user.unit_id:
-        # Ищем ПУ в ЭСК которые привязаны к РЭС пользователя и ждут согласования
         res_code = user.unit.code if user.unit else ""
         esk_code = res_code.replace("RES_", "ESK_") if res_code else ""
         esk_unit = db.query(Unit).filter(Unit.code == esk_code).first()
@@ -551,8 +576,9 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
             ).count()
     
     return {
-        "total_pu": total, "sklad": sklad, "techpris": techpris, 
-        "zamena": zamena, "izhc": izhc, "installed": installed,
+        "all": stats_all,
+        "res": stats_res,
+        "esk": stats_esk,
         "pending_approval": pending_approval,
         "recent_registers": [{"id": r.id, "filename": r.filename, "items_count": r.items_count, "uploaded_at": r.uploaded_at} for r in recent]
     }
