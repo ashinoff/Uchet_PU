@@ -594,21 +594,21 @@ def get_items(
         q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
 
 # Фильтр по типу реестра
-if filter == 'work':
+    if filter == 'work':
     # В работе: не на складе И (нет ТЗ И нет Заявки)
-    q = q.filter(
-        PUItem.status != PUStatus.SKLAD,
-        (PUItem.tz_number == None) | (PUItem.tz_number == ""),
-        (PUItem.request_number == None) | (PUItem.request_number == "")
-    )
-elif filter == 'done':
+        q = q.filter(
+            PUItem.status != PUStatus.SKLAD,
+            (PUItem.tz_number == None) | (PUItem.tz_number == ""),
+            (PUItem.request_number == None) | (PUItem.request_number == "")
+        )
+    elif filter == 'done':
     # Завершённые: есть ТЗ ИЛИ есть Заявка
-    q = q.filter(
-        (PUItem.tz_number != None) & (PUItem.tz_number != "") |
-        (PUItem.request_number != None) & (PUItem.request_number != "")
-    )
+        q = q.filter(
+            (PUItem.tz_number != None) & (PUItem.tz_number != "") |
+            (PUItem.request_number != None) & (PUItem.request_number != "")
+        )
 
-total = q.count()
+    total = q.count()
     items = q.order_by(PUItem.created_at.desc()).offset((page-1)*size).limit(size).all()
     
     return {
