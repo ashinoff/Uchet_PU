@@ -378,15 +378,16 @@ function PUListPage() {
             <thead className="bg-gray-50">
               <tr>
                 {canMove && <th className="w-10 px-4 py-3"><input type="checkbox" onChange={e => setSelected(e.target.checked ? items.map(i => i.id) : [])} checked={selected.length === items.length && items.length > 0} /></th>}
-                <th className="px-4 py-3 text-left">Серийный номер</th>
-                <th className="px-4 py-3 text-left">Тип</th>
-                <th className="px-4 py-3 text-left">Подразделение</th>
-                <th className="px-4 py-3 text-left">Статус</th>
-                <th className="px-4 py-3 text-left">№ ТЗ</th>
-                <th className="px-4 py-3 text-left">Дата</th>
-                <th className="w-16"></th>
-              </tr>
-            </thead>
+               <th className="px-4 py-3 text-left">Серийный номер</th>
+               <th className="px-4 py-3 text-left">Тип</th>
+               <th className="px-4 py-3 text-left">Подразделение</th>
+               <th className="px-4 py-3 text-left">Статус</th>
+               <th className="px-4 py-3 text-left">№ ТЗ</th>
+               <th className="px-4 py-3 text-left">№ Заявки</th>
+               <th className="px-4 py-3 text-left">Дата</th>
+               <th className="w-16"></th>
+             </tr>
+           </thead>
             <tbody>
               {items.map(i => (
                 <tr key={i.id} className="border-t hover:bg-gray-50">
@@ -396,6 +397,7 @@ function PUListPage() {
                   <td className="px-4 py-3">{i.current_unit_name || '—'}</td>
                   <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${statusColors[i.status] || 'bg-gray-100'}`}>{statusLabels[i.status] || i.status}</span></td>
                   <td className="px-4 py-3">{i.tz_number || '—'}</td>
+                  <td className="px-4 py-3">{i.request_number || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{i.uploaded_at ? new Date(i.uploaded_at).toLocaleDateString('ru') : '—'}</td>
                   <td className="px-4 py-3"><button onClick={() => setCardModal(i.id)} className="text-blue-600 hover:underline">📋</button></td>
                 </tr>
@@ -604,7 +606,7 @@ function PUCardModal({ itemId, onClose }) {
     const isEsk = item?.current_unit_type === 'ESK_UNIT' || item?.current_unit_type === 'ESK'
     const isRes = item?.current_unit_type === 'RES'
 // СУЭ только просмотр, РЭС редактирует свои, ЭСК редактирует свои
-    const canEdit = (isResUser && isRes) || ((isEskUser || isEskAdmin) && isEsk)
+    const canEdit = (isResUser && isRes) || (isEskUser && isEsk)
 
   // Для ЭСК только Техприс и Склад
   const statusOptions = isEsk 
