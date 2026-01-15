@@ -1107,8 +1107,14 @@ def get_tz_list(tz_type: Optional[str] = None, db: Session = Depends(get_db), us
     return list(tz_map.values())
 
 @app.get("/api/tz/pending")
-def get_pending_for_tz(status: str, unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """ПУ без ТЗ для формирования"""
+def get_pending_for_tz(
+    status: str, 
+    unit_id: Optional[int] = None, 
+    power_category: Optional[int] = None,
+    db: Session = Depends(get_db), 
+    user: User = Depends(get_current_user)
+):
+    """ПУ без ТЗ для формирования с фильтром по мощности"""
     if not is_sue_admin(user):
         raise HTTPException(403, "Только СУЭ может формировать ТЗ")
     
@@ -1116,8 +1122,17 @@ def get_pending_for_tz(status: str, unit_id: Optional[int] = None, db: Session =
         PUItem.status == status,
         (PUItem.tz_number == None) | (PUItem.tz_number == "")
     )
+    
     if unit_id:
         q = q.filter(PUItem.current_unit_id == unit_id)
+    
+    # Фильтр по категории мощности
+    if power_category == 1:
+        q = q.filter((PUItem.power == None) | (PUItem.power < 15))
+    elif power_category == 2:
+        q = q.filter(PUItem.power >= 15, PUItem.power < 150)
+    elif power_category == 3:
+        q = q.filter(PUItem.power >= 150)
     
     # Только РЭС
     res_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.RES)
@@ -1127,19 +1142,32 @@ def get_pending_for_tz(status: str, unit_id: Optional[int] = None, db: Session =
     return [{
         "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
         "current_unit_name": i.current_unit.name if i.current_unit else None,
-        "current_unit_id": i.current_unit_id
+        "current_unit_id": i.current_unit_id,
+        "power": i.power
     } for i in items]
 
 @app.post("/api/tz/create")
 def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Создать ТЗ"""
+    """Создать ТЗ с автоматическим номером"""
     if not is_sue_admin(user):
         raise HTTPException(403, "Только СУЭ может формировать ТЗ")
     
-    tz_number = data["tz_number"]
     item_ids = data["item_ids"]
+    unit_id = data["unit_id"]  # РЭС
+    power_category = data["power_category"]  # 1, 2 или 3
     
-    # Проверяем уникальность номера ТЗ
+    # Получаем букву РЭС
+    unit = db.query(Unit).filter(Unit.id == unit_id).first()
+    if not unit or not unit.short_code:
+        raise HTTPException(400, "РЭС не найден или не указан код")
+    
+    # Формируем номер: 1а/01-25
+    now = datetime.utcnow()
+    month = now.strftime("%m")
+    year = now.strftime("%y")
+    tz_number = f"{power_category}{unit.short_code}/{month}-{year}"
+    
+    # Проверяем уникальность
     existing = db.query(PUItem).filter(PUItem.tz_number == tz_number).first()
     if existing:
         raise HTTPException(400, f"ТЗ с номером {tz_number} уже существует")
@@ -1194,12 +1222,34 @@ def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends
 
 @app.post("/api/requests/create")
 def create_request(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Создать заявку ЭСК"""
+    """Создать заявку ЭСК с автоматическим номером"""
     if not is_sue_admin(user):
         raise HTTPException(403, "Только СУЭ может формировать заявки")
     
-    request_number = data["request_number"]
     item_ids = data["item_ids"]
+    
+    # Автоматический номер: следующий по порядку в текущем году
+    current_year = datetime.utcnow().year
+    year_short = str(current_year)[-2:]  # "25"
+    
+    # Ищем последний номер заявки за этот год
+    last_request = db.query(PUItem).filter(
+        PUItem.request_number != None,
+        PUItem.request_number != "",
+        PUItem.request_number.like(f"%-{year_short}")
+    ).order_by(PUItem.request_number.desc()).first()
+    
+    if last_request and last_request.request_number:
+        # Извлекаем номер: "5-25" -> 5
+        try:
+            last_num = int(last_request.request_number.split("-")[0])
+            next_num = last_num + 1
+        except:
+            next_num = 1
+    else:
+        next_num = 1
+    
+    request_number = f"{next_num}-{year_short}"
     
     updated = db.query(PUItem).filter(PUItem.id.in_(item_ids)).update({"request_number": request_number}, synchronize_session=False)
     db.commit()
