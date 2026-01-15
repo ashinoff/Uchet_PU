@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react'
+  import { useState, useEffect, createContext, useContext } from 'react'
 import api from './api'
 
 // ==================== КОНТЕКСТ АВТОРИЗАЦИИ ====================
@@ -66,11 +66,14 @@ function Main() {
         <Header />
         <div className="p-6">
           {page === 'home' && <HomePage setPage={setPage} />}
-          {page === 'pu' && <PUListPage />}
+          {page === 'pu' && <PUListPage filter="all" />}
+          {page === 'pu-work' && <PUListPage filter="work" />}
+          {page === 'pu-done' && <PUListPage filter="done" />}
           {page === 'upload' && <UploadPage />}
           {page === 'approval' && <ApprovalPage />}
           {page === 'tz' && <TZPage />}
           {page === 'requests' && <RequestsPage />}
+          {page === 'memo' && <MemoPage />}
           {page === 'settings' && <SettingsPage />}
         </div>
       </div>
@@ -93,9 +96,12 @@ function Sidebar({ page, setPage }) {
     { id: 'home', label: '🏠 Главная', show: true },
     { id: 'pu', label: '📦 Приборы учета', show: true },
     { id: 'upload', label: '📤 Загрузка', show: canUpload },
+    { id: 'pu-work', label: '🔧 В работе', show: true },
+    { id: 'pu-done', label: '✅ Завершённые СМР', show: true },
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
     { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
     { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin },
+    { id: 'memo', label: '📄 Служебки', show: isSueAdmin },
     { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin },
   ].filter(i => i.show)
 
@@ -250,8 +256,8 @@ function StatCard({ label, value, color = 'blue' }) {
 }
 
 // ==================== СПИСОК ПУ ====================
-function PUListPage() {
-  const { canMove, canDelete, isSueAdmin, isEskAdmin } = useAuth()
+function PUListPage({ filter = 'all' }) {
+  const { canMove, canDelete, isSueAdmin, isEskAdmin, isEskUser } = useAuth()
   const [items, setItems] = useState([])
   const [units, setUnits] = useState([])
   const [search, setSearch] = useState('')
@@ -281,6 +287,7 @@ function PUListPage() {
     if (excludeEsk) params.exclude_esk = true
     if (contractSearch) params.contract = contractSearch
     if (lsSearch) params.ls = lsSearch
+    if (filter) params.filter = filter  // all, work, done
     const r = await api.get('/pu/items', { params })
     setItems(r.data.items)
     setTotal(r.data.total)
@@ -308,6 +315,18 @@ function PUListPage() {
     }
   }
 
+
+  const handleSendApprovalBatch = async () => {
+  try {
+    await api.post('/pu/send-approval-batch', { item_ids: selected })
+    alert(`✅ Отправлено на согласование: ${selected.length} ПУ`)
+    setSelected([])
+    load()
+  } catch (err) {
+    alert(err.response?.data?.detail || 'Ошибка отправки')
+  }
+}
+  
   const statusLabels = { SKLAD: 'Склад', TECHPRIS: 'Техприс', ZAMENA: 'Замена', IZHC: 'ИЖЦ', INSTALLED: 'Установлен' }
   const statusColors = { SKLAD: 'bg-gray-100', TECHPRIS: 'bg-green-100 text-green-800', ZAMENA: 'bg-yellow-100 text-yellow-800', IZHC: 'bg-purple-100 text-purple-800', INSTALLED: 'bg-emerald-100 text-emerald-800' }
 
@@ -330,7 +349,14 @@ function PUListPage() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold">Приборы учета</h1><p className="text-gray-500">Всего: {total}</p></div>
+        <div>
+          <h1 className="text-2xl font-bold">
+            {filter === 'all' && 'Все приборы учета'}
+            {filter === 'work' && '🔧 В работе'}
+            {filter === 'done' && '✅ Завершённые СМР'}
+          </h1>
+          <p className="text-gray-500">Всего: {total}</p>
+        </div>
         <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
       </div>
 
@@ -366,6 +392,9 @@ function PUListPage() {
           <span className="text-blue-700 font-medium">Выбрано: {selected.length}</span>
           <div className="flex gap-2">
             {canMove && <button onClick={() => setMoveModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➡️ Переместить</button>}
+            {(isEskUser || isEskAdmin) && (
+              <button onClick={handleSendApprovalBatch} className="px-4 py-2 bg-orange-500 text-white rounded-lg">📤 На согласование</button>
+            )}
             {canDelete && <button onClick={() => setDeleteModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">🗑️ Удалить</button>}
             <button onClick={() => setSelected([])} className="px-4 py-2 bg-gray-100 rounded-lg">Отменить</button>
           </div>
@@ -384,6 +413,7 @@ function PUListPage() {
                <th className="px-4 py-3 text-left">Статус</th>
                <th className="px-4 py-3 text-left">№ ТЗ</th>
                <th className="px-4 py-3 text-left">№ Заявки</th>
+                <th className="px-4 py-3 text-left">Согласование</th>
                <th className="px-4 py-3 text-left">Дата</th>
                <th className="w-16"></th>
              </tr>
@@ -398,6 +428,11 @@ function PUListPage() {
                   <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${statusColors[i.status] || 'bg-gray-100'}`}>{statusLabels[i.status] || i.status}</span></td>
                   <td className="px-4 py-3">{i.tz_number || '—'}</td>
                   <td className="px-4 py-3">{i.request_number || '—'}</td>
+                  <td className="px-4 py-3">
+                    {i.approval_status === 'APPROVED' && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">✓ Согласовано</span>}
+                    {i.approval_status === 'PENDING' && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">⏳ На согласовании</span>}
+                    {(!i.approval_status || i.approval_status === 'NONE') && <span className="text-gray-400">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-gray-500">{i.uploaded_at ? new Date(i.uploaded_at).toLocaleDateString('ru') : '—'}</td>
                   <td className="px-4 py-3"><button onClick={() => setCardModal(i.id)} className="text-blue-600 hover:underline">📋</button></td>
                 </tr>
@@ -1017,6 +1052,8 @@ function TZPage() {
   const { isSueAdmin } = useAuth()
   const [tab, setTab] = useState('list')
   const [tzList, setTzList] = useState([])
+  const [expandedTz, setExpandedTz] = useState(null)
+  const [tzItems, setTzItems] = useState([])
   const [pendingItems, setPendingItems] = useState([])
   const [units, setUnits] = useState([])
   const [selectedStatus, setSelectedStatus] = useState('TECHPRIS')
@@ -1043,7 +1080,33 @@ function TZPage() {
     api.get('/tz/pending', { params }).then(r => setPendingItems(r.data))
   }
 
-  // Генерируем превью номера ТЗ
+  const toggleExpand = async (tzNumber) => {
+    if (expandedTz === tzNumber) {
+      setExpandedTz(null)
+      setTzItems([])
+    } else {
+      setExpandedTz(tzNumber)
+      const r = await api.get(`/tz/${encodeURIComponent(tzNumber)}/items`)
+      setTzItems(r.data)
+    }
+  }
+
+  const exportToExcel = () => {
+    if (tzItems.length === 0) return
+    const headers = ['№', 'Серийный номер', 'Тип ПУ', 'Потребитель', 'Адрес', 'Мощность', 'Фазность', 'Напряжение']
+    const rows = tzItems.map((i, idx) => [
+      idx + 1, i.serial_number, i.pu_type || '', i.consumer || '', i.address || '', 
+      i.power || '', i.faza || '', i.voltage || ''
+    ])
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(';')).join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ТЗ_${expandedTz}.csv`
+    a.click()
+  }
+
   const getPreviewTzNumber = () => {
     if (!selectedUnit || !selectedPower) return '—'
     const unit = units.find(u => u.id === parseInt(selectedUnit))
@@ -1095,6 +1158,7 @@ function TZPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="w-10 px-4 py-3"></th>
                   <th className="px-4 py-3 text-left">Номер ТЗ</th>
                   <th className="px-4 py-3 text-left">Тип</th>
                   <th className="px-4 py-3 text-left">РЭС</th>
@@ -1103,12 +1167,47 @@ function TZPage() {
               </thead>
               <tbody>
                 {tzList.map((tz, idx) => (
-                  <tr key={idx} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{tz.tz_number}</td>
-                    <td className="px-4 py-3">{tz.status}</td>
-                    <td className="px-4 py-3">{tz.unit_name || '—'}</td>
-                    <td className="px-4 py-3">{tz.count}</td>
-                  </tr>
+                  <>
+                    <tr key={idx} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(tz.tz_number)}>
+                      <td className="px-4 py-3">{expandedTz === tz.tz_number ? '▼' : '▶'}</td>
+                      <td className="px-4 py-3 font-medium">{tz.tz_number}</td>
+                      <td className="px-4 py-3">{tz.status}</td>
+                      <td className="px-4 py-3">{tz.unit_name || '—'}</td>
+                      <td className="px-4 py-3">{tz.count}</td>
+                    </tr>
+                    {expandedTz === tz.tz_number && (
+                      <tr>
+                        <td colSpan={5} className="bg-gray-50 p-4">
+                          <div className="flex justify-between items-center mb-3">
+                            <span className="font-medium">ПУ в ТЗ {tz.tz_number}</span>
+                            <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                          </div>
+                          <table className="w-full text-sm bg-white rounded-lg overflow-hidden">
+                            <thead className="bg-gray-100">
+                              <tr>
+                                <th className="px-3 py-2 text-left">№</th>
+                                <th className="px-3 py-2 text-left">Серийный номер</th>
+                                <th className="px-3 py-2 text-left">Тип</th>
+                                <th className="px-3 py-2 text-left">Потребитель</th>
+                                <th className="px-3 py-2 text-left">Мощность</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tzItems.map((item, i) => (
+                                <tr key={item.id} className="border-t">
+                                  <td className="px-3 py-2">{i + 1}</td>
+                                  <td className="px-3 py-2 font-mono">{item.serial_number}</td>
+                                  <td className="px-3 py-2 max-w-xs truncate">{item.pu_type || '—'}</td>
+                                  <td className="px-3 py-2">{item.consumer || '—'}</td>
+                                  <td className="px-3 py-2">{item.power ? `${item.power} кВт` : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
@@ -1197,6 +1296,8 @@ function RequestsPage() {
   const { isSueAdmin } = useAuth()
   const [tab, setTab] = useState('list')
   const [requestsList, setRequestsList] = useState([])
+  const [expandedReq, setExpandedReq] = useState(null)
+  const [reqItems, setReqItems] = useState([])
   const [pendingItems, setPendingItems] = useState([])
   const [units, setUnits] = useState([])
   const [selectedUnit, setSelectedUnit] = useState('')
@@ -1212,7 +1313,6 @@ function RequestsPage() {
   const loadRequests = () => {
     api.get('/requests/list').then(r => {
       setRequestsList(r.data)
-      // Вычисляем следующий номер
       const year = String(new Date().getFullYear()).slice(-2)
       const thisYearRequests = r.data.filter(req => req.request_number?.endsWith(`-${year}`))
       const maxNum = thisYearRequests.reduce((max, req) => {
@@ -1233,6 +1333,33 @@ function RequestsPage() {
     const params = {}
     if (selectedUnit) params.unit_id = selectedUnit
     api.get('/requests/pending', { params }).then(r => setPendingItems(r.data))
+  }
+
+  const toggleExpand = async (requestNumber) => {
+    if (expandedReq === requestNumber) {
+      setExpandedReq(null)
+      setReqItems([])
+    } else {
+      setExpandedReq(requestNumber)
+      const r = await api.get(`/requests/${encodeURIComponent(requestNumber)}/items`)
+      setReqItems(r.data)
+    }
+  }
+
+  const exportToExcel = () => {
+    if (reqItems.length === 0) return
+    const headers = ['№', 'Серийный номер', 'Тип ПУ', 'Договор', 'Потребитель', 'Адрес', 'Мощность']
+    const rows = reqItems.map((i, idx) => [
+      idx + 1, i.serial_number, i.pu_type || '', i.contract_number || '', 
+      i.consumer || '', i.address || '', i.power || ''
+    ])
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(';')).join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Заявка_${expandedReq}.csv`
+    a.click()
   }
 
   const handleCreate = async () => {
@@ -1272,6 +1399,7 @@ function RequestsPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="w-10 px-4 py-3"></th>
                   <th className="px-4 py-3 text-left">Номер заявки</th>
                   <th className="px-4 py-3 text-left">ЭСК</th>
                   <th className="px-4 py-3 text-left">Кол-во ПУ</th>
@@ -1279,11 +1407,46 @@ function RequestsPage() {
               </thead>
               <tbody>
                 {requestsList.map((req, idx) => (
-                  <tr key={idx} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{req.request_number}</td>
-                    <td className="px-4 py-3">{req.unit_name || '—'}</td>
-                    <td className="px-4 py-3">{req.count}</td>
-                  </tr>
+                  <>
+                    <tr key={idx} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(req.request_number)}>
+                      <td className="px-4 py-3">{expandedReq === req.request_number ? '▼' : '▶'}</td>
+                      <td className="px-4 py-3 font-medium">{req.request_number}</td>
+                      <td className="px-4 py-3">{req.unit_name || '—'}</td>
+                      <td className="px-4 py-3">{req.count}</td>
+                    </tr>
+                    {expandedReq === req.request_number && (
+                      <tr>
+                        <td colSpan={4} className="bg-gray-50 p-4">
+                          <div className="flex justify-between items-center mb-3">
+                            <span className="font-medium">ПУ в заявке {req.request_number}</span>
+                            <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                          </div>
+                          <table className="w-full text-sm bg-white rounded-lg overflow-hidden">
+                            <thead className="bg-gray-100">
+                              <tr>
+                                <th className="px-3 py-2 text-left">№</th>
+                                <th className="px-3 py-2 text-left">Серийный номер</th>
+                                <th className="px-3 py-2 text-left">Договор</th>
+                                <th className="px-3 py-2 text-left">Потребитель</th>
+                                <th className="px-3 py-2 text-left">Адрес</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {reqItems.map((item, i) => (
+                                <tr key={item.id} className="border-t">
+                                  <td className="px-3 py-2">{i + 1}</td>
+                                  <td className="px-3 py-2 font-mono">{item.serial_number}</td>
+                                  <td className="px-3 py-2">{item.contract_number || '—'}</td>
+                                  <td className="px-3 py-2">{item.consumer || '—'}</td>
+                                  <td className="px-3 py-2 max-w-xs truncate">{item.address || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
@@ -1353,6 +1516,157 @@ function RequestsPage() {
                 </table>
               </>
             )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MemoPage() {
+  const { isSueAdmin } = useAuth()
+  const [tzList, setTzList] = useState([])
+  const [requestsList, setRequestsList] = useState([])
+  const [selectedDoc, setSelectedDoc] = useState(null)
+  const [memoData, setMemoData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    api.get('/tz/list').then(r => setTzList(r.data))
+    api.get('/requests/list').then(r => setRequestsList(r.data))
+  }, [])
+
+  const generateMemo = async (type, number) => {
+    setLoading(true)
+    try {
+      const params = type === 'tz' ? { tz_number: number } : { request_number: number }
+      const r = await api.get('/memo/generate', { params })
+      setMemoData(r.data)
+      setSelectedDoc({ type, number })
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка')
+    }
+    setLoading(false)
+  }
+
+  const exportMemo = () => {
+    if (!memoData) return
+    
+    let text = `СЛУЖЕБНАЯ ЗАПИСКА\n\n`
+    text += `Дата: ${memoData.date}\n`
+    text += `${memoData.doc_type}: ${memoData.doc_number}\n`
+    text += `Всего ПУ: ${memoData.total_count}\n\n`
+    
+    for (const [unit, items] of Object.entries(memoData.units)) {
+      text += `\n${unit}:\n`
+      text += `${'—'.repeat(50)}\n`
+      items.forEach((item, idx) => {
+        text += `${idx + 1}. ${item.serial_number}\n`
+        if (item.consumer) text += `   Потребитель: ${item.consumer}\n`
+        if (item.address) text += `   Адрес: ${item.address}\n`
+        if (item.power) text += `   Мощность: ${item.power} кВт\n`
+      })
+    }
+    
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Служебка_${memoData.doc_type}_${memoData.doc_number}.txt`
+    a.click()
+  }
+
+  if (!isSueAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">📄 Формирование служебных записок</h1>
+
+      <div className="grid grid-cols-2 gap-6">
+        {/* ТЗ */}
+        <div className="bg-white rounded-xl border p-4">
+          <h2 className="font-semibold mb-4">Технические задания</h2>
+          {tzList.length === 0 ? (
+            <p className="text-gray-500 text-sm">Нет сформированных ТЗ</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {tzList.map((tz, idx) => (
+                <div key={idx} className={`p-3 rounded-lg cursor-pointer flex justify-between items-center ${selectedDoc?.number === tz.tz_number ? 'bg-blue-100 border-blue-300' : 'bg-gray-50 hover:bg-gray-100'}`} onClick={() => generateMemo('tz', tz.tz_number)}>
+                  <div>
+                    <div className="font-medium">{tz.tz_number}</div>
+                    <div className="text-sm text-gray-500">{tz.unit_name} • {tz.count} ПУ</div>
+                  </div>
+                  <span className="text-gray-400">→</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Заявки */}
+        <div className="bg-white rounded-xl border p-4">
+          <h2 className="font-semibold mb-4">Заявки ЭСК</h2>
+          {requestsList.length === 0 ? (
+            <p className="text-gray-500 text-sm">Нет сформированных заявок</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {requestsList.map((req, idx) => (
+                <div key={idx} className={`p-3 rounded-lg cursor-pointer flex justify-between items-center ${selectedDoc?.number === req.request_number ? 'bg-green-100 border-green-300' : 'bg-gray-50 hover:bg-gray-100'}`} onClick={() => generateMemo('request', req.request_number)}>
+                  <div>
+                    <div className="font-medium">{req.request_number}</div>
+                    <div className="text-sm text-gray-500">{req.unit_name} • {req.count} ПУ</div>
+                  </div>
+                  <span className="text-gray-400">→</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Превью служебки */}
+      {loading && <div className="text-center py-8">Загрузка...</div>}
+      
+      {memoData && !loading && (
+        <div className="bg-white rounded-xl border">
+          <div className="p-4 border-b flex justify-between items-center">
+            <div>
+              <h2 className="font-semibold">Служебная записка</h2>
+              <p className="text-sm text-gray-500">{memoData.doc_type} {memoData.doc_number} от {memoData.date}</p>
+            </div>
+            <button onClick={exportMemo} className="px-4 py-2 bg-green-600 text-white rounded-lg">📥 Скачать</button>
+          </div>
+          
+          <div className="p-4 space-y-4">
+            <div className="bg-blue-50 rounded-lg p-3">
+              <span className="text-blue-700 font-medium">Всего ПУ: {memoData.total_count}</span>
+            </div>
+            
+            {Object.entries(memoData.units).map(([unit, items]) => (
+              <div key={unit} className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 font-medium">{unit} ({items.length} шт)</div>
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left w-10">№</th>
+                      <th className="px-3 py-2 text-left">Серийный номер</th>
+                      <th className="px-3 py-2 text-left">Потребитель</th>
+                      <th className="px-3 py-2 text-left">Мощность</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <tr key={idx} className="border-t">
+                        <td className="px-3 py-2">{idx + 1}</td>
+                        <td className="px-3 py-2 font-mono">{item.serial_number}</td>
+                        <td className="px-3 py-2">{item.consumer || '—'}</td>
+                        <td className="px-3 py-2">{item.power ? `${item.power} кВт` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
           </div>
         </div>
       )}
