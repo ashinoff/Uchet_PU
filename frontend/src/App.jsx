@@ -2188,21 +2188,7 @@ function TTREskForm({ item, onSave, onClose }) {
   )
 }
 
-function TTREskForm({ item, onSave, onClose }) {
-  const [form, setForm] = useState({ code: item?.code || '', name: item?.name || '', price: item?.price || 0, price_with_truba: item?.price_with_truba || 0 })
-  return (
-    <div className="space-y-3">
-      <input type="text" placeholder="Код (напр. ТТР-ЭСК-1)" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
-      <input type="text" placeholder="Название" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
-      <input type="number" placeholder="Цена (₽)" value={form.price} onChange={e => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg" />
-      <input type="number" placeholder="Цена с трубостойкой (₽)" value={form.price_with_truba} onChange={e => setForm({ ...form, price_with_truba: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg" />
-      <div className="flex justify-end gap-2">
-        <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
-        <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
-      </div>
-    </div>
-  )
-}
+
 
 // --- Материалы ---
 function MaterialsTab() {
