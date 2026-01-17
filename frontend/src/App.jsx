@@ -653,7 +653,7 @@ function PUCardModal({ itemId, onClose }) {
   setSaving(false)
 }
   
-  const update = async (field, value) => {
+const update = async (field, value) => {
   if (field === 'contract_number') {
     value = formatContract(value)
   }
@@ -662,11 +662,36 @@ function PUCardModal({ itemId, onClose }) {
   
   // Автозаполнение при смене статуса со Склада
   if (field === 'status' && value !== 'SKLAD' && item.status === 'SKLAD') {
-    if (!item.faza || !item.voltage) {
+    if (!item.faza || !item.voltage || !item.form_factor) {
       try {
         const r = await api.get('/pu/detect-type', { params: { pu_type: item.pu_type } })
         if (r.data.faza && !item.faza) newItem.faza = r.data.faza
         if (r.data.voltage && !item.voltage) newItem.voltage = r.data.voltage
+        if (r.data.form_factor && !item.form_factor) newItem.form_factor = r.data.form_factor
+      } catch (err) { /* игнорируем */ }
+    }
+  }
+  
+  // Автоподбор ТТР ЭСК при изменении параметров
+  if (['va_type', 'trubostoyka'].includes(field)) {
+    const faza = newItem.faza
+    const form_factor = newItem.form_factor
+    const va_type = field === 'va_type' ? value : newItem.va_type
+    
+    if (faza && form_factor && va_type) {
+      try {
+        const r = await api.get('/ttr/esk/lookup', { params: { faza, form_factor, va_type } })
+        if (r.data.found) {
+          newItem.ttr_esk_id = r.data.id
+          newItem.lsr_number = r.data.lsr_number
+          newItem.price_no_nds = r.data.price_no_nds
+          newItem.price_with_nds = r.data.price_with_nds
+        } else {
+          newItem.ttr_esk_id = null
+          newItem.lsr_number = null
+          newItem.price_no_nds = null
+          newItem.price_with_nds = null
+        }
       } catch (err) { /* игнорируем */ }
     }
   }
@@ -871,41 +896,79 @@ function PUCardModal({ itemId, onClose }) {
           )}
 
           {/* ТТР для ЭСК */}
-          {isEsk && item.status !== 'SKLAD' && (
-            <>
-              <hr />
-              <h3 className="font-medium">ТТР (для ЭСК)</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">ТТР орг. учета (ЭСК)</label>
-                  <select value={item.ttr_esk_id || ''} onChange={e => update('ttr_esk_id', parseInt(e.target.value) || null)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="">—</option>
-                    {ttrEsk.map(t => <option key={t.id} value={t.id}>{t.code} — {t.price} ₽</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Трубостойка</label>
-                  <select value={item.trubostoyka ? 'true' : 'false'} onChange={e => update('trubostoyka', e.target.value === 'true')} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="false">Нет</option>
-                    <option value="true">Да</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">СМР выполнил (мастер)</label>
-                  <select value={item.smr_master_id || ''} onChange={e => update('smr_master_id', parseInt(e.target.value) || null)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="">—</option>
-                    {masters.filter(m => !item.current_unit_id || m.unit_id === item.current_unit_id).map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Дата СМР</label>
-                  <input type="date" value={item.smr_date || ''} onChange={e => update('smr_date', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg" />
-                </div>
-              </div>
-            </>
-          )}
+          {/* Параметры СМР/ЛСР для ЭСК */}
+{isEsk && item.status !== 'SKLAD' && (
+  <>
+    <hr />
+    <h3 className="font-medium">Параметры СМР/ЛСР</h3>
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Фазность</label>
+        <input type="text" value={item.faza || '—'} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Форм-фактор</label>
+        <input type="text" value={item.form_factor === 'split' ? 'Сплит' : item.form_factor === 'classic' ? 'Классика' : '—'} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
+      </div>
+    </div>
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Трубостойка</label>
+        <div className="flex gap-4 mt-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="trubostoyka" checked={item.trubostoyka === true} onChange={() => { update('trubostoyka', true); if (item.va_type !== 'trubostoyka') update('va_type', '') }} disabled={!canEdit} />
+            <span>Да</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="trubostoyka" checked={item.trubostoyka === false || !item.trubostoyka} onChange={() => { update('trubostoyka', false); if (item.va_type === 'trubostoyka') update('va_type', '') }} disabled={!canEdit} />
+            <span>Нет</span>
+          </label>
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Щит с ВА</label>
+        <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+          <option value="">Выберите...</option>
+          <option value="opora">Опора</option>
+          <option value="fasad">Фасад</option>
+          {item.trubostoyka && <option value="trubostoyka">Трубостойка</option>}
+        </select>
+      </div>
+    </div>
+    
+    {/* Автоподбор ТТР и цен */}
+    {item.faza && item.form_factor && item.va_type && (
+      <div className="bg-green-50 rounded-lg p-4 space-y-2">
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">Номер ЛСР:</span>
+          <span className="font-medium">{item.lsr_number || '—'}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">Стоимость без НДС:</span>
+          <span className="font-medium">{item.price_no_nds?.toLocaleString() || '—'} ₽</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">Стоимость с НДС:</span>
+          <span className="font-bold text-green-700">{item.price_with_nds?.toLocaleString() || '—'} ₽</span>
+        </div>
+      </div>
+    )}
+    
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">СМР выполнил (мастер)</label>
+        <select value={item.smr_master_id || ''} onChange={e => update('smr_master_id', parseInt(e.target.value) || null)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+          <option value="">—</option>
+          {masters.filter(m => !item.current_unit_id || m.unit_id === item.current_unit_id).map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Дата СМР</label>
+        <input type="date" value={item.smr_date || ''} onChange={e => update('smr_date', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg" />
+      </div>
+    </div>
+  </>
+)}
 
           {/* Номер ТЗ и Заявки */}
             <div className="grid grid-cols-2 gap-4">
@@ -2021,28 +2084,51 @@ function TTREskTab() {
     api.get('/ttr/esk').then(r => setItems(r.data))
     setModal(null)
   }
+
+  const handleDelete = async (id) => {
+    if (confirm('Удалить?')) {
+      await api.delete(`/ttr/esk/${id}`)
+      api.get('/ttr/esk').then(r => setItems(r.data))
+    }
+  }
+
+  const vaTypeLabels = { opora: 'Опора', fasad: 'Фасад', trubostoyka: 'Трубостойка' }
+  const formFactorLabels = { split: 'Сплит', classic: 'Классика' }
   
   return (
     <>
       {isSueAdmin && (
-        <div className="flex justify-end">
+        <div className="flex justify-end mb-4">
           <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
         </div>
       )}
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Код</th><th className="px-4 py-3 text-left">Название</th><th className="px-4 py-3 text-left">Цена (₽)</th><th className="px-4 py-3 text-left">С трубост.</th>{isSueAdmin && <th className="w-16"></th>}</tr></thead>
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left">Фазность</th>
+              <th className="px-4 py-3 text-left">Форм-фактор</th>
+              <th className="px-4 py-3 text-left">Щит с ВА</th>
+              <th className="px-4 py-3 text-left">№ ЛСР</th>
+              <th className="px-4 py-3 text-left">Без НДС</th>
+              <th className="px-4 py-3 text-left">С НДС</th>
+              {isSueAdmin && <th className="w-24"></th>}
+            </tr>
+          </thead>
           <tbody>
             {items.map(i => (
               <tr key={i.id} className="border-t">
-                <td className="px-4 py-3 font-mono">{i.code}</td>
-                <td className="px-4 py-3">{i.name}</td>
-                <td className="px-4 py-3">{i.price?.toLocaleString()}</td>
-                <td className="px-4 py-3">{i.price_with_truba?.toLocaleString()}</td>
+                <td className="px-4 py-3">{i.faza || '—'}</td>
+                <td className="px-4 py-3">{formFactorLabels[i.form_factor] || '—'}</td>
+                <td className="px-4 py-3">{vaTypeLabels[i.va_type] || '—'}</td>
+                <td className="px-4 py-3 font-mono">{i.lsr_number || '—'}</td>
+                <td className="px-4 py-3">{i.price_no_nds?.toLocaleString() || '—'} ₽</td>
+                <td className="px-4 py-3">{i.price_with_nds?.toLocaleString() || '—'} ₽</td>
                 {isSueAdmin && (
                   <td className="px-4 py-3">
-                    <button onClick={() => setModal({ item: i })}>✏️</button>
+                    <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
+                    <button onClick={() => handleDelete(i.id)}>🗑️</button>
                   </td>
                 )}
               </tr>
@@ -2060,6 +2146,45 @@ function TTREskTab() {
         </div>
       )}
     </>
+  )
+}
+
+function TTREskForm({ item, onSave, onClose }) {
+  const [form, setForm] = useState({ 
+    faza: item?.faza || '', 
+    form_factor: item?.form_factor || '',
+    va_type: item?.va_type || '',
+    lsr_number: item?.lsr_number || '',
+    price_no_nds: item?.price_no_nds || 0, 
+    price_with_nds: item?.price_with_nds || 0 
+  })
+  
+  return (
+    <div className="space-y-3">
+      <select value={form.faza} onChange={e => setForm({ ...form, faza: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="">Фазность...</option>
+        <option value="1ф">1 фаза</option>
+        <option value="3ф">3 фазы</option>
+      </select>
+      <select value={form.form_factor} onChange={e => setForm({ ...form, form_factor: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="">Форм-фактор...</option>
+        <option value="split">Сплит</option>
+        <option value="classic">Классика</option>
+      </select>
+      <select value={form.va_type} onChange={e => setForm({ ...form, va_type: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="">Щит с ВА...</option>
+        <option value="opora">Опора</option>
+        <option value="fasad">Фасад</option>
+        <option value="trubostoyka">Трубостойка</option>
+      </select>
+      <input type="text" placeholder="Номер ЛСР" value={form.lsr_number} onChange={e => setForm({ ...form, lsr_number: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+      <input type="number" placeholder="Стоимость без НДС" value={form.price_no_nds} onChange={e => setForm({ ...form, price_no_nds: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg" />
+      <input type="number" placeholder="Стоимость с НДС" value={form.price_with_nds} onChange={e => setForm({ ...form, price_with_nds: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg" />
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+        <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+      </div>
+    </div>
   )
 }
 
@@ -2177,13 +2302,14 @@ function PUTypesTab() {
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Паттерн</th><th className="px-4 py-3 text-left">Фазность</th><th className="px-4 py-3 text-left">Напряжение</th><th className="w-24"></th></tr></thead>
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Паттерн</th><th className="px-4 py-3 text-left">Фазность</th><th className="px-4 py-3 text-left">Напряжение</th><th className="px-4 py-3 text-left">Форм-фактор</th><th className="w-24"></th></tr></thead>
           <tbody>
             {items.map(i => (
               <tr key={i.id} className="border-t">
                 <td className="px-4 py-3 font-mono">{i.pattern}</td>
                 <td className="px-4 py-3">{i.faza || '—'}</td>
                 <td className="px-4 py-3">{i.voltage || '—'}</td>
+                <td className="px-4 py-3">{i.form_factor === 'split' ? 'Сплит' : i.form_factor === 'classic' ? 'Классика' : '—'}</td>
                  <td className="px-4 py-3">
                   <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
                   <button onClick={() => handleDelete(i.id)}>🗑️</button>
@@ -2207,7 +2333,12 @@ function PUTypesTab() {
 }
 
 function PUTypeForm({ item, onSave, onClose }) {
-  const [form, setForm] = useState({ pattern: item?.pattern || '', faza: item?.faza || '', voltage: item?.voltage || '' })
+  const [form, setForm] = useState({ 
+    pattern: item?.pattern || '', 
+    faza: item?.faza || '', 
+    voltage: item?.voltage || '',
+    form_factor: item?.form_factor || ''
+  })
   return (
     <div className="space-y-3">
       <input type="text" placeholder="Паттерн (напр. НАРТИС И100 SP)" value={form.pattern} onChange={e => setForm({ ...form, pattern: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
@@ -2222,6 +2353,11 @@ function PUTypeForm({ item, onSave, onClose }) {
         <option value="0.4">0,4 кВ</option>
         <option value="6">6 кВ</option>
         <option value="10">10 кВ</option>
+      </select>
+      <select value={form.form_factor} onChange={e => setForm({ ...form, form_factor: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="">Форм-фактор...</option>
+        <option value="split">Сплит</option>
+        <option value="classic">Классика</option>
       </select>
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
