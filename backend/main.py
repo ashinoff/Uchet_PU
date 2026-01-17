@@ -1869,10 +1869,31 @@ def init_db():
                 db.add(TTR_RES(code=code, name=f"Типовое решение {prefix} #{i}", ttr_type=ttr_type))
     
     # Тестовые ТТР для ЭСК
-    for i in range(1, 6):
-        code = f"ТТР-ЭСК-{i}"
-        if not db.query(TTR_ESK).filter(TTR_ESK.code == code).first():
-            db.add(TTR_ESK(code=code, name=f"Типовое решение ЭСК #{i}", price=1000*i, price_with_truba=1500*i))
+    # Тестовые ТТР для ЭСК (по комбинациям параметров)
+ttr_esk_data = [
+    ("1ф", "split", "opora", "ЛСР-001", 5000, 6000),
+    ("1ф", "split", "fasad", "ЛСР-002", 5500, 6600),
+    ("1ф", "classic", "opora", "ЛСР-003", 4500, 5400),
+    ("3ф", "split", "opora", "ЛСР-004", 7000, 8400),
+    ("3ф", "classic", "fasad", "ЛСР-005", 6500, 7800),
+    ("1ф", "split", "trubostoyka", "ЛСР-006", 8000, 9600),
+    ("3ф", "split", "trubostoyka", "ЛСР-007", 10000, 12000),
+]
+for faza, form_factor, va_type, lsr, price_no, price_with in ttr_esk_data:
+    existing = db.query(TTR_ESK).filter(
+        TTR_ESK.faza == faza,
+        TTR_ESK.form_factor == form_factor,
+        TTR_ESK.va_type == va_type
+    ).first()
+    if not existing:
+        db.add(TTR_ESK(
+            faza=faza,
+            form_factor=form_factor,
+            va_type=va_type,
+            lsr_number=lsr,
+            price_no_nds=price_no,
+            price_with_nds=price_with
+        ))
     
     db.commit()
     db.close()
