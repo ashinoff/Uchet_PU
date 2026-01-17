@@ -158,8 +158,14 @@ class PUItem(Base):
     ttr_or_id = Column(Integer, ForeignKey("ttr_res.id"))  # ТТР распред. щита
     
     # ТТР для ЭСК
-    ttr_esk_id = Column(Integer, ForeignKey("ttr_esk.id"))  # ТТР ЭСК
-    trubostoyka = Column(Boolean, default=False)  # Трубостойка да/нет
+    # Параметры СМР/ЛСР для ЭСК
+    form_factor = Column(String(20))  # split, classic (автоподтяжка)
+    trubostoyka = Column(Boolean, default=False)  # Да/Нет
+    va_type = Column(String(20))  # opona, fasad, trubostoyka
+    ttr_esk_id = Column(Integer, ForeignKey("ttr_esk.id"))
+    lsr_number = Column(String(50))  # Номер ЛСР
+    price_no_nds = Column(Float)  # Стоимость без НДС
+    price_with_nds = Column(Float)  # Стоимость с НДС
     
     # Материалы (JSON или отдельная таблица)
     materials_used = Column(Boolean, default=False)  # Материалы использованы
@@ -209,10 +215,12 @@ class TTR_ESK(Base):
     """Справочник ТТР для ЭСК (со стоимостью)"""
     __tablename__ = "ttr_esk"
     id = Column(Integer, primary_key=True)
-    code = Column(String(50))
-    name = Column(String(200))
-    price = Column(Float, default=0)  # Стоимость ЛСР
-    price_with_truba = Column(Float, default=0)  # Стоимость с трубостойкой
+    faza = Column(String(10))  # 1ф, 3ф
+    form_factor = Column(String(20))  # split, classic
+    va_type = Column(String(20))  # opona, fasad, trubostoyka
+    lsr_number = Column(String(50))  # Номер ЛСР
+    price_no_nds = Column(Float, default=0)  # Стоимость без НДС
+    price_with_nds = Column(Float, default=0)  # Стоимость с НДС
     is_active = Column(Boolean, default=True)
 
 class Material(Base):
@@ -253,10 +261,10 @@ class PUTypeReference(Base):
     """Справочник типов ПУ для автоопределения"""
     __tablename__ = "pu_type_reference"
     id = Column(Integer, primary_key=True)
-    pattern = Column(String(200))  # Паттерн для поиска (Нартис И100 SP)
-    faza = Column(String(20))  # Фазность
-    voltage = Column(String(20))  # Напряжение
-    for_esk = Column(Boolean, default=False)  # Для ЭСК или РЭС
+    pattern = Column(String(200))
+    faza = Column(String(20))  # 1ф, 3ф
+    voltage = Column(String(20))
+    form_factor = Column(String(20))  # split, classic
     is_active = Column(Boolean, default=True)
 
 # ==================== АВТОРИЗАЦИЯ ====================
@@ -325,6 +333,8 @@ def detect_pu_type_params(pu_type: str, db: Session) -> dict:
                 result['faza'] = p.faza
             if p.voltage:
                 result['voltage'] = p.voltage
+            if p.form_factor:
+                result['form_factor'] = p.form_factor
             return result
     
     return {}
@@ -413,6 +423,11 @@ class PUCardUpdate(BaseModel):
     ttr_or_id: Optional[int] = None
     ttr_esk_id: Optional[int] = None
     trubostoyka: Optional[bool] = None
+    form_factor: Optional[str] = None
+    va_type: Optional[str] = None
+    lsr_number: Optional[str] = None
+    price_no_nds: Optional[float] = None
+    price_with_nds: Optional[float] = None
 
 # ==================== ПРИЛОЖЕНИЕ ====================
 app = FastAPI(title="Система учета ПУ")
@@ -463,7 +478,42 @@ def get_ttr_res(db: Session = Depends(get_db), user: User = Depends(get_current_
 def get_ttr_esk(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Справочник ТТР для ЭСК"""
     items = db.query(TTR_ESK).filter(TTR_ESK.is_active == True).all()
-    return [{"id": t.id, "code": t.code, "name": t.name, "price": t.price, "price_with_truba": t.price_with_truba} for t in items]
+    return [{
+        "id": t.id, 
+        "faza": t.faza, 
+        "form_factor": t.form_factor, 
+        "va_type": t.va_type,
+        "lsr_number": t.lsr_number,
+        "price_no_nds": t.price_no_nds, 
+        "price_with_nds": t.price_with_nds
+    } for t in items]
+
+@app.get("/api/ttr/esk/lookup")
+def lookup_ttr_esk(
+    faza: str,
+    form_factor: str,
+    va_type: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Подбор ТТР ЭСК по параметрам"""
+    ttr = db.query(TTR_ESK).filter(
+        TTR_ESK.faza == faza,
+        TTR_ESK.form_factor == form_factor,
+        TTR_ESK.va_type == va_type,
+        TTR_ESK.is_active == True
+    ).first()
+    
+    if not ttr:
+        return {"found": False}
+    
+    return {
+        "found": True,
+        "id": ttr.id,
+        "lsr_number": ttr.lsr_number,
+        "price_no_nds": ttr.price_no_nds,
+        "price_with_nds": ttr.price_with_nds
+    }
 
 @app.get("/api/masters")
 def get_masters(unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -698,6 +748,13 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "materials_used": item.materials_used,
         "approval_status": item.approval_status.value if item.approval_status else None,
         "request_number": item.request_number,
+        "ttr_esk_id": item.ttr_esk_id,
+        "trubostoyka": item.trubostoyka,
+        "form_factor": item.form_factor,
+        "va_type": item.va_type,
+        "lsr_number": item.lsr_number,
+        "price_no_nds": item.price_no_nds,
+        "price_with_nds": item.price_with_nds,
     }
 
 @app.put("/api/pu/items/{item_id}")
@@ -1043,7 +1100,14 @@ def delete_ttr_res(ttr_id: int, db: Session = Depends(get_db), user: User = Depe
 def create_ttr_esk(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not is_sue_admin(user):
         raise HTTPException(403, "Нет доступа")
-    ttr = TTR_ESK(code=data["code"], name=data["name"], price=data.get("price", 0), price_with_truba=data.get("price_with_truba", 0))
+    ttr = TTR_ESK(
+        faza=data.get("faza"),
+        form_factor=data.get("form_factor"),
+        va_type=data.get("va_type"),
+        lsr_number=data.get("lsr_number"),
+        price_no_nds=data.get("price_no_nds", 0),
+        price_with_nds=data.get("price_with_nds", 0)
+    )
     db.add(ttr)
     db.commit()
     return {"id": ttr.id}
@@ -1116,13 +1180,18 @@ def set_ttr_materials(ttr_id: int, data: dict, db: Session = Depends(get_db), us
 @app.get("/api/pu-types")
 def get_pu_types(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     items = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
-    return [{"id": p.id, "pattern": p.pattern, "faza": p.faza, "voltage": p.voltage, "for_esk": p.for_esk} for p in items]
+    return [{"id": p.id, "pattern": p.pattern, "faza": p.faza, "voltage": p.voltage, "form_factor": p.form_factor} for p in items]
 
 @app.post("/api/pu-types")
 def create_pu_type(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not is_sue_admin(user):
         raise HTTPException(403, "Нет доступа")
-    p = PUTypeReference(pattern=data["pattern"], faza=data.get("faza"), voltage=data.get("voltage"), for_esk=data.get("for_esk", False))
+    p = PUTypeReference(
+        pattern=data["pattern"], 
+        faza=data.get("faza"), 
+        voltage=data.get("voltage"),
+        form_factor=data.get("form_factor")
+    )
     db.add(p)
     db.commit()
     return {"id": p.id}
