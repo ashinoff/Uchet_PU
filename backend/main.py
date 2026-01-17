@@ -1898,4 +1898,66 @@ def init_db():
     db.close()
     print("✅ БД инициализирована!")
 
+# ==================== АВТОМИГРАЦИЯ СХЕМЫ БД ====================
+def ensure_db_schema():
+    """Добавляет новые таблицы и колонки без удаления данных"""
+    from sqlalchemy import inspect, text
+    
+    db = SessionLocal()
+    inspector = inspect(engine)
+    existing_tables = inspector.get_table_names()
+    
+    try:
+        # 1. Создаём недостающие таблицы
+        Base.metadata.create_all(bind=engine)
+        print("✅ Таблицы проверены")
+        
+        # 2. Добавляем недостающие колонки в существующие таблицы
+        for table_name, table in Base.metadata.tables.items():
+            if table_name not in existing_tables:
+                continue
+                
+            existing_columns = [c['name'] for c in inspector.get_columns(table_name)]
+            
+            for column in table.columns:
+                if column.name not in existing_columns:
+                    # Определяем SQL тип
+                    col_type = str(column.type)
+                    
+                    # Для PostgreSQL enum нужна особая обработка
+                    if 'VARCHAR' in col_type.upper():
+                        sql_type = col_type
+                    elif 'INTEGER' in col_type.upper():
+                        sql_type = 'INTEGER'
+                    elif 'FLOAT' in col_type.upper() or 'DOUBLE' in col_type.upper():
+                        sql_type = 'FLOAT'
+                    elif 'BOOLEAN' in col_type.upper():
+                        sql_type = 'BOOLEAN'
+                    elif 'DATE' == col_type.upper():
+                        sql_type = 'DATE'
+                    elif 'DATETIME' in col_type.upper() or 'TIMESTAMP' in col_type.upper():
+                        sql_type = 'TIMESTAMP'
+                    elif 'TEXT' in col_type.upper():
+                        sql_type = 'TEXT'
+                    else:
+                        sql_type = 'VARCHAR(255)'  # fallback
+                    
+                    sql = f'ALTER TABLE "{table_name}" ADD COLUMN "{column.name}" {sql_type} NULL'
+                    
+                    try:
+                        db.execute(text(sql))
+                        db.commit()
+                        print(f"  ➕ Добавлена колонка: {table_name}.{column.name} ({sql_type})")
+                    except Exception as e:
+                        db.rollback()
+                        # Игнорируем если колонка уже есть
+                        if 'already exists' not in str(e).lower() and 'duplicate' not in str(e).lower():
+                            print(f"  ⚠️ Ошибка {table_name}.{column.name}: {e}")
+        
+        print("✅ Схема БД актуальна")
+        
+    finally:
+        db.close()
+
+ensure_db_schema()
 init_db()
