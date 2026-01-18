@@ -12,10 +12,7 @@ function AuthProvider({ children }) {
   useEffect(() => {
     if (localStorage.getItem('token')) {
       api.get('/auth/me')
-        .then(r => {
-          console.log('User loaded:', r.data)
-          setUser(r.data)
-        })
+        .then(r => setUser(r.data))
         .catch(err => {
           console.error('Auth error:', err)
           localStorage.removeItem('token')
@@ -201,10 +198,7 @@ function HomePage({ setPage }) {
 
   useEffect(() => { 
     api.get('/pu/dashboard')
-      .then(r => {
-        console.log('Dashboard response:', r.data)
-        setStats(r.data)
-      })
+      .then(r => setStats(r.data))
       .catch(err => {
         console.error('Dashboard error:', err)
         setError(err.message)
