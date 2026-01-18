@@ -93,7 +93,7 @@ function Main() {
 
 // ==================== САЙДБАР ====================
 function Sidebar({ page, setPage }) {
-  const { user, logout, canUpload, canManageUsers, canApprove, canCreateTZ, isEskAdmin, isSueAdmin, isResUser } = useAuth()
+  const { user, logout, canUpload, canManageUsers, canApprove, canCreateTZ, isEskAdmin, isSueAdmin, isResUser, isEskUser } = useAuth()
   const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
