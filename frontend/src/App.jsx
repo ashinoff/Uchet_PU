@@ -9,10 +9,20 @@ function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (localStorage.getItem('token')) {
-      api.get('/auth/me').then(r => setUser(r.data)).catch(() => localStorage.removeItem('token')).finally(() => setLoading(false))
-    } else setLoading(false)
-  }, [])
+    useEffect(() => {
+  if (localStorage.getItem('token')) {
+    api.get('/auth/me')
+      .then(r => {
+        console.log('User loaded:', r.data)
+        setUser(r.data)
+      })
+      .catch(err => {
+        console.error('Auth error:', err)
+        localStorage.removeItem('token')
+      })
+      .finally(() => setLoading(false))
+  } else setLoading(false)
+}, [])
 
   const login = async (username, password) => {
     const r = await api.post('/auth/login', { username, password })
@@ -188,7 +198,11 @@ function HomePage({ setPage }) {
   const { user, canUpload, canManageUsers, canApprove, isSueAdmin, isEskAdmin } = useAuth()
   const [stats, setStats] = useState(null)
 
-  useEffect(() => { api.get('/pu/dashboard').then(r => setStats(r.data)) }, [])
+  useEffect(() => { 
+  api.get('/pu/dashboard')
+    .then(r => setStats(r.data))
+    .catch(err => console.error('Dashboard error:', err)) 
+}, [])
 
   const shortcuts = [
     { id: 'pu', icon: '📦', label: 'Приборы учета', desc: 'Просмотр и управление', show: true },
@@ -209,46 +223,46 @@ function HomePage({ setPage }) {
       {stats && (
   <div className="space-y-4">
     {/* Все — только для СУЭ */}
-    {isSueAdmin && (
+    {isSueAdmin && stats.all && (
       <div>
         <h3 className="text-sm font-medium text-gray-500 mb-2">📊 Все подразделения</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Всего ПУ" value={stats.all.total} color="blue" />
-          <StatCard label="Установлено" value={stats.all.installed} color="emerald" />
-          <StatCard label="На складе" value={stats.all.sklad} color="gray" />
-          <StatCard label="Техприс" value={stats.all.techpris} color="green" />
-          <StatCard label="Замена" value={stats.all.zamena} color="yellow" />
-          <StatCard label="ИЖЦ" value={stats.all.izhc} color="purple" />
+          <StatCard label="Всего ПУ" value={stats.all.total || 0} color="blue" />
+          <StatCard label="Установлено" value={stats.all.installed || 0} color="emerald" />
+          <StatCard label="На складе" value={stats.all.sklad || 0} color="gray" />
+          <StatCard label="Техприс" value={stats.all.techpris || 0} color="green" />
+          <StatCard label="Замена" value={stats.all.zamena || 0} color="yellow" />
+          <StatCard label="ИЖЦ" value={stats.all.izhc || 0} color="purple" />
         </div>
       </div>
     )}
     
     {/* РЭС — только для СУЭ */}
-    {isSueAdmin && (
+    {isSueAdmin && stats.res && (
       <div>
         <h3 className="text-sm font-medium text-gray-500 mb-2">🏢 РЭС (РСК)</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Всего ПУ" value={stats.res.total} color="blue" />
-          <StatCard label="Установлено" value={stats.res.installed} color="emerald" />
-          <StatCard label="На складе" value={stats.res.sklad} color="gray" />
-          <StatCard label="Техприс" value={stats.res.techpris} color="green" />
-          <StatCard label="Замена" value={stats.res.zamena} color="yellow" />
-          <StatCard label="ИЖЦ" value={stats.res.izhc} color="purple" />
+          <StatCard label="Всего ПУ" value={stats.res.total || 0} color="blue" />
+          <StatCard label="Установлено" value={stats.res.installed || 0} color="emerald" />
+          <StatCard label="На складе" value={stats.res.sklad || 0} color="gray" />
+          <StatCard label="Техприс" value={stats.res.techpris || 0} color="green" />
+          <StatCard label="Замена" value={stats.res.zamena || 0} color="yellow" />
+          <StatCard label="ИЖЦ" value={stats.res.izhc || 0} color="purple" />
         </div>
       </div>
     )}
     
     {/* ЭСК — для СУЭ и ЭСК Админа */}
-    {(isSueAdmin || isEskAdmin) && (
+    {(isSueAdmin || isEskAdmin) && stats.esk && (
       <div>
         <h3 className="text-sm font-medium text-gray-500 mb-2">⚡ ЭСК</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Всего ПУ" value={stats.esk.total} color="blue" />
-          <StatCard label="Установлено" value={stats.esk.installed} color="emerald" />
-          <StatCard label="На складе" value={stats.esk.sklad} color="gray" />
-          <StatCard label="Техприс" value={stats.esk.techpris} color="green" />
-          <StatCard label="Замена" value={stats.esk.zamena} color="yellow" />
-          <StatCard label="ИЖЦ" value={stats.esk.izhc} color="purple" />
+          <StatCard label="Всего ПУ" value={stats.esk.total || 0} color="blue" />
+          <StatCard label="Установлено" value={stats.esk.installed || 0} color="emerald" />
+          <StatCard label="На складе" value={stats.esk.sklad || 0} color="gray" />
+          <StatCard label="Техприс" value={stats.esk.techpris || 0} color="green" />
+          <StatCard label="Замена" value={stats.esk.zamena || 0} color="yellow" />
+          <StatCard label="ИЖЦ" value={stats.esk.izhc || 0} color="purple" />
         </div>
       </div>
     )}
