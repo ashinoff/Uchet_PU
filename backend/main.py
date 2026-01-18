@@ -1289,6 +1289,86 @@ def set_ttr_materials(ttr_id: int, data: dict, db: Session = Depends(get_db), us
     db.commit()
     return {"ok": True}
 
+@app.get("/api/pu/items/{item_id}/materials")
+def get_pu_materials(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить материалы для ПУ (из выбранных ТТР)"""
+    item = db.query(PUItem).filter(PUItem.id == item_id).first()
+    if not item:
+        raise HTTPException(404, "ПУ не найден")
+    
+    # Собираем все ТТР с этого ПУ
+    ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+    
+    if not ttr_ids:
+        return {"defaults": [], "facts": []}
+    
+    # Материалы по умолчанию из ТТР (суммируем)
+    defaults = {}
+    for ttr_id in ttr_ids:
+        ttr_mats = db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).all()
+        for tm in ttr_mats:
+            mat = db.query(Material).filter(Material.id == tm.material_id).first()
+            if mat:
+                key = mat.id
+                if key in defaults:
+                    defaults[key]["quantity"] += tm.quantity
+                else:
+                    defaults[key] = {
+                        "material_id": mat.id,
+                        "material_name": mat.name,
+                        "unit": mat.unit,
+                        "quantity": tm.quantity
+                    }
+    
+    # Фактические значения (если уже заполняли)
+    facts = db.query(PUMaterial).filter(PUMaterial.pu_item_id == item_id).all()
+    facts_list = []
+    for f in facts:
+        mat = db.query(Material).filter(Material.id == f.material_id).first()
+        if mat:
+            facts_list.append({
+                "id": f.id,
+                "material_id": mat.id,
+                "material_name": mat.name,
+                "unit": mat.unit,
+                "quantity": f.quantity,
+                "used": f.used
+            })
+    
+    return {
+        "defaults": list(defaults.values()),
+        "facts": facts_list
+    }
+
+
+@app.post("/api/pu/items/{item_id}/materials")
+def save_pu_materials(item_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Сохранить фактические материалы для ПУ"""
+    if not is_res_user(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    item = db.query(PUItem).filter(PUItem.id == item_id).first()
+    if not item:
+        raise HTTPException(404, "ПУ не найден")
+    
+    # Удаляем старые записи
+    db.query(PUMaterial).filter(PUMaterial.pu_item_id == item_id).delete()
+    
+    # Добавляем новые
+    # data = {"materials": [{"material_id": 1, "quantity": 5, "used": true}, ...]}
+    for m in data.get("materials", []):
+        pm = PUMaterial(
+            pu_item_id=item_id,
+            material_id=m["material_id"],
+            quantity=m.get("quantity", 0),
+            used=m.get("used", True)
+        )
+        db.add(pm)
+    
+    item.materials_used = True
+    db.commit()
+    return {"ok": True}
+
 # --- Справочник типов ПУ ---
 @app.get("/api/pu-types")
 def get_pu_types(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
