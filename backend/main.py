@@ -215,9 +215,11 @@ class TTR_ESK(Base):
     """Справочник ТТР для ЭСК (со стоимостью)"""
     __tablename__ = "ttr_esk"
     id = Column(Integer, primary_key=True)
+    ttr_type = Column(String(20))  # PU, TRUBOSTOYKA, OTVETVLENIE
+    pu_pattern = Column(String(200))  # Паттерн наименования ПУ для автоопределения
     faza = Column(String(10))  # 1ф, 3ф
     form_factor = Column(String(20))  # split, classic
-    va_type = Column(String(20))  # opona, fasad, trubostoyka
+    va_type = Column(String(20))  # opora, fasad, trubostoyka
     lsr_number = Column(String(50))  # Номер ЛСР
     price_no_nds = Column(Float, default=0)  # Стоимость без НДС
     price_with_nds = Column(Float, default=0)  # Стоимость с НДС
@@ -475,11 +477,16 @@ def get_ttr_res(db: Session = Depends(get_db), user: User = Depends(get_current_
     return [{"id": t.id, "code": t.code, "name": t.name, "ttr_type": t.ttr_type} for t in items]
 
 @app.get("/api/ttr/esk")
-def get_ttr_esk(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_ttr_esk(ttr_type: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Справочник ТТР для ЭСК"""
-    items = db.query(TTR_ESK).filter(TTR_ESK.is_active == True).all()
+    q = db.query(TTR_ESK).filter(TTR_ESK.is_active == True)
+    if ttr_type:
+        q = q.filter(TTR_ESK.ttr_type == ttr_type)
+    items = q.all()
     return [{
-        "id": t.id, 
+        "id": t.id,
+        "ttr_type": t.ttr_type,
+        "pu_pattern": t.pu_pattern,
         "faza": t.faza, 
         "form_factor": t.form_factor, 
         "va_type": t.va_type,
@@ -490,19 +497,53 @@ def get_ttr_esk(db: Session = Depends(get_db), user: User = Depends(get_current_
 
 @app.get("/api/ttr/esk/lookup")
 def lookup_ttr_esk(
-    faza: str,
-    form_factor: str,
-    va_type: str,
+    ttr_type: str = "PU",
+    faza: Optional[str] = None,
+    form_factor: Optional[str] = None,
+    va_type: Optional[str] = None,
+    pu_type: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     """Подбор ТТР ЭСК по параметрам"""
-    ttr = db.query(TTR_ESK).filter(
-        TTR_ESK.faza == faza,
-        TTR_ESK.form_factor == form_factor,
-        TTR_ESK.va_type == va_type,
-        TTR_ESK.is_active == True
-    ).first()
+    
+    if ttr_type == "TRUBOSTOYKA":
+        # Для трубостойки возвращаем первую запись
+        ttr = db.query(TTR_ESK).filter(
+            TTR_ESK.ttr_type == "TRUBOSTOYKA",
+            TTR_ESK.is_active == True
+        ).first()
+    elif ttr_type == "OTVETVLENIE":
+        ttr = db.query(TTR_ESK).filter(
+            TTR_ESK.ttr_type == "OTVETVLENIE",
+            TTR_ESK.is_active == True
+        ).first()
+    else:
+        # Для ПУ ищем по всем параметрам
+        q = db.query(TTR_ESK).filter(
+            TTR_ESK.ttr_type == "PU",
+            TTR_ESK.is_active == True
+        )
+        
+        if faza:
+            q = q.filter(TTR_ESK.faza == faza)
+        if form_factor:
+            q = q.filter(TTR_ESK.form_factor == form_factor)
+        if va_type:
+            q = q.filter(TTR_ESK.va_type == va_type)
+        
+        # Если передан тип ПУ, ищем по паттерну
+        if pu_type:
+            pu_type_upper = pu_type.upper()
+            all_ttr = q.all()
+            for t in all_ttr:
+                if t.pu_pattern and t.pu_pattern.upper() in pu_type_upper:
+                    ttr = t
+                    break
+            else:
+                ttr = q.first()
+        else:
+            ttr = q.first()
     
     if not ttr:
         return {"found": False}
@@ -510,6 +551,7 @@ def lookup_ttr_esk(
     return {
         "found": True,
         "id": ttr.id,
+        "ttr_type": ttr.ttr_type,
         "lsr_number": ttr.lsr_number,
         "price_no_nds": ttr.price_no_nds,
         "price_with_nds": ttr.price_with_nds
@@ -1869,23 +1911,27 @@ def init_db():
                 db.add(TTR_RES(code=code, name=f"Типовое решение {prefix} #{i}", ttr_type=ttr_type))
     
     # Тестовые ТТР для ЭСК (по комбинациям параметров)
+
+    # (ttr_type, pu_pattern, faza, form_factor, va_type, lsr, price_no, price_with)
     ttr_esk_data = [
-        ("1ф", "split", "opora", "ЛСР-001", 5000, 6000),
-        ("1ф", "split", "fasad", "ЛСР-002", 5500, 6600),
-        ("1ф", "classic", "opora", "ЛСР-003", 4500, 5400),
-        ("3ф", "split", "opora", "ЛСР-004", 7000, 8400),
-        ("3ф", "classic", "fasad", "ЛСР-005", 6500, 7800),
-        ("1ф", "split", "trubostoyka", "ЛСР-006", 8000, 9600),
-        ("3ф", "split", "trubostoyka", "ЛСР-007", 10000, 12000),
+        # ПУ
+        ("PU", "НАРТИС", "1ф", "split", "opora", "ЛСР-001", 5000, 6000),
+        ("PU", "НАРТИС", "1ф", "split", "fasad", "ЛСР-002", 5500, 6600),
+        ("PU", "НАРТИС", "1ф", "classic", "opora", "ЛСР-003", 4500, 5400),
+        ("PU", "НАРТИС", "3ф", "split", "opora", "ЛСР-004", 7000, 8400),
+        ("PU", "НАРТИС", "3ф", "classic", "fasad", "ЛСР-005", 6500, 7800),
+        # Трубостойки
+        ("TRUBOSTOYKA", None, None, None, None, "ЛСР-Т01", 8000, 9600),
+        ("TRUBOSTOYKA", None, None, None, None, "ЛСР-Т02", 10000, 12000),
+        # Ответвления
+        ("OTVETVLENIE", None, None, None, None, "ЛСР-О01", 3000, 3600),
     ]
-    for faza, form_factor, va_type, lsr, price_no, price_with in ttr_esk_data:
-        existing = db.query(TTR_ESK).filter(
-            TTR_ESK.faza == faza,
-            TTR_ESK.form_factor == form_factor,
-            TTR_ESK.va_type == va_type
-        ).first()
+    for ttr_type, pu_pattern, faza, form_factor, va_type, lsr, price_no, price_with in ttr_esk_data:
+        existing = db.query(TTR_ESK).filter(TTR_ESK.lsr_number == lsr).first()
         if not existing:
             db.add(TTR_ESK(
+                ttr_type=ttr_type,
+                pu_pattern=pu_pattern,
                 faza=faza,
                 form_factor=form_factor,
                 va_type=va_type,
