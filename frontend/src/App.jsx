@@ -673,27 +673,37 @@ const update = async (field, value) => {
   }
   
   // Автоподбор ТТР ЭСК при изменении параметров
-  if (['va_type', 'trubostoyka'].includes(field)) {
-    const faza = newItem.faza
-    const form_factor = newItem.form_factor
-    const va_type = field === 'va_type' ? value : newItem.va_type
+  if (['faza', 'form_factor', 'va_type', 'trubostoyka'].includes(field)) {
+    const updatedItem = { ...newItem, [field]: value }
     
-    if (faza && form_factor && va_type) {
-      try {
-        const r = await api.get('/ttr/esk/lookup', { params: { faza, form_factor, va_type } })
-        if (r.data.found) {
-          newItem.ttr_esk_id = r.data.id
-          newItem.lsr_number = r.data.lsr_number
-          newItem.price_no_nds = r.data.price_no_nds
-          newItem.price_with_nds = r.data.price_with_nds
-        } else {
-          newItem.ttr_esk_id = null
-          newItem.lsr_number = null
-          newItem.price_no_nds = null
-          newItem.price_with_nds = null
-        }
-      } catch (err) { /* игнорируем */ }
+    // Определяем тип ТТР
+    let ttrType = 'PU'
+    if (updatedItem.trubostoyka === true) {
+      ttrType = 'TRUBOSTOYKA'
     }
+    
+    try {
+      const params = { ttr_type: ttrType }
+      if (ttrType === 'PU') {
+        params.faza = updatedItem.faza
+        params.form_factor = updatedItem.form_factor
+        params.va_type = updatedItem.va_type
+        params.pu_type = item.pu_type
+      }
+      
+      const r = await api.get('/ttr/esk/lookup', { params })
+      if (r.data.found) {
+        newItem.ttr_esk_id = r.data.id
+        newItem.lsr_number = r.data.lsr_number
+        newItem.price_no_nds = r.data.price_no_nds
+        newItem.price_with_nds = r.data.price_with_nds
+      } else {
+        newItem.ttr_esk_id = null
+        newItem.lsr_number = null
+        newItem.price_no_nds = null
+        newItem.price_with_nds = null
+      }
+    } catch (err) { /* игнорируем */ }
   }
   
   setItem(newItem)
@@ -912,19 +922,31 @@ const update = async (field, value) => {
       </div>
     </div>
     <div className="grid grid-cols-2 gap-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-600 mb-1">Трубостойка</label>
-        <div className="flex gap-4 mt-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="trubostoyka" checked={item.trubostoyka === true} onChange={() => { update('trubostoyka', true); if (item.va_type !== 'trubostoyka') update('va_type', '') }} disabled={!canEdit} />
-            <span>Да</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="trubostoyka" checked={item.trubostoyka === false || !item.trubostoyka} onChange={() => { update('trubostoyka', false); if (item.va_type === 'trubostoyka') update('va_type', '') }} disabled={!canEdit} />
-            <span>Нет</span>
-          </label>
-        </div>
+    <div>
+      <label className="block text-sm font-medium text-gray-600 mb-1">Трубостойка</label>
+      <div className="flex gap-4 mt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input 
+            type="radio" 
+            name={`trubostoyka-${item.id}`}
+            checked={item.trubostoyka === true} 
+            onChange={() => update('trubostoyka', true)} 
+            disabled={!canEdit} 
+          />
+          <span>Да</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input 
+            type="radio" 
+            name={`trubostoyka-${item.id}`}
+            checked={item.trubostoyka !== true} 
+            onChange={() => update('trubostoyka', false)} 
+            disabled={!canEdit} 
+          />
+          <span>Нет</span>
+        </label>
       </div>
+    </div>
       <div>
         <label className="block text-sm font-medium text-gray-600 mb-1">Щит с ВА</label>
         <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
@@ -2072,6 +2094,7 @@ function TTREskTab() {
   const { isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
+  const [filter, setFilter] = useState('')
 
   useEffect(() => { api.get('/ttr/esk').then(r => setItems(r.data)) }, [])
 
@@ -2092,21 +2115,32 @@ function TTREskTab() {
     }
   }
 
+  const ttrTypeLabels = { PU: 'ПУ', TRUBOSTOYKA: 'Трубостойка', OTVETVLENIE: 'Ответвление' }
   const vaTypeLabels = { opora: 'Опора', fasad: 'Фасад', trubostoyka: 'Трубостойка' }
   const formFactorLabels = { split: 'Сплит', classic: 'Классика' }
   
+  const filtered = filter ? items.filter(i => i.ttr_type === filter) : items
+  
   return (
     <>
-      {isSueAdmin && (
-        <div className="flex justify-end mb-4">
+      <div className="flex justify-between mb-4">
+        <select value={filter} onChange={e => setFilter(e.target.value)} className="px-3 py-2 border rounded-lg">
+          <option value="">Все типы</option>
+          <option value="PU">ПУ</option>
+          <option value="TRUBOSTOYKA">Трубостойка</option>
+          <option value="OTVETVLENIE">Ответвление</option>
+        </select>
+        {isSueAdmin && (
           <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-4 py-3 text-left">Тип ТТР</th>
+              <th className="px-4 py-3 text-left">Наименование ПУ</th>
               <th className="px-4 py-3 text-left">Фазность</th>
               <th className="px-4 py-3 text-left">Форм-фактор</th>
               <th className="px-4 py-3 text-left">Щит с ВА</th>
@@ -2117,8 +2151,14 @@ function TTREskTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map(i => (
+            {filtered.map(i => (
               <tr key={i.id} className="border-t">
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-xs ${i.ttr_type === 'PU' ? 'bg-blue-100 text-blue-700' : i.ttr_type === 'TRUBOSTOYKA' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                    {ttrTypeLabels[i.ttr_type] || i.ttr_type}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{i.pu_pattern || '—'}</td>
                 <td className="px-4 py-3">{i.faza || '—'}</td>
                 <td className="px-4 py-3">{formFactorLabels[i.form_factor] || '—'}</td>
                 <td className="px-4 py-3">{vaTypeLabels[i.va_type] || '—'}</td>
@@ -2151,6 +2191,8 @@ function TTREskTab() {
 
 function TTREskForm({ item, onSave, onClose }) {
   const [form, setForm] = useState({ 
+    ttr_type: item?.ttr_type || 'PU',
+    pu_pattern: item?.pu_pattern || '',
     faza: item?.faza || '', 
     form_factor: item?.form_factor || '',
     va_type: item?.va_type || '',
@@ -2159,27 +2201,42 @@ function TTREskForm({ item, onSave, onClose }) {
     price_with_nds: item?.price_with_nds || 0 
   })
   
+  const isPU = form.ttr_type === 'PU'
+  
   return (
     <div className="space-y-3">
-      <select value={form.faza} onChange={e => setForm({ ...form, faza: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
-        <option value="">Фазность...</option>
-        <option value="1ф">1 фаза</option>
-        <option value="3ф">3 фазы</option>
+      <select value={form.ttr_type} onChange={e => setForm({ ...form, ttr_type: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+        <option value="PU">ПУ</option>
+        <option value="TRUBOSTOYKA">Трубостойка</option>
+        <option value="OTVETVLENIE">Ответвление</option>
       </select>
-      <select value={form.form_factor} onChange={e => setForm({ ...form, form_factor: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
-        <option value="">Форм-фактор...</option>
-        <option value="split">Сплит</option>
-        <option value="classic">Классика</option>
-      </select>
-      <select value={form.va_type} onChange={e => setForm({ ...form, va_type: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
-        <option value="">Щит с ВА...</option>
-        <option value="opora">Опора</option>
-        <option value="fasad">Фасад</option>
-        <option value="trubostoyka">Трубостойка</option>
-      </select>
+      
+      {isPU && (
+        <>
+          <input type="text" placeholder="Наименование ПУ (паттерн, напр. НАРТИС)" value={form.pu_pattern} onChange={e => setForm({ ...form, pu_pattern: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
+          <select value={form.faza} onChange={e => setForm({ ...form, faza: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+            <option value="">Фазность...</option>
+            <option value="1ф">1 фаза</option>
+            <option value="3ф">3 фазы</option>
+          </select>
+          <select value={form.form_factor} onChange={e => setForm({ ...form, form_factor: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+            <option value="">Форм-фактор...</option>
+            <option value="split">Сплит</option>
+            <option value="classic">Классика</option>
+          </select>
+          <select value={form.va_type} onChange={e => setForm({ ...form, va_type: e.target.value })} className="w-full px-3 py-2 border rounded-lg">
+            <option value="">Щит с ВА...</option>
+            <option value="opora">Опора</option>
+            <option value="fasad">Фасад</option>
+            <option value="trubostoyka">Трубостойка</option>
+          </select>
+        </>
+      )}
+      
       <input type="text" placeholder="Номер ЛСР" value={form.lsr_number} onChange={e => setForm({ ...form, lsr_number: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
       <input type="number" placeholder="Стоимость без НДС" value={form.price_no_nds} onChange={e => setForm({ ...form, price_no_nds: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg" />
       <input type="number" placeholder="Стоимость с НДС" value={form.price_with_nds} onChange={e => setForm({ ...form, price_with_nds: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg" />
+      
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
         <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
