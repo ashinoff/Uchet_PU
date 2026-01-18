@@ -186,7 +186,9 @@ class PUItem(Base):
     approved_at = Column(DateTime)
     
     # Заявка ЭСК
-    request_number = Column(String(50))  # Номер заявки
+    request_number = Column(String(50))  # Номер заявки (например 1-26)
+    request_contract = Column(String(50))  # Номер договора заявки (например 147)
+    work_type_name = Column(String(200))  # Наименование вида работ (из ТТР)
     
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -226,6 +228,7 @@ class TTR_ESK(Base):
     __tablename__ = "ttr_esk"
     id = Column(Integer, primary_key=True)
     ttr_type = Column(String(20))  # PU, TRUBOSTOYKA, OTVETVLENIE
+    work_type_name = Column(String(200))  # Наименование вида работ
     pu_pattern = Column(String(200))  # Паттерн наименования ПУ для автоопределения
     faza = Column(String(10))  # 1ф, 3ф
     form_factor = Column(String(20))  # split, classic
@@ -447,6 +450,9 @@ class PUCardUpdate(BaseModel):
     lsr_va: Optional[str] = None
     price_va_no_nds: Optional[float] = None
     price_va_with_nds: Optional[float] = None
+    request_number: Optional[str] = None
+    request_contract: Optional[str] = None
+    work_type_name: Optional[str] = None
 
 # ==================== ПРИЛОЖЕНИЕ ====================
 app = FastAPI(title="Система учета ПУ")
@@ -503,6 +509,7 @@ def get_ttr_esk(ttr_type: Optional[str] = None, db: Session = Depends(get_db), u
     return [{
         "id": t.id,
         "ttr_type": t.ttr_type,
+        "work_type_name": t.work_type_name,
         "pu_pattern": t.pu_pattern,
         "faza": t.faza, 
         "form_factor": t.form_factor, 
@@ -541,6 +548,7 @@ def lookup_ttr_esk(
             result["trubostoyka"] = {
                 "id": ttr_truba.id,
                 "lsr_number": ttr_truba.lsr_number,
+                "work_type_name": ttr_truba.work_type_name,
                 "price_no_nds": ttr_truba.price_no_nds or 0,
                 "price_with_nds": ttr_truba.price_with_nds or 0
             }
@@ -576,6 +584,7 @@ def lookup_ttr_esk(
             result["va"] = {
                 "id": ttr_va.id,
                 "lsr_number": ttr_va.lsr_number,
+                "work_type_name": ttr_va.work_type_name,
                 "price_no_nds": ttr_va.price_no_nds or 0,
                 "price_with_nds": ttr_va.price_with_nds or 0
             }
@@ -831,6 +840,8 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "lsr_va": item.lsr_va,
         "price_va_no_nds": item.price_va_no_nds,
         "price_va_with_nds": item.price_va_with_nds,
+        "request_contract": item.request_contract,
+        "work_type_name": item.work_type_name,
     }
 
 @app.put("/api/pu/items/{item_id}")
@@ -1439,99 +1450,184 @@ def get_requests_list(db: Session = Depends(get_db), user: User = Depends(get_cu
     """Список заявок ЭСК"""
     q = db.query(PUItem).filter(PUItem.request_number != None, PUItem.request_number != "")
     
+    # ЭСК видит только свои заявки
+    if is_esk_user(user) or is_esk_admin(user):
+        visible = get_visible_units(user, db)
+        q = q.filter(PUItem.current_unit_id.in_(visible))
+    
     items = q.all()
     req_map = {}
     for item in items:
-        if item.request_number not in req_map:
-            req_map[item.request_number] = {
+        key = f"{item.request_number}|{item.request_contract or ''}"
+        if key not in req_map:
+            req_map[key] = {
                 "request_number": item.request_number,
+                "request_contract": item.request_contract,
+                "display_name": f"№ {item.request_number} Договор № {item.request_contract}" if item.request_contract else f"№ {item.request_number}",
                 "unit_name": item.current_unit.name if item.current_unit else None,
                 "count": 0
             }
-        req_map[item.request_number]["count"] += 1
+        req_map[key]["count"] += 1
     
     return list(req_map.values())
 
 @app.get("/api/requests/{request_number}/items")
-def get_request_items(request_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Получить все ПУ по номеру заявки"""
-    items = db.query(PUItem).filter(PUItem.request_number == request_number).all()
+def get_request_items(request_number: str, request_contract: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить все ПУ по номеру заявки с расширенными данными"""
+    q = db.query(PUItem).filter(PUItem.request_number == request_number)
+    if request_contract:
+        q = q.filter(PUItem.request_contract == request_contract)
+    
+    items = q.all()
+    
+    # Получаем связанные РЭС для каждого ЭСК
+    def get_res_name(esk_unit):
+        if not esk_unit:
+            return "—"
+        res_code = esk_unit.code.replace("ESK_", "RES_") if esk_unit.code else ""
+        res_unit = db.query(Unit).filter(Unit.code == res_code).first()
+        return res_unit.name if res_unit else "—"
+    
     return [{
         "id": i.id,
+        "row_num": idx + 1,
+        "filial": "Сочинский ПЭС",
+        "res_name": get_res_name(i.current_unit),
         "serial_number": i.serial_number,
         "pu_type": i.pu_type,
-        "status": i.status.value,
-        "current_unit_name": i.current_unit.name if i.current_unit else None,
-        "contract_number": i.contract_number,
         "consumer": i.consumer,
         "address": i.address,
+        "contract_number": i.contract_number,
+        "contract_date": i.contract_date.isoformat() if i.contract_date else None,
+        "plan_date": i.plan_date.isoformat() if i.plan_date else None,
         "power": i.power,
         "faza": i.faza,
-        "voltage": i.voltage,
-        "ttr_esk_id": i.ttr_esk_id,
-        "trubostoyka": i.trubostoyka
-    } for i in items]
+        "work_type_name": i.work_type_name,
+        "price_with_nds": (i.price_truba_with_nds or 0) + (i.price_va_with_nds or 0),
+        "current_unit_name": i.current_unit.name if i.current_unit else None,
+    } for idx, i in enumerate(items)]
 
 @app.get("/api/requests/pending")
 def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Согласованные ПУ для заявки ЭСК"""
-    if not is_sue_admin(user):
-        raise HTTPException(403, "Только СУЭ может формировать заявки")
+    if not is_esk_admin(user) and not is_esk_user(user):
+        raise HTTPException(403, "Только ЭСК может формировать заявки")
     
     q = db.query(PUItem).filter(
         PUItem.approval_status == ApprovalStatus.APPROVED,
         (PUItem.request_number == None) | (PUItem.request_number == "")
     )
     
-    # Только ЭСК
-    esk_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.ESK_UNIT)
-    q = q.filter(PUItem.current_unit_id.in_(esk_units))
+    # Только свои подразделения ЭСК
+    visible = get_visible_units(user, db)
+    q = q.filter(PUItem.current_unit_id.in_(visible))
     
     if unit_id:
         q = q.filter(PUItem.current_unit_id == unit_id)
     
     items = q.all()
     return [{
-        "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
+        "id": i.id, 
+        "serial_number": i.serial_number, 
+        "pu_type": i.pu_type,
         "current_unit_name": i.current_unit.name if i.current_unit else None,
-        "contract_number": i.contract_number, "consumer": i.consumer
+        "contract_number": i.contract_number, 
+        "consumer": i.consumer,
+        "work_type_name": i.work_type_name,
+        "price_with_nds": (i.price_truba_with_nds or 0) + (i.price_va_with_nds or 0),
     } for i in items]
 
-@app.post("/api/requests/create")
-def create_request(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Создать заявку ЭСК с автоматическим номером"""
-    if not is_sue_admin(user):
-        raise HTTPException(403, "Только СУЭ может формировать заявки")
-    
-    item_ids = data["item_ids"]
-    
-    # Автоматический номер: следующий по порядку в текущем году
+@app.get("/api/requests/last")
+def get_last_request(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить последний номер заявки для подсказки"""
     current_year = datetime.utcnow().year
-    year_short = str(current_year)[-2:]  # "25"
+    year_short = str(current_year)[-2:]
     
-    # Ищем последний номер заявки за этот год
-    last_request = db.query(PUItem).filter(
+    last_item = db.query(PUItem).filter(
         PUItem.request_number != None,
         PUItem.request_number != "",
         PUItem.request_number.like(f"%-{year_short}")
-    ).order_by(PUItem.request_number.desc()).first()
+    ).order_by(PUItem.id.desc()).first()
     
-    if last_request and last_request.request_number:
-        # Извлекаем номер: "5-25" -> 5
+    next_num = 1
+    last_contract = ""
+    
+    if last_item and last_item.request_number:
         try:
-            last_num = int(last_request.request_number.split("-")[0])
+            last_num = int(last_item.request_number.split("-")[0])
             next_num = last_num + 1
+            last_contract = last_item.request_contract or ""
         except:
-            next_num = 1
-    else:
-        next_num = 1
+            pass
     
-    request_number = f"{next_num}-{year_short}"
+    return {
+        "next_number": f"{next_num}-{year_short}",
+        "last_contract": last_contract,
+        "suggested": f"№ {next_num}-{year_short} Договор № {last_contract}" if last_contract else f"№ {next_num}-{year_short}"
+    }
+
+@app.post("/api/requests/create")
+def create_request(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Создать заявку ЭСК"""
+    if not is_esk_admin(user) and not is_esk_user(user):
+        raise HTTPException(403, "Только ЭСК может формировать заявки")
     
-    updated = db.query(PUItem).filter(PUItem.id.in_(item_ids)).update({"request_number": request_number}, synchronize_session=False)
+    item_ids = data.get("item_ids", [])
+    request_number = data.get("request_number")  # например "1-26"
+    request_contract = data.get("request_contract")  # например "147"
+    
+    if not item_ids:
+        raise HTTPException(400, "Не выбраны ПУ")
+    if not request_number:
+        raise HTTPException(400, "Не указан номер заявки")
+    
+    # Обновляем ПУ
+    for item_id in item_ids:
+        item = db.query(PUItem).filter(PUItem.id == item_id).first()
+        if item:
+            item.request_number = request_number
+            item.request_contract = request_contract
+            # Копируем work_type_name из ТТР если есть
+            if item.ttr_esk_id:
+                ttr = db.query(TTR_ESK).filter(TTR_ESK.id == item.ttr_esk_id).first()
+                if ttr and ttr.work_type_name:
+                    item.work_type_name = ttr.work_type_name
+    
     db.commit()
     
-    return {"created": updated, "request_number": request_number}
+    return {
+        "created": len(item_ids), 
+        "request_number": request_number,
+        "request_contract": request_contract,
+        "display_name": f"№ {request_number} Договор № {request_contract}" if request_contract else f"№ {request_number}"
+    }
+
+@app.post("/api/requests/modify")
+def modify_request(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Добавить/удалить ПУ из заявки (только с паролем)"""
+    if data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    action = data.get("action")  # "add" или "remove"
+    item_ids = data.get("item_ids", [])
+    request_number = data.get("request_number")
+    request_contract = data.get("request_contract")
+    
+    if action == "add":
+        for item_id in item_ids:
+            item = db.query(PUItem).filter(PUItem.id == item_id).first()
+            if item:
+                item.request_number = request_number
+                item.request_contract = request_contract
+    elif action == "remove":
+        for item_id in item_ids:
+            item = db.query(PUItem).filter(PUItem.id == item_id).first()
+            if item:
+                item.request_number = None
+                item.request_contract = None
+    
+    db.commit()
+    return {"ok": True, "modified": len(item_ids)}
 
 
 @app.get("/api/memo/generate")
