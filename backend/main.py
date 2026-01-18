@@ -166,6 +166,16 @@ class PUItem(Base):
     lsr_number = Column(String(50))  # Номер ЛСР
     price_no_nds = Column(Float)  # Стоимость без НДС
     price_with_nds = Column(Float)  # Стоимость с НДС
+
+        # ЛСР Трубостойки (отдельно)
+    lsr_truba = Column(String(50))
+    price_truba_no_nds = Column(Float)
+    price_truba_with_nds = Column(Float)
+    
+    # ЛСР ВА (отдельно)
+    lsr_va = Column(String(50))
+    price_va_no_nds = Column(Float)
+    price_va_with_nds = Column(Float)
     
     # Материалы (JSON или отдельная таблица)
     materials_used = Column(Boolean, default=False)  # Материалы использованы
@@ -430,6 +440,12 @@ class PUCardUpdate(BaseModel):
     lsr_number: Optional[str] = None
     price_no_nds: Optional[float] = None
     price_with_nds: Optional[float] = None
+    lsr_truba: Optional[str] = None
+    price_truba_no_nds: Optional[float] = None
+    price_truba_with_nds: Optional[float] = None
+    lsr_va: Optional[str] = None
+    price_va_no_nds: Optional[float] = None
+    price_va_with_nds: Optional[float] = None
 
 # ==================== ПРИЛОЖЕНИЕ ====================
 app = FastAPI(title="Система учета ПУ")
@@ -807,6 +823,12 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "lsr_number": item.lsr_number,
         "price_no_nds": item.price_no_nds,
         "price_with_nds": item.price_with_nds,
+        "lsr_truba": item.lsr_truba,
+        "price_truba_no_nds": item.price_truba_no_nds,
+        "price_truba_with_nds": item.price_truba_with_nds,
+        "lsr_va": item.lsr_va,
+        "price_va_no_nds": item.price_va_no_nds,
+        "price_va_with_nds": item.price_va_with_nds,
     }
 
 @app.put("/api/pu/items/{item_id}")
