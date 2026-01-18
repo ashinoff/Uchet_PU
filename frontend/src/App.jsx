@@ -669,7 +669,39 @@ useEffect(() => {
   e.target.value = '' // сброс input
 }
 
-  const handleSendApproval = async () => {
+const handleSendApproval = async () => {
+  // Проверяем обязательные поля для согласования
+  const requiredFields = []
+  
+  if (!item.faza) requiredFields.push('Фазность')
+  if (!item.form_factor) requiredFields.push('Форм-фактор')
+  if (!item.va_type) requiredFields.push('Щит с ВА')
+  if (!item.contract_number) requiredFields.push('Номер договора')
+  if (!item.consumer) requiredFields.push('Потребитель')
+  if (!item.address) requiredFields.push('Адрес')
+  if (!item.smr_master_id) requiredFields.push('СМР выполнил (мастер)')
+  if (!item.smr_date) requiredFields.push('Дата СМР')
+  
+  // Проверяем ЛСР
+  if (!item.lsr_va && !item.lsr_truba) requiredFields.push('ЛСР (выберите Щит с ВА или Трубостойку)')
+  
+  if (requiredFields.length > 0) {
+    // Подсвечиваем ошибки
+    const newErrors = {}
+    if (!item.faza) newErrors.faza = 'Обязательно'
+    if (!item.form_factor) newErrors.form_factor = 'Обязательно'
+    if (!item.va_type) newErrors.va_type = 'Обязательно'
+    if (!item.contract_number) newErrors.contract_number = 'Обязательно'
+    if (!item.consumer) newErrors.consumer = 'Обязательно'
+    if (!item.address) newErrors.address = 'Обязательно'
+    if (!item.smr_master_id) newErrors.smr_master_id = 'Обязательно'
+    if (!item.smr_date) newErrors.smr_date = 'Обязательно'
+    setErrors(newErrors)
+    
+    alert(`❌ Заполните обязательные поля:\n\n• ${requiredFields.join('\n• ')}`)
+    return
+  }
+  
   if (!validate()) return
   setSaving(true)
   try {
@@ -759,7 +791,8 @@ const update = async (field, value) => {
     const isEsk = item?.current_unit_type === 'ESK_UNIT' || item?.current_unit_type === 'ESK'
     const isRes = item?.current_unit_type === 'RES'
 // СУЭ только просмотр, РЭС редактирует свои, ЭСК редактирует свои
-    const canEdit = (isResUser && isRes) || (isEskUser && isEsk)
+    const isApproved = item?.approval_status === 'APPROVED'
+    const canEdit = ((isResUser && isRes) || (isEskUser && isEsk)) && !isApproved
 
   // Для ЭСК только Техприс и Склад
   const statusOptions = isEsk 
@@ -867,12 +900,14 @@ const update = async (field, value) => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Потребитель</label>
-                <input type="text" value={item.consumer || ''} onChange={e => update('consumer', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg" />
+                <label className="block text-sm font-medium text-gray-600 mb-1">Потребитель *</label>
+                <input type="text" value={item.consumer || ''} onChange={e => update('consumer', e.target.value)} disabled={!canEdit} className={`w-full px-3 py-2 border rounded-lg ${errors.consumer ? 'border-red-500 bg-red-50' : ''}`} />
+                {errors.consumer && <span className="text-red-500 text-xs">{errors.consumer}</span>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Адрес</label>
-                <textarea value={item.address || ''} onChange={e => update('address', e.target.value)} disabled={!canEdit} rows={2} className="w-full px-3 py-2 border rounded-lg" />
+                <label className="block text-sm font-medium text-gray-600 mb-1">Адрес *</label>
+                <textarea value={item.address || ''} onChange={e => update('address', e.target.value)} disabled={!canEdit} rows={2} className={`w-full px-3 py-2 border rounded-lg ${errors.address ? 'border-red-500 bg-red-50' : ''}`} />
+                {errors.address && <span className="text-red-500 text-xs">{errors.address}</span>}
               </div>
             </>
           )}
@@ -962,8 +997,8 @@ const update = async (field, value) => {
         <input type="text" value={item.faza || '—'} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-600 mb-1">Форм-фактор</label>
-        <select value={item.form_factor || ''} onChange={e => update('form_factor', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+        <label className="block text-sm font-medium text-gray-600 mb-1">Форм-фактор *</label>
+        <select value={item.form_factor || ''} onChange={e => update('form_factor', e.target.value)} disabled={!canEdit} className={`w-full px-3 py-2 border rounded-lg ${errors.form_factor ? 'border-red-500 bg-red-50' : ''}`}>
           <option value="">Выберите...</option>
           <option value="split">Сплит</option>
           <option value="classic">Классика</option>
@@ -999,8 +1034,8 @@ const update = async (field, value) => {
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-600 mb-1">Щит с ВА</label>
-        <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+        <label className="block text-sm font-medium text-gray-600 mb-1">Щит с ВА *</label>
+        <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit} className={`w-full px-3 py-2 border rounded-lg ${errors.va_type ? 'border-red-500 bg-red-50' : ''}`}>
           <option value="">Выберите...</option>
           <option value="opora">Опора</option>
           <option value="fasad">Фасад</option>
@@ -1052,15 +1087,15 @@ const update = async (field, value) => {
     
     <div className="grid grid-cols-2 gap-4">
       <div>
-        <label className="block text-sm font-medium text-gray-600 mb-1">СМР выполнил (мастер)</label>
-        <select value={item.smr_master_id || ''} onChange={e => update('smr_master_id', parseInt(e.target.value) || null)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+        <label className="block text-sm font-medium text-gray-600 mb-1">СМР выполнил (мастер) *</label>
+        <select value={item.smr_master_id || ''} onChange={e => update('smr_master_id', parseInt(e.target.value) || null)} disabled={!canEdit} className={`w-full px-3 py-2 border rounded-lg ${errors.smr_master_id ? 'border-red-500 bg-red-50' : ''}`}>
           <option value="">—</option>
           {masters.filter(m => !item.current_unit_id || m.unit_id === item.current_unit_id).map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-600 mb-1">Дата СМР</label>
-        <input type="date" value={item.smr_date || ''} onChange={e => update('smr_date', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg" />
+        <label className="block text-sm font-medium text-gray-600 mb-1">Дата СМР *</label>
+        <input type="date" value={item.smr_date || ''} onChange={e => update('smr_date', e.target.value)} disabled={!canEdit} className={`w-full px-3 py-2 border rounded-lg ${errors.smr_date ? 'border-red-500 bg-red-50' : ''}`} />
       </div>
     </div>
   </>
@@ -1079,11 +1114,31 @@ const update = async (field, value) => {
           </div>
 
           {/* Согласование */}
-          {item.approval_status && item.approval_status !== 'NONE' && (
-            <div className={`p-3 rounded-lg ${item.approval_status === 'APPROVED' ? 'bg-green-50 text-green-700' : item.approval_status === 'PENDING' ? 'bg-yellow-50 text-yellow-700' : 'bg-gray-50'}`}>
-              Статус согласования: {item.approval_status === 'APPROVED' ? '✅ Согласовано' : item.approval_status === 'PENDING' ? '⏳ На согласовании' : '—'}
-            </div>
-          )}
+{item.approval_status && item.approval_status !== 'NONE' && (
+  <div className={`p-4 rounded-lg ${item.approval_status === 'APPROVED' ? 'bg-green-50 border border-green-200' : item.approval_status === 'PENDING' ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50'}`}>
+    <div className="flex justify-between items-center">
+      <span className={item.approval_status === 'APPROVED' ? 'text-green-700 font-medium' : 'text-yellow-700'}>
+        {item.approval_status === 'APPROVED' ? '✅ Согласовано — редактирование заблокировано' : item.approval_status === 'PENDING' ? '⏳ На согласовании' : '—'}
+      </span>
+      {item.approval_status === 'APPROVED' && isSueAdmin && (
+        <button 
+          onClick={() => {
+            const code = prompt('Введите код администратора для разблокировки:')
+            if (code === '2233') {
+              setItem({ ...item, approval_status: 'NONE' })
+              alert('✅ Карточка разблокирована для редактирования')
+            } else if (code) {
+              alert('❌ Неверный код')
+            }
+          }}
+          className="px-3 py-1 bg-orange-500 text-white rounded-lg text-sm"
+        >
+          🔓 Разблокировать
+        </button>
+      )}
+    </div>
+  </div>
+)}
         </div>
 
         {canEdit && (
