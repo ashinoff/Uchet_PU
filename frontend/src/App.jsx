@@ -2276,6 +2276,7 @@ function TTRResTab() {
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
   const [filter, setFilter] = useState('')
+  const [materialsModal, setMaterialsModal] = useState(null)
 
   useEffect(() => { api.get('/ttr/res').then(r => setItems(r.data)) }, [])
 
@@ -2313,7 +2314,8 @@ function TTRResTab() {
                 <td className="px-4 py-3">{i.name}</td>
                 <td className="px-4 py-3">{i.ttr_type === 'OU' ? 'Орг. учета' : i.ttr_type === 'OL' ? 'Обуст. линии' : 'Распред. щит'}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setModal({ item: i })}>✏️</button>
+                  <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
+                  <button onClick={() => setMaterialsModal(i)} title="Материалы">📦</button>
                 </td>
               </tr>
             ))}
@@ -2329,6 +2331,12 @@ function TTRResTab() {
           </div>
         </div>
       )}
+      {materialsModal && (
+        <TTRMaterialsModal 
+        ttr={materialsModal} 
+        onClose={() => setMaterialsModal(null)} 
+      />
+    )}
     </>
   )
 }
@@ -2347,6 +2355,111 @@ function TTRResForm({ item, onSave, onClose }) {
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
         <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+      </div>
+    </div>
+  )
+}
+
+function TTRMaterialsModal({ ttr, onClose }) {
+  const [allMaterials, setAllMaterials] = useState([])
+  const [ttrMaterials, setTtrMaterials] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/materials'),
+      api.get(`/ttr/res/${ttr.id}/materials`)
+    ]).then(([matRes, ttrMatRes]) => {
+      setAllMaterials(matRes.data)
+      // Преобразуем в удобный формат {material_id: quantity}
+      const selected = {}
+      ttrMatRes.data.forEach(m => {
+        selected[m.material_id] = m.quantity
+      })
+      setTtrMaterials(selected)
+      setLoading(false)
+    })
+  }, [ttr.id])
+
+  const toggleMaterial = (matId) => {
+    setTtrMaterials(prev => {
+      if (prev[matId] !== undefined) {
+        const copy = { ...prev }
+        delete copy[matId]
+        return copy
+      } else {
+        return { ...prev, [matId]: 1 }
+      }
+    })
+  }
+
+  const setQuantity = (matId, qty) => {
+    setTtrMaterials(prev => ({ ...prev, [matId]: parseFloat(qty) || 0 }))
+  }
+
+  const handleSave = async () => {
+    const materials = Object.entries(ttrMaterials).map(([material_id, quantity]) => ({
+      material_id: parseInt(material_id),
+      quantity
+    }))
+    await api.post(`/ttr/res/${ttr.id}/materials`, { materials })
+    onClose()
+  }
+
+  if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b flex justify-between items-center">
+          <h2 className="font-semibold">📦 Материалы для {ttr.code}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+        </div>
+        
+        <div className="p-4 overflow-y-auto max-h-96">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="w-10 px-2 py-2"></th>
+                <th className="px-2 py-2 text-left">Материал</th>
+                <th className="px-2 py-2 text-left w-20">Ед.</th>
+                <th className="px-2 py-2 text-left w-24">Кол-во</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allMaterials.map(m => (
+                <tr key={m.id} className="border-t">
+                  <td className="px-2 py-2">
+                    <input 
+                      type="checkbox" 
+                      checked={ttrMaterials[m.id] !== undefined}
+                      onChange={() => toggleMaterial(m.id)}
+                    />
+                  </td>
+                  <td className="px-2 py-2">{m.name}</td>
+                  <td className="px-2 py-2 text-gray-500">{m.unit}</td>
+                  <td className="px-2 py-2">
+                    {ttrMaterials[m.id] !== undefined && (
+                      <input 
+                        type="number" 
+                        value={ttrMaterials[m.id]} 
+                        onChange={e => setQuantity(m.id, e.target.value)}
+                        className="w-full px-2 py-1 border rounded"
+                        min="0"
+                        step="0.1"
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+          <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+        </div>
       </div>
     </div>
   )
