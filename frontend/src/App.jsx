@@ -197,12 +197,23 @@ function LoginPage() {
 function HomePage({ setPage }) {
   const { user, canUpload, canManageUsers, canApprove, isSueAdmin, isEskAdmin } = useAuth()
   const [stats, setStats] = useState(null)
+  const [error, setError] = useState(null)
 
   useEffect(() => { 
-  api.get('/pu/dashboard')
-    .then(r => setStats(r.data))
-    .catch(err => console.error('Dashboard error:', err)) 
-}, [])
+    api.get('/pu/dashboard')
+      .then(r => {
+        console.log('Dashboard response:', r.data)
+        setStats(r.data)
+      })
+      .catch(err => {
+        console.error('Dashboard error:', err)
+        setError(err.message)
+      })
+  }, [])
+
+  if (error) {
+    return <div className="p-4 bg-red-100 text-red-700 rounded">Ошибка: {error}</div>
+  }
 
   const shortcuts = [
     { id: 'pu', icon: '📦', label: 'Приборы учета', desc: 'Просмотр и управление', show: true },
