@@ -809,6 +809,7 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "ls_number": item.ls_number,
         "smr_executor": item.smr_executor,
         "smr_date": item.smr_date.isoformat() if item.smr_date else None,
+        "smr_master_id": item.smr_master_id,
         "ttr_ou_id": item.ttr_ou_id,
         "ttr_ol_id": item.ttr_ol_id,
         "ttr_or_id": item.ttr_or_id,
