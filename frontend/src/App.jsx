@@ -2,6 +2,7 @@
 import api from './api'
 
 // ==================== КОНТЕКСТ АВТОРИЗАЦИИ ====================
+
 const AuthContext = createContext(null)
 
 function AuthProvider({ children }) {
@@ -9,20 +10,19 @@ function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    useEffect(() => {
-  if (localStorage.getItem('token')) {
-    api.get('/auth/me')
-      .then(r => {
-        console.log('User loaded:', r.data)
-        setUser(r.data)
-      })
-      .catch(err => {
-        console.error('Auth error:', err)
-        localStorage.removeItem('token')
-      })
-      .finally(() => setLoading(false))
-  } else setLoading(false)
-}, [])
+    if (localStorage.getItem('token')) {
+      api.get('/auth/me')
+        .then(r => {
+          console.log('User loaded:', r.data)
+          setUser(r.data)
+        })
+        .catch(err => {
+          console.error('Auth error:', err)
+          localStorage.removeItem('token')
+        })
+        .finally(() => setLoading(false))
+    } else setLoading(false)
+  }, [])
 
   const login = async (username, password) => {
     const r = await api.post('/auth/login', { username, password })
