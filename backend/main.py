@@ -1080,6 +1080,24 @@ def approve_item(item_id: int, db: Session = Depends(get_db), user: User = Depen
     db.commit()
     return {"ok": True}
 
+@app.post("/api/pu/items/{item_id}/unlock")
+def unlock_item(item_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Разблокировать согласованную карточку (только СУЭ с кодом)"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может разблокировать")
+    if data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    item = db.query(PUItem).filter(PUItem.id == item_id).first()
+    if not item:
+        raise HTTPException(404, "ПУ не найден")
+    
+    item.approval_status = ApprovalStatus.NONE
+    item.approved_by = None
+    item.approved_at = None
+    db.commit()
+    return {"ok": True}
+
 @app.get("/api/pu/pending-approval")
 def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Список ПУ на согласовании для РЭС"""
