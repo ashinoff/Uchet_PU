@@ -430,6 +430,7 @@ class PUCardUpdate(BaseModel):
     ls_number: Optional[str] = None
     smr_executor: Optional[str] = None
     smr_date: Optional[date] = None
+    smr_master_id: Optional[int] = None
     ttr_ou_id: Optional[int] = None
     ttr_ol_id: Optional[int] = None
     ttr_or_id: Optional[int] = None
@@ -776,7 +777,7 @@ def get_items(
     }
 
 @app.get("/api/pu/detect-type")
-def detect_type(pu_type: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def detect_type(pu_type: str, db: Session = Depends(get_db)):
     """Определить фазность и напряжение по типу ПУ"""
     result = detect_pu_type_params(pu_type, db)
     return result
