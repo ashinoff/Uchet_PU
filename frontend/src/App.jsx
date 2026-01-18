@@ -547,12 +547,41 @@ function PUCardModal({ itemId, onClose }) {
   const [masters, setMasters] = useState([])
   const [importing, setImporting] = useState(false)
 
-  useEffect(() => {
-    api.get(`/pu/items/${itemId}`).then(r => { setItem(r.data); setLoading(false) })
-    api.get('/ttr/res').then(r => setTtrRes(r.data))
-    api.get('/ttr/esk').then(r => setTtrEsk(r.data))
-    api.get('/masters').then(r => setMasters(r.data))
-  }, [itemId])
+useEffect(() => {
+  const loadItem = async () => {
+    try {
+      const r = await api.get(`/pu/items/${itemId}`)
+      let itemData = r.data
+      
+      // Автоопределение если form_factor пустой но есть pu_type
+      if (itemData.pu_type && !itemData.form_factor) {
+        try {
+          const detectRes = await api.get('/pu/detect-type', { params: { pu_type: itemData.pu_type } })
+          if (detectRes.data.form_factor) {
+            itemData = { ...itemData, form_factor: detectRes.data.form_factor }
+          }
+          if (detectRes.data.faza && !itemData.faza) {
+            itemData = { ...itemData, faza: detectRes.data.faza }
+          }
+          if (detectRes.data.voltage && !itemData.voltage) {
+            itemData = { ...itemData, voltage: detectRes.data.voltage }
+          }
+        } catch (err) { /* игнорируем */ }
+      }
+      
+      setItem(itemData)
+      setLoading(false)
+    } catch (err) {
+      console.error('Ошибка загрузки ПУ:', err)
+      setLoading(false)
+    }
+  }
+  
+  loadItem()
+  api.get('/ttr/res').then(r => setTtrRes(r.data))
+  api.get('/ttr/esk').then(r => setTtrEsk(r.data))
+  api.get('/masters').then(r => setMasters(r.data))
+}, [itemId])
 
   // Автоформат договора с дефисами
   const formatContract = (value) => {
