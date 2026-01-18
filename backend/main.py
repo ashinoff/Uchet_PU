@@ -497,40 +497,50 @@ def get_ttr_esk(ttr_type: Optional[str] = None, db: Session = Depends(get_db), u
 
 @app.get("/api/ttr/esk/lookup")
 def lookup_ttr_esk(
-    ttr_type: str = "PU",
     faza: Optional[str] = None,
     form_factor: Optional[str] = None,
     va_type: Optional[str] = None,
     pu_type: Optional[str] = None,
+    need_trubostoyka: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Подбор ТТР ЭСК по параметрам"""
+    """Подбор ТТР ЭСК: возвращает отдельно трубостойку и ВА"""
     
-    if ttr_type == "TRUBOSTOYKA":
-        # Для трубостойки возвращаем первую запись
-        ttr = db.query(TTR_ESK).filter(
+    result = {
+        "trubostoyka": None,
+        "va": None,
+        "total_no_nds": 0,
+        "total_with_nds": 0
+    }
+    
+    # 1. Трубостойка (если нужна)
+    if need_trubostoyka:
+        ttr_truba = db.query(TTR_ESK).filter(
             TTR_ESK.ttr_type == "TRUBOSTOYKA",
             TTR_ESK.is_active == True
         ).first()
-    elif ttr_type == "OTVETVLENIE":
-        ttr = db.query(TTR_ESK).filter(
-            TTR_ESK.ttr_type == "OTVETVLENIE",
-            TTR_ESK.is_active == True
-        ).first()
-    else:
-        # Для ПУ ищем по всем параметрам
+        if ttr_truba:
+            result["trubostoyka"] = {
+                "id": ttr_truba.id,
+                "lsr_number": ttr_truba.lsr_number,
+                "price_no_nds": ttr_truba.price_no_nds or 0,
+                "price_with_nds": ttr_truba.price_with_nds or 0
+            }
+            result["total_no_nds"] += ttr_truba.price_no_nds or 0
+            result["total_with_nds"] += ttr_truba.price_with_nds or 0
+    
+    # 2. ВА по критериям (паттерн ПУ, фаза, форм-фактор, тип ВА)
+    if faza and form_factor and va_type:
         q = db.query(TTR_ESK).filter(
             TTR_ESK.ttr_type == "PU",
+            TTR_ESK.faza == faza,
+            TTR_ESK.form_factor == form_factor,
+            TTR_ESK.va_type == va_type,
             TTR_ESK.is_active == True
         )
         
-        if faza:
-            q = q.filter(TTR_ESK.faza == faza)
-        if form_factor:
-            q = q.filter(TTR_ESK.form_factor == form_factor)
-        if va_type:
-            q = q.filter(TTR_ESK.va_type == va_type)
+        ttr_va = None
         
         # Если передан тип ПУ, ищем по паттерну
         if pu_type:
@@ -538,24 +548,24 @@ def lookup_ttr_esk(
             all_ttr = q.all()
             for t in all_ttr:
                 if t.pu_pattern and t.pu_pattern.upper() in pu_type_upper:
-                    ttr = t
+                    ttr_va = t
                     break
-            else:
-                ttr = q.first()
+            if not ttr_va and all_ttr:
+                ttr_va = all_ttr[0]  # fallback
         else:
-            ttr = q.first()
+            ttr_va = q.first()
+        
+        if ttr_va:
+            result["va"] = {
+                "id": ttr_va.id,
+                "lsr_number": ttr_va.lsr_number,
+                "price_no_nds": ttr_va.price_no_nds or 0,
+                "price_with_nds": ttr_va.price_with_nds or 0
+            }
+            result["total_no_nds"] += ttr_va.price_no_nds or 0
+            result["total_with_nds"] += ttr_va.price_with_nds or 0
     
-    if not ttr:
-        return {"found": False}
-    
-    return {
-        "found": True,
-        "id": ttr.id,
-        "ttr_type": ttr.ttr_type,
-        "lsr_number": ttr.lsr_number,
-        "price_no_nds": ttr.price_no_nds,
-        "price_with_nds": ttr.price_with_nds
-    }
+    return result
 
 @app.get("/api/masters")
 def get_masters(unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1164,6 +1174,14 @@ def update_ttr_esk(ttr_id: int, data: dict, db: Session = Depends(get_db), user:
     for k, v in data.items():
         if hasattr(t, k):
             setattr(t, k, v)
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/api/ttr/esk/{ttr_id}")
+def delete_ttr_esk(ttr_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    db.query(TTR_ESK).filter(TTR_ESK.id == ttr_id).update({"is_active": False})
     db.commit()
     return {"ok": True}
 
