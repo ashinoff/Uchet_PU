@@ -100,7 +100,7 @@ function Sidebar({ page, setPage }) {
     { id: 'pu-done', label: '✅ Завершённые СМР', show: true },
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
     { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
-    { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin },
+    { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin || isEskAdmin || isEskUser },
     { id: 'memo', label: '📄 Служебки', show: isSueAdmin },
     { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin },
   ].filter(i => i.show)
@@ -1546,7 +1546,7 @@ function TZPage() {
 
 // ==================== ЗАЯВКИ ЭСК ====================
 function RequestsPage() {
-  const { isSueAdmin } = useAuth()
+  const { isSueAdmin, isEskAdmin, isEskUser } = useAuth()
   const [tab, setTab] = useState('list')
   const [requestsList, setRequestsList] = useState([])
   const [expandedReq, setExpandedReq] = useState(null)
@@ -1556,31 +1556,27 @@ function RequestsPage() {
   const [selectedUnit, setSelectedUnit] = useState('')
   const [selectedItems, setSelectedItems] = useState([])
   const [loading, setLoading] = useState(false)
-  const [nextNumber, setNextNumber] = useState('')
+  const [lastRequest, setLastRequest] = useState(null)
+  const [requestNumber, setRequestNumber] = useState('')
+  const [requestContract, setRequestContract] = useState('')
+
+  const canCreateRequest = isEskAdmin || isEskUser
 
   useEffect(() => {
     loadRequests()
     api.get('/units').then(r => setUnits(r.data.filter(u => u.unit_type === 'ESK_UNIT')))
   }, [])
 
-  const loadRequests = () => {
-    api.get('/requests/list').then(r => {
-      setRequestsList(r.data)
-      const year = String(new Date().getFullYear()).slice(-2)
-      const thisYearRequests = r.data.filter(req => req.request_number?.endsWith(`-${year}`))
-      const maxNum = thisYearRequests.reduce((max, req) => {
-        const num = parseInt(req.request_number?.split('-')[0]) || 0
-        return num > max ? num : max
-      }, 0)
-      setNextNumber(`${maxNum + 1}-${year}`)
-    })
-  }
-
   useEffect(() => {
-    if (tab === 'create') {
+    if (tab === 'create' && canCreateRequest) {
       loadPending()
+      loadLastRequest()
     }
-  }, [tab, selectedUnit])
+  }, [tab])
+
+  const loadRequests = () => {
+    api.get('/requests/list').then(r => setRequestsList(r.data))
+  }
 
   const loadPending = () => {
     const params = {}
@@ -1588,23 +1584,56 @@ function RequestsPage() {
     api.get('/requests/pending', { params }).then(r => setPendingItems(r.data))
   }
 
-  const toggleExpand = async (requestNumber) => {
-    if (expandedReq === requestNumber) {
+  const loadLastRequest = () => {
+    api.get('/requests/last').then(r => {
+      setLastRequest(r.data)
+      setRequestNumber(r.data.next_number)
+      setRequestContract(r.data.last_contract)
+    })
+  }
+
+  const toggleExpand = async (req) => {
+    const key = `${req.request_number}|${req.request_contract || ''}`
+    if (expandedReq === key) {
       setExpandedReq(null)
       setReqItems([])
     } else {
-      setExpandedReq(requestNumber)
-      const r = await api.get(`/requests/${encodeURIComponent(requestNumber)}/items`)
+      setExpandedReq(key)
+      const params = { request_contract: req.request_contract }
+      const r = await api.get(`/requests/${encodeURIComponent(req.request_number)}/items`, { params })
       setReqItems(r.data)
     }
   }
 
   const exportToExcel = () => {
     if (reqItems.length === 0) return
-    const headers = ['№', 'Серийный номер', 'Тип ПУ', 'Договор', 'Потребитель', 'Адрес', 'Мощность']
-    const rows = reqItems.map((i, idx) => [
-      idx + 1, i.serial_number, i.pu_type || '', i.contract_number || '', 
-      i.consumer || '', i.address || '', i.power || ''
+    const headers = [
+      '№', 
+      'Филиал ПАО «Россети ЮГ» - "Кубаньэнерго"',
+      'Район электрических сетей',
+      'Заявитель (ФИО)',
+      'Адрес объекта',
+      'Номер договора',
+      'Дата заключения договора на ТП',
+      'Планируемая дата исполнения',
+      'Мощность',
+      'Фазность',
+      'Вид работ',
+      'Стоимость работ (руб., с НДС)'
+    ]
+    const rows = reqItems.map((i) => [
+      i.row_num,
+      i.filial,
+      i.res_name,
+      i.consumer || '',
+      i.address || '',
+      i.contract_number || '',
+      i.contract_date || '',
+      i.plan_date || '',
+      i.power || '',
+      i.faza || '',
+      i.work_type_name || '',
+      i.price_with_nds || ''
     ])
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(';')).join('\n')
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
@@ -1620,20 +1649,47 @@ function RequestsPage() {
       alert('Выберите ПУ')
       return
     }
+    if (!requestNumber) {
+      alert('Введите номер заявки')
+      return
+    }
     setLoading(true)
     try {
-      const r = await api.post('/requests/create', { item_ids: selectedItems })
-      alert(`✅ Создана заявка: ${r.data.request_number}`)
+      const r = await api.post('/requests/create', { 
+        item_ids: selectedItems,
+        request_number: requestNumber,
+        request_contract: requestContract
+      })
+      alert(`✅ Создана заявка: ${r.data.display_name}`)
       setSelectedItems([])
       loadRequests()
       loadPending()
+      loadLastRequest()
     } catch (err) {
       alert(err.response?.data?.detail || 'Ошибка')
     }
     setLoading(false)
   }
 
-  if (!isSueAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
+  const handleRemoveFromRequest = async (itemId) => {
+    const code = prompt('Введите код администратора:')
+    if (!code) return
+    
+    try {
+      await api.post('/requests/modify', {
+        action: 'remove',
+        item_ids: [itemId],
+        admin_code: code
+      })
+      alert('✅ ПУ удалён из заявки')
+      // Обновляем список
+      const req = requestsList.find(r => `${r.request_number}|${r.request_contract || ''}` === expandedReq)
+      if (req) toggleExpand(req)
+      loadRequests()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка')
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -1641,7 +1697,9 @@ function RequestsPage() {
 
       <div className="flex gap-2 border-b">
         <button onClick={() => setTab('list')} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>📋 Реестр заявок</button>
-        <button onClick={() => setTab('create')} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
+        {canCreateRequest && (
+          <button onClick={() => setTab('create')} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
+        )}
       </div>
 
       {tab === 'list' && (
@@ -1659,74 +1717,127 @@ function RequestsPage() {
                 </tr>
               </thead>
               <tbody>
-                {requestsList.map((req, idx) => (
-                  <>
-                    <tr key={idx} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(req.request_number)}>
-                      <td className="px-4 py-3">{expandedReq === req.request_number ? '▼' : '▶'}</td>
-                      <td className="px-4 py-3 font-medium">{req.request_number}</td>
-                      <td className="px-4 py-3">{req.unit_name || '—'}</td>
-                      <td className="px-4 py-3">{req.count}</td>
-                    </tr>
-                    {expandedReq === req.request_number && (
-                      <tr>
-                        <td colSpan={4} className="bg-gray-50 p-4">
-                          <div className="flex justify-between items-center mb-3">
-                            <span className="font-medium">ПУ в заявке {req.request_number}</span>
-                            <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
-                          </div>
-                          <table className="w-full text-sm bg-white rounded-lg overflow-hidden">
-                            <thead className="bg-gray-100">
-                              <tr>
-                                <th className="px-3 py-2 text-left">№</th>
-                                <th className="px-3 py-2 text-left">Серийный номер</th>
-                                <th className="px-3 py-2 text-left">Договор</th>
-                                <th className="px-3 py-2 text-left">Потребитель</th>
-                                <th className="px-3 py-2 text-left">Адрес</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {reqItems.map((item, i) => (
-                                <tr key={item.id} className="border-t">
-                                  <td className="px-3 py-2">{i + 1}</td>
-                                  <td className="px-3 py-2 font-mono">{item.serial_number}</td>
-                                  <td className="px-3 py-2">{item.contract_number || '—'}</td>
-                                  <td className="px-3 py-2">{item.consumer || '—'}</td>
-                                  <td className="px-3 py-2 max-w-xs truncate">{item.address || '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </td>
+                {requestsList.map((req, idx) => {
+                  const key = `${req.request_number}|${req.request_contract || ''}`
+                  return (
+                    <>
+                      <tr key={idx} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(req)}>
+                        <td className="px-4 py-3">{expandedReq === key ? '▼' : '▶'}</td>
+                        <td className="px-4 py-3 font-medium">{req.display_name}</td>
+                        <td className="px-4 py-3">{req.unit_name || '—'}</td>
+                        <td className="px-4 py-3">{req.count}</td>
                       </tr>
-                    )}
-                  </>
-                ))}
+                      {expandedReq === key && (
+                        <tr>
+                          <td colSpan={4} className="bg-gray-50 p-4">
+                            <div className="flex justify-between items-center mb-3">
+                              <span className="font-medium">ПУ в заявке {req.display_name}</span>
+                              <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs bg-white rounded-lg overflow-hidden">
+                                <thead className="bg-gray-100">
+                                  <tr>
+                                    <th className="px-2 py-2 text-left">№</th>
+                                    <th className="px-2 py-2 text-left">Филиал</th>
+                                    <th className="px-2 py-2 text-left">РЭС</th>
+                                    <th className="px-2 py-2 text-left">Заявитель</th>
+                                    <th className="px-2 py-2 text-left">Адрес</th>
+                                    <th className="px-2 py-2 text-left">№ договора</th>
+                                    <th className="px-2 py-2 text-left">Дата закл.</th>
+                                    <th className="px-2 py-2 text-left">План. дата</th>
+                                    <th className="px-2 py-2 text-left">Мощн.</th>
+                                    <th className="px-2 py-2 text-left">Фаза</th>
+                                    <th className="px-2 py-2 text-left">Вид работ</th>
+                                    <th className="px-2 py-2 text-left">Стоим. с НДС</th>
+                                    {canCreateRequest && <th className="px-2 py-2"></th>}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {reqItems.map((item) => (
+                                    <tr key={item.id} className="border-t">
+                                      <td className="px-2 py-2">{item.row_num}</td>
+                                      <td className="px-2 py-2">{item.filial}</td>
+                                      <td className="px-2 py-2">{item.res_name}</td>
+                                      <td className="px-2 py-2">{item.consumer || '—'}</td>
+                                      <td className="px-2 py-2 max-w-xs truncate" title={item.address}>{item.address || '—'}</td>
+                                      <td className="px-2 py-2">{item.contract_number || '—'}</td>
+                                      <td className="px-2 py-2">{item.contract_date || '—'}</td>
+                                      <td className="px-2 py-2">{item.plan_date || '—'}</td>
+                                      <td className="px-2 py-2">{item.power || '—'}</td>
+                                      <td className="px-2 py-2">{item.faza || '—'}</td>
+                                      <td className="px-2 py-2">{item.work_type_name || '—'}</td>
+                                      <td className="px-2 py-2 font-medium">{item.price_with_nds?.toLocaleString() || '—'} ₽</td>
+                                      {canCreateRequest && (
+                                        <td className="px-2 py-2">
+                                          <button onClick={() => handleRemoveFromRequest(item.id)} className="text-red-500 hover:text-red-700" title="Удалить из заявки">🗑️</button>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )
+                })}
               </tbody>
             </table>
           )}
         </div>
       )}
 
-      {tab === 'create' && (
+      {tab === 'create' && canCreateRequest && (
         <div className="space-y-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-            <span className="text-yellow-700">⚠️ Только согласованные ПУ от ЭСК доступны для формирования заявки</span>
+            <span className="text-yellow-700">⚠️ Только согласованные ПУ доступны для формирования заявки</span>
           </div>
 
           <div className="bg-white rounded-xl border p-4 space-y-4">
-            <div className="flex flex-wrap gap-4 items-center">
-              <select value={selectedUnit} onChange={e => setSelectedUnit(e.target.value)} className="px-3 py-2 border rounded-lg">
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Номер заявки *</label>
+                <input 
+                  type="text" 
+                  value={requestNumber} 
+                  onChange={e => setRequestNumber(e.target.value)} 
+                  placeholder="1-26" 
+                  className="px-3 py-2 border rounded-lg w-32"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Номер договора</label>
+                <input 
+                  type="text" 
+                  value={requestContract} 
+                  onChange={e => setRequestContract(e.target.value)} 
+                  placeholder="147" 
+                  className="px-3 py-2 border rounded-lg w-32"
+                />
+              </div>
+              <select value={selectedUnit} onChange={e => { setSelectedUnit(e.target.value); loadPending() }} className="px-3 py-2 border rounded-lg">
                 <option value="">Все ЭСК</option>
                 {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
             
+            {lastRequest && (
+              <div className="text-sm text-gray-500">
+                💡 Рекомендовано: <span className="font-medium text-blue-600">{lastRequest.suggested}</span>
+              </div>
+            )}
+            
             <div className="flex items-center justify-between bg-green-50 rounded-lg p-3">
               <div>
-                <span className="text-sm text-gray-600">Следующий номер заявки: </span>
-                <span className="font-bold text-green-700 text-lg">{nextNumber}</span>
+                <span className="text-sm text-gray-600">Будет создана заявка: </span>
+                <span className="font-bold text-green-700 text-lg">
+                  № {requestNumber || '?'} {requestContract ? `Договор № ${requestContract}` : ''}
+                </span>
               </div>
-              <button onClick={handleCreate} disabled={loading || selectedItems.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
+              <button onClick={handleCreate} disabled={loading || selectedItems.length === 0 || !requestNumber} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
                 {loading ? 'Создание...' : `Создать заявку (${selectedItems.length})`}
               </button>
             </div>
@@ -1751,6 +1862,8 @@ function RequestsPage() {
                       <th className="px-4 py-3 text-left">ЭСК</th>
                       <th className="px-4 py-3 text-left">Договор</th>
                       <th className="px-4 py-3 text-left">Потребитель</th>
+                      <th className="px-4 py-3 text-left">Вид работ</th>
+                      <th className="px-4 py-3 text-left">Стоимость</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1763,6 +1876,8 @@ function RequestsPage() {
                         <td className="px-4 py-3">{i.current_unit_name || '—'}</td>
                         <td className="px-4 py-3">{i.contract_number || '—'}</td>
                         <td className="px-4 py-3">{i.consumer || '—'}</td>
+                        <td className="px-4 py-3">{i.work_type_name || '—'}</td>
+                        <td className="px-4 py-3">{i.price_with_nds?.toLocaleString() || '—'} ₽</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2269,6 +2384,7 @@ function TTREskTab() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left">Тип ТТР</th>
+              <th className="px-4 py-3 text-left">Вид работ</th>
               <th className="px-4 py-3 text-left">Наименование ПУ</th>
               <th className="px-4 py-3 text-left">Фазность</th>
               <th className="px-4 py-3 text-left">Форм-фактор</th>
@@ -2280,29 +2396,30 @@ function TTREskTab() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(i => (
-              <tr key={i.id} className="border-t">
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-xs ${i.ttr_type === 'PU' ? 'bg-blue-100 text-blue-700' : i.ttr_type === 'TRUBOSTOYKA' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                    {ttrTypeLabels[i.ttr_type] || i.ttr_type}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{i.pu_pattern || '—'}</td>
-                <td className="px-4 py-3">{i.faza || '—'}</td>
-                <td className="px-4 py-3">{formFactorLabels[i.form_factor] || '—'}</td>
-                <td className="px-4 py-3">{vaTypeLabels[i.va_type] || '—'}</td>
-                <td className="px-4 py-3 font-mono">{i.lsr_number || '—'}</td>
-                <td className="px-4 py-3">{i.price_no_nds?.toLocaleString() || '—'} ₽</td>
-                <td className="px-4 py-3">{i.price_with_nds?.toLocaleString() || '—'} ₽</td>
-                {isSueAdmin && (
-                  <td className="px-4 py-3">
-                    <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                    <button onClick={() => handleDelete(i.id)}>🗑️</button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
+  {filtered.map(i => (
+    <tr key={i.id} className="border-t">
+      <td className="px-4 py-3">
+        <span className={`px-2 py-1 rounded-full text-xs ${i.ttr_type === 'PU' ? 'bg-blue-100 text-blue-700' : i.ttr_type === 'TRUBOSTOYKA' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+          {ttrTypeLabels[i.ttr_type] || i.ttr_type}
+        </span>
+      </td>
+      <td className="px-4 py-3">{i.work_type_name || '—'}</td>
+      <td className="px-4 py-3">{i.pu_pattern || '—'}</td>
+      <td className="px-4 py-3">{i.faza || '—'}</td>
+      <td className="px-4 py-3">{formFactorLabels[i.form_factor] || '—'}</td>
+      <td className="px-4 py-3">{vaTypeLabels[i.va_type] || '—'}</td>
+      <td className="px-4 py-3 font-mono">{i.lsr_number || '—'}</td>
+      <td className="px-4 py-3">{i.price_no_nds?.toLocaleString() || '—'} ₽</td>
+      <td className="px-4 py-3">{i.price_with_nds?.toLocaleString() || '—'} ₽</td>
+      {isSueAdmin && (
+        <td className="px-4 py-3">
+          <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
+          <button onClick={() => handleDelete(i.id)}>🗑️</button>
+        </td>
+      )}
+    </tr>
+  ))}
+</tbody>
         </table>
       </div>
 
@@ -2321,6 +2438,7 @@ function TTREskTab() {
 function TTREskForm({ item, onSave, onClose }) {
   const [form, setForm] = useState({ 
     ttr_type: item?.ttr_type || 'PU',
+    work_type_name: item?.work_type_name || '',
     pu_pattern: item?.pu_pattern || '',
     faza: item?.faza || '', 
     form_factor: item?.form_factor || '',
@@ -2339,6 +2457,8 @@ function TTREskForm({ item, onSave, onClose }) {
         <option value="TRUBOSTOYKA">Трубостойка</option>
         <option value="OTVETVLENIE">Ответвление</option>
       </select>
+      
+      <input type="text" placeholder="Наименование вида работ" value={form.work_type_name} onChange={e => setForm({ ...form, work_type_name: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
       
       {isPU && (
         <>
