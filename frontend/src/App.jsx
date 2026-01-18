@@ -672,38 +672,53 @@ const update = async (field, value) => {
     }
   }
   
-  // Автоподбор ТТР ЭСК при изменении параметров
-  if (['faza', 'form_factor', 'va_type', 'trubostoyka'].includes(field)) {
-    const updatedItem = { ...newItem, [field]: value }
-    
-    // Определяем тип ТТР
-    let ttrType = 'PU'
-    if (updatedItem.trubostoyka === true) {
-      ttrType = 'TRUBOSTOYKA'
-    }
+  // Автоподбор ЛСР при изменении параметров (для ЭСК)
+  if (['faza', 'form_factor', 'va_type', 'trubostoyka'].includes(field) && isEsk) {
+    const updatedItem = { ...newItem }
     
     try {
-      const params = { ttr_type: ttrType }
-      if (ttrType === 'PU') {
-        params.faza = updatedItem.faza
-        params.form_factor = updatedItem.form_factor
-        params.va_type = updatedItem.va_type
-        params.pu_type = item.pu_type
+      const params = {
+        faza: updatedItem.faza,
+        form_factor: updatedItem.form_factor,
+        va_type: updatedItem.va_type,
+        pu_type: item.pu_type,
+        need_trubostoyka: updatedItem.trubostoyka === true
       }
       
       const r = await api.get('/ttr/esk/lookup', { params })
-      if (r.data.found) {
-        newItem.ttr_esk_id = r.data.id
-        newItem.lsr_number = r.data.lsr_number
-        newItem.price_no_nds = r.data.price_no_nds
-        newItem.price_with_nds = r.data.price_with_nds
+      
+      // Трубостойка
+      if (r.data.trubostoyka) {
+        newItem.lsr_truba = r.data.trubostoyka.lsr_number
+        newItem.price_truba_no_nds = r.data.trubostoyka.price_no_nds
+        newItem.price_truba_with_nds = r.data.trubostoyka.price_with_nds
+      } else {
+        newItem.lsr_truba = null
+        newItem.price_truba_no_nds = null
+        newItem.price_truba_with_nds = null
+      }
+      
+      // ВА
+      if (r.data.va) {
+        newItem.ttr_esk_id = r.data.va.id
+        newItem.lsr_va = r.data.va.lsr_number
+        newItem.price_va_no_nds = r.data.va.price_no_nds
+        newItem.price_va_with_nds = r.data.va.price_with_nds
       } else {
         newItem.ttr_esk_id = null
-        newItem.lsr_number = null
-        newItem.price_no_nds = null
-        newItem.price_with_nds = null
+        newItem.lsr_va = null
+        newItem.price_va_no_nds = null
+        newItem.price_va_with_nds = null
       }
-    } catch (err) { /* игнорируем */ }
+      
+      // Старые поля для совместимости
+      newItem.lsr_number = newItem.lsr_va
+      newItem.price_no_nds = r.data.total_no_nds
+      newItem.price_with_nds = r.data.total_with_nds
+      
+    } catch (err) { 
+      console.error('Ошибка подбора ЛСР:', err)
+    }
   }
   
   setItem(newItem)
@@ -907,6 +922,7 @@ const update = async (field, value) => {
 
           {/* ТТР для ЭСК */}
           {/* Параметры СМР/ЛСР для ЭСК */}
+{/* Параметры СМР/ЛСР для ЭСК */}
 {isEsk && item.status !== 'SKLAD' && (
   <>
     <hr />
@@ -918,60 +934,89 @@ const update = async (field, value) => {
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-600 mb-1">Форм-фактор</label>
-        <input type="text" value={item.form_factor === 'split' ? 'Сплит' : item.form_factor === 'classic' ? 'Классика' : '—'} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
+        <select value={item.form_factor || ''} onChange={e => update('form_factor', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+          <option value="">Выберите...</option>
+          <option value="split">Сплит</option>
+          <option value="classic">Классика</option>
+        </select>
       </div>
     </div>
+    
+    {/* Трубостойка */}
     <div className="grid grid-cols-2 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-600 mb-1">Трубостойка</label>
-      <div className="flex gap-4 mt-2">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input 
-            type="radio" 
-            name={`trubostoyka-${item.id}`}
-            checked={item.trubostoyka === true} 
-            onChange={() => update('trubostoyka', true)} 
-            disabled={!canEdit} 
-          />
-          <span>Да</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input 
-            type="radio" 
-            name={`trubostoyka-${item.id}`}
-            checked={item.trubostoyka !== true} 
-            onChange={() => update('trubostoyka', false)} 
-            disabled={!canEdit} 
-          />
-          <span>Нет</span>
-        </label>
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Трубостойка</label>
+        <div className="flex gap-4 mt-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input 
+              type="radio" 
+              name={`trubostoyka-${item.id}`}
+              checked={item.trubostoyka === true} 
+              onChange={() => update('trubostoyka', true)} 
+              disabled={!canEdit} 
+            />
+            <span>Да</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input 
+              type="radio" 
+              name={`trubostoyka-${item.id}`}
+              checked={item.trubostoyka !== true} 
+              onChange={() => update('trubostoyka', false)} 
+              disabled={!canEdit} 
+            />
+            <span>Нет</span>
+          </label>
+        </div>
       </div>
-    </div>
       <div>
         <label className="block text-sm font-medium text-gray-600 mb-1">Щит с ВА</label>
         <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
           <option value="">Выберите...</option>
           <option value="opora">Опора</option>
           <option value="fasad">Фасад</option>
-          {item.trubostoyka && <option value="trubostoyka">Трубостойка</option>}
+          <option value="trubostoyka">Трубостойка</option>
         </select>
       </div>
     </div>
     
-    {/* Автоподбор ТТР и цен */}
-    {item.faza && item.form_factor && item.va_type && (
-      <div className="bg-green-50 rounded-lg p-4 space-y-2">
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">Номер ЛСР:</span>
-          <span className="font-medium">{item.lsr_number || '—'}</span>
+    {/* ЛСР Трубостойки (если выбрана) */}
+    {item.trubostoyka === true && item.lsr_truba && (
+      <div className="bg-orange-50 rounded-lg p-3">
+        <div className="text-sm font-medium text-orange-700 mb-2">🔧 Трубостойка</div>
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          <div><span className="text-gray-600">ЛСР:</span> <span className="font-medium">{item.lsr_truba}</span></div>
+          <div><span className="text-gray-600">Без НДС:</span> <span className="font-medium">{item.price_truba_no_nds?.toLocaleString()} ₽</span></div>
+          <div><span className="text-gray-600">С НДС:</span> <span className="font-medium">{item.price_truba_with_nds?.toLocaleString()} ₽</span></div>
         </div>
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">Стоимость без НДС:</span>
-          <span className="font-medium">{item.price_no_nds?.toLocaleString() || '—'} ₽</span>
+      </div>
+    )}
+    
+    {/* ЛСР по критериям ВА */}
+    {item.faza && item.form_factor && item.va_type && item.lsr_va && (
+      <div className="bg-blue-50 rounded-lg p-3">
+        <div className="text-sm font-medium text-blue-700 mb-2">📦 Щит с ВА</div>
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          <div><span className="text-gray-600">ЛСР:</span> <span className="font-medium">{item.lsr_va}</span></div>
+          <div><span className="text-gray-600">Без НДС:</span> <span className="font-medium">{item.price_va_no_nds?.toLocaleString()} ₽</span></div>
+          <div><span className="text-gray-600">С НДС:</span> <span className="font-medium">{item.price_va_with_nds?.toLocaleString()} ₽</span></div>
         </div>
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">Стоимость с НДС:</span>
-          <span className="font-bold text-green-700">{item.price_with_nds?.toLocaleString() || '—'} ₽</span>
+      </div>
+    )}
+    
+    {/* ИТОГО */}
+    {(item.lsr_truba || item.lsr_va) && (
+      <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+        <div className="text-sm font-medium text-green-800 mb-2">💰 ИТОГО</div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="text-center">
+            <div className="text-gray-600 text-sm">Без НДС</div>
+            <div className="text-xl font-bold text-green-700">{((item.price_truba_no_nds || 0) + (item.price_va_no_nds || 0)).toLocaleString()} ₽</div>
+          </div>
+          <div className="text-center">
+            <div className="text-gray-600 text-sm">С НДС</div>
+            <div className="text-xl font-bold text-green-700">{((item.price_truba_with_nds || 0) + (item.price_va_with_nds || 0)).toLocaleString()} ₽</div>
+          </div>
         </div>
       </div>
     )}
