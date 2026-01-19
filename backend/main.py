@@ -1193,10 +1193,29 @@ def update_ttr_res(ttr_id: int, data: dict, db: Session = Depends(get_db), user:
     return {"ok": True}
 
 @app.delete("/api/ttr/res/{ttr_id}")
-def delete_ttr_res(ttr_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_ttr_res(ttr_id: int, data: dict = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not is_sue_admin(user):
         raise HTTPException(403, "Нет доступа")
-    db.query(TTR_RES).filter(TTR_RES.id == ttr_id).update({"is_active": False})
+    if not data or data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    # Удаляем связанные материалы
+    db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).delete()
+    db.query(TTR_RES).filter(TTR_RES.id == ttr_id).delete()
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/api/materials/{mat_id}")
+def delete_material(mat_id: int, data: dict = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    if not data or data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    # Удаляем связи с ТТР и ПУ
+    db.query(TTR_Material).filter(TTR_Material.material_id == mat_id).delete()
+    db.query(PUMaterial).filter(PUMaterial.material_id == mat_id).delete()
+    db.query(Material).filter(Material.id == mat_id).delete()
     db.commit()
     return {"ok": True}
 
