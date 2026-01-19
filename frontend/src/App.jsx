@@ -2349,29 +2349,29 @@ function TTRResTab() {
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-  <tr>
-    <th className="px-4 py-3 text-left">Код</th>
-    <th className="px-4 py-3 text-left">Название</th>
-    <th className="px-4 py-3 text-left">Тип</th>
-    <th className="w-32"></th>  {/* ← расширили */}
-  </tr>
-</thead>
-<tbody>
-  {filtered.map(i => (
-    <tr key={i.id} className="border-t">
-      <td className="px-4 py-3 font-mono">{i.code}</td>
-      <td className="px-4 py-3">{i.name}</td>
-      <td className="px-4 py-3">...</td>
-      <td className="px-4 py-3 whitespace-nowrap">
-        <button onClick={() => setModal({ item: i })} className="mr-1" title="Редактировать">✏️</button>
-        <button onClick={() => setMaterialsModal(i)} className="mr-1" title="Материалы">📦</button>
-        <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
-      </td>
+  <thead className="bg-gray-50">
+    <tr>
+      <th className="px-4 py-3 text-left">Код</th>
+      <th className="px-4 py-3 text-left">Название</th>
+      <th className="px-4 py-3 text-left">Тип</th>
+      <th className="px-4 py-3 text-right w-28">Действия</th>
     </tr>
-  ))}
-</tbody>
-        </table>
+  </thead>
+  <tbody>
+    {filtered.map(i => (
+      <tr key={i.id} className="border-t">
+        <td className="px-4 py-3 font-mono">{i.code}</td>
+        <td className="px-4 py-3">{i.name}</td>
+        <td className="px-4 py-3">{i.ttr_type === 'OU' ? 'Орг. учета' : i.ttr_type === 'OL' ? 'Обуст. линии' : 'Распред. щит'}</td>
+        <td className="px-4 py-3 text-right">
+          <button onClick={() => setModal({ item: i })} className="px-1" title="Редактировать">✏️</button>
+          <button onClick={() => setMaterialsModal(i)} className="px-1" title="Материалы">📦</button>
+          <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500" title="Удалить">🗑️</button>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
       </div>
 
       {modal && (
@@ -2720,21 +2720,26 @@ function MaterialsTab() {
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Название</th><th className="px-4 py-3 text-left">Ед. изм.</th><th className="w-16"></th></tr></thead>
-          <tbody>
-            {items.map(i => (
-              <tr key={i.id} className="border-t">
-                <td className="px-4 py-3">{i.name}</td>
-                <td className="px-4 py-3">{i.unit}</td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2 flex-nowrap">
-                    <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                    <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  <thead className="bg-gray-50">
+    <tr>
+      <th className="px-4 py-3 text-left">Название</th>
+      <th className="px-4 py-3 text-left">Ед. изм.</th>
+      <th className="px-4 py-3 text-right w-24">Действия</th>
+    </tr>
+  </thead>
+  <tbody>
+    {items.map(i => (
+      <tr key={i.id} className="border-t">
+        <td className="px-4 py-3">{i.name}</td>
+        <td className="px-4 py-3">{i.unit}</td>
+        <td className="px-4 py-3 text-right">
+          <button onClick={() => setModal({ item: i })} className="px-1" title="Редактировать">✏️</button>
+          <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500" title="Удалить">🗑️</button>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
       </div>
 
       {modal && (
