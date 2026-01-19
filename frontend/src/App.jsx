@@ -2357,10 +2357,12 @@ function TTRResTab() {
                 <td className="px-4 py-3">{i.name}</td>
                 <td className="px-4 py-3">{i.ttr_type === 'OU' ? 'Орг. учета' : i.ttr_type === 'OL' ? 'Обуст. линии' : 'Распред. щит'}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                  <button onClick={() => setMaterialsModal(i)} className="mr-2" title="Материалы">📦</button>
-                  <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
-                </td>
+                  <div className="flex gap-2">
+                    <button onClick={() => setModal({ item: i })} title="Редактировать">✏️</button>
+                    <button onClick={() => setMaterialsModal(i)} title="Материалы">📦</button>
+                    <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
+                  </div>
+               </td>
               </tr>
             ))}
           </tbody>
@@ -2720,8 +2722,9 @@ function MaterialsTab() {
                 <td className="px-4 py-3">{i.name}</td>
                 <td className="px-4 py-3">{i.unit}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                  <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
+                    <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
                 </td>
               </tr>
             ))}
