@@ -510,7 +510,13 @@ function PUListPage({ filter = 'all' }) {
       </div>
 
       {moveModal && <MoveModal units={moveUnits} onClose={() => setMoveModal(false)} onMove={handleMove} count={selected.length} />}
-      {deleteModal && <DeleteModal onClose={() => setDeleteModal(false)} onDelete={handleDelete} count={selected.length} />}
+      {deleteModal && (
+        <DeleteWithCodeModal
+          title={`Удалить ${selected.length} ПУ?`}
+          onClose={() => setDeleteModal(false)}
+          onDelete={handleDelete}
+        />
+      )}
       {cardModal && <PUCardModal itemId={cardModal} onClose={() => { setCardModal(null); load() }} />}
     </div>
   )
@@ -548,6 +554,42 @@ function DeleteModal({ onClose, onDelete, count }) {
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
           <button onClick={() => code && onDelete(code)} className="px-4 py-2 bg-red-600 text-white rounded-lg">Удалить</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+
+function DeleteWithCodeModal({ title, onClose, onDelete }) {
+  const [code, setCode] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleDelete = async () => {
+    if (!code) return
+    setLoading(true)
+    await onDelete(code)
+    setLoading(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold mb-4 text-red-600">🗑️ {title}</h2>
+        <p className="text-gray-600 mb-4">Это действие нельзя отменить. Введите код администратора:</p>
+        <input 
+          type="password" 
+          placeholder="Код админа" 
+          value={code} 
+          onChange={e => setCode(e.target.value)} 
+          className="w-full px-3 py-2 border rounded-lg mb-4" 
+        />
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+          <button onClick={handleDelete} disabled={!code || loading} className="px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50">
+            {loading ? 'Удаление...' : 'Удалить'}
+          </button>
         </div>
       </div>
     </div>
@@ -2277,6 +2319,7 @@ function TTRResTab() {
   const [modal, setModal] = useState(null)
   const [filter, setFilter] = useState('')
   const [materialsModal, setMaterialsModal] = useState(null)
+  const [deleteModal, setDeleteModal] = useState(null)
 
   useEffect(() => { api.get('/ttr/res').then(r => setItems(r.data)) }, [])
 
@@ -2315,7 +2358,8 @@ function TTRResTab() {
                 <td className="px-4 py-3">{i.ttr_type === 'OU' ? 'Орг. учета' : i.ttr_type === 'OL' ? 'Обуст. линии' : 'Распред. щит'}</td>
                 <td className="px-4 py-3">
                   <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                  <button onClick={() => setMaterialsModal(i)} title="Материалы">📦</button>
+                  <button onClick={() => setMaterialsModal(i)} className="mr-2" title="Материалы">📦</button>
+                  <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
                 </td>
               </tr>
             ))}
@@ -2337,6 +2381,21 @@ function TTRResTab() {
         onClose={() => setMaterialsModal(null)} 
       />
     )}
+      {deleteModal && (
+  <DeleteWithCodeModal
+    title={`Удалить ТТР "${deleteModal.code}"?`}
+    onClose={() => setDeleteModal(null)}
+    onDelete={async (code) => {
+      try {
+        await api.delete(`/ttr/res/${deleteModal.id}`, { data: { admin_code: code } })
+        api.get('/ttr/res').then(r => setItems(r.data))
+        setDeleteModal(null)
+      } catch (err) {
+        alert(err.response?.data?.detail || 'Ошибка удаления')
+      }
+    }}
+  />
+)}
     </>
   )
 }
@@ -2632,6 +2691,7 @@ function TTREskForm({ item, onSave, onClose }) {
 function MaterialsTab() {
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
+  const [deleteModal, setDeleteModal] = useState(null)
 
   useEffect(() => { api.get('/materials').then(r => setItems(r.data)) }, [])
 
@@ -2660,7 +2720,8 @@ function MaterialsTab() {
                 <td className="px-4 py-3">{i.name}</td>
                 <td className="px-4 py-3">{i.unit}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setModal({ item: i })}>✏️</button>
+                  <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
+                  <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
                 </td>
               </tr>
             ))}
@@ -2676,7 +2737,22 @@ function MaterialsTab() {
           </div>
         </div>
       )}
-    </>
+      {deleteModal && (
+  <DeleteWithCodeModal
+    title={`Удалить материал "${deleteModal.name}"?`}
+    onClose={() => setDeleteModal(null)}
+    onDelete={async (code) => {
+      try {
+        await api.delete(`/materials/${deleteModal.id}`, { data: { admin_code: code } })
+        api.get('/materials').then(r => setItems(r.data))
+        setDeleteModal(null)
+      } catch (err) {
+        alert(err.response?.data?.detail || 'Ошибка удаления')
+      }
+    }}
+  />
+)}
+  </>
   )
 }
 
@@ -2816,7 +2892,21 @@ function SystemTab() {
         <button onClick={() => setClearModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">Очистить</button>
       </div>
 
-      {clearModal && <ClearDBModal onClose={() => setClearModal(false)} onClear={handleClearDB} />}
+      {clearModal && (
+        <DeleteWithCodeModal
+          title="Очистить базу данных?"
+          onClose={() => setClearModal(false)}
+          onDelete={async (code) => {
+            try {
+              await api.post('/pu/clear-database', { admin_code: code })
+              alert('База очищена')
+              setClearModal(false)
+            } catch (err) {
+              alert(err.response?.data?.detail || 'Ошибка')
+            }
+          }}
+        />
+      )}
     </div>
   )
 }
