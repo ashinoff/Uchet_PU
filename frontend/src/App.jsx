@@ -2363,12 +2363,10 @@ function TTRResTab() {
       <td className="px-4 py-3 font-mono">{i.code}</td>
       <td className="px-4 py-3">{i.name}</td>
       <td className="px-4 py-3">...</td>
-      <td className="px-4 py-3">
-        <div className="flex gap-2 flex-nowrap">  {/* ← добавили flex-nowrap */}
-          <button onClick={() => setModal({ item: i })} title="Редактировать">✏️</button>
-          <button onClick={() => setMaterialsModal(i)} title="Материалы">📦</button>
-          <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
-        </div>
+      <td className="px-4 py-3 whitespace-nowrap">
+        <button onClick={() => setModal({ item: i })} className="mr-1" title="Редактировать">✏️</button>
+        <button onClick={() => setMaterialsModal(i)} className="mr-1" title="Материалы">📦</button>
+        <button onClick={() => setDeleteModal(i)} className="text-red-500" title="Удалить">🗑️</button>
       </td>
     </tr>
   ))}
