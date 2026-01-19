@@ -607,6 +607,8 @@ function PUCardModal({ itemId, onClose }) {
   const [ttrEsk, setTtrEsk] = useState([])
   const [masters, setMasters] = useState([])
   const [importing, setImporting] = useState(false)
+  const [materials, setMaterials] = useState([])
+  const [loadingMaterials, setLoadingMaterials] = useState(false)
 
 useEffect(() => {
   const loadItem = async () => {
@@ -644,6 +646,12 @@ useEffect(() => {
   api.get('/masters').then(r => setMasters(r.data))
 }, [itemId])
 
+  useEffect(() => {
+  if (item && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
+    loadMaterials()
+  }
+}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id])
+
   // Автоформат договора с дефисами
   const formatContract = (value) => {
     const digits = value.replace(/\D/g, '')
@@ -671,17 +679,29 @@ useEffect(() => {
     return Object.keys(errs).length === 0
   }
 
-  const handleSave = async () => {
-    if (!validate()) return
-    setSaving(true)
-    try {
-      await api.put(`/pu/items/${itemId}`, item)
-      onClose()
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Ошибка сохранения')
+const handleSave = async () => {
+  if (!validate()) return
+  setSaving(true)
+  try {
+    await api.put(`/pu/items/${itemId}`, item)
+    
+    // Сохраняем материалы если есть
+    if (materials.length > 0) {
+      await api.post(`/pu/items/${itemId}/materials`, {
+        materials: materials.map(m => ({
+          material_id: m.material_id,
+          quantity: m.quantity,
+          used: m.used
+        }))
+      })
     }
-    setSaving(false)
+    
+    onClose()
+  } catch (err) {
+    alert(err.response?.data?.detail || 'Ошибка сохранения')
   }
+  setSaving(false)
+}
 
   const handleImport = async (e) => {
   const file = e.target.files[0]
@@ -845,6 +865,50 @@ const update = async (field, value) => {
   
   setItem(newItem)
   if (errors[field]) setErrors({ ...errors, [field]: null })
+}
+
+  const loadMaterials = async () => {
+  if (!item.ttr_ou_id && !item.ttr_ol_id && !item.ttr_or_id) {
+    setMaterials([])
+    return
+  }
+  
+  setLoadingMaterials(true)
+  try {
+    const r = await api.get(`/pu/items/${itemId}/materials`)
+    
+    // Если есть факт - используем его, иначе дефолты
+    if (r.data.facts && r.data.facts.length > 0) {
+      setMaterials(r.data.facts)
+    } else if (r.data.defaults && r.data.defaults.length > 0) {
+      // Преобразуем дефолты в формат с галочкой
+      setMaterials(r.data.defaults.map(d => ({
+        material_id: d.material_id,
+        material_name: d.material_name,
+        unit: d.unit,
+        quantity: d.quantity,
+        default_qty: d.quantity,
+        used: true
+      })))
+    } else {
+      setMaterials([])
+    }
+  } catch (err) {
+    console.error('Ошибка загрузки материалов:', err)
+  }
+  setLoadingMaterials(false)
+}
+
+  const toggleMaterialUsed = (materialId) => {
+  setMaterials(prev => prev.map(m => 
+    m.material_id === materialId ? { ...m, used: !m.used } : m
+  ))
+}
+
+const updateMaterialQty = (materialId, qty) => {
+  setMaterials(prev => prev.map(m => 
+    m.material_id === materialId ? { ...m, quantity: parseFloat(qty) || 0 } : m
+  ))
 }
 
   if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
@@ -1159,6 +1223,59 @@ const update = async (field, value) => {
         <input type="date" value={item.smr_date || ''} onChange={e => update('smr_date', e.target.value)} disabled={!canEdit} className={`w-full px-3 py-2 border rounded-lg ${errors.smr_date ? 'border-red-500 bg-red-50' : ''}`} />
       </div>
     </div>
+  </>
+)}
+
+          {/* Материалы для РЭС */}
+{isRes && item.status !== 'SKLAD' && materials.length > 0 && (
+  <>
+    <hr />
+    <h3 className="font-medium">📦 Материалы</h3>
+    {loadingMaterials ? (
+      <div className="text-center py-4 text-gray-500">Загрузка...</div>
+    ) : (
+      <div className="border rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="w-10 px-3 py-2"></th>
+              <th className="px-3 py-2 text-left">Материал</th>
+              <th className="px-3 py-2 text-left w-16">Ед.</th>
+              <th className="px-3 py-2 text-center w-20">Норма</th>
+              <th className="px-3 py-2 text-center w-24">Факт</th>
+            </tr>
+          </thead>
+          <tbody>
+            {materials.map(m => (
+              <tr key={m.material_id} className={`border-t ${!m.used ? 'opacity-50 bg-gray-50' : ''}`}>
+                <td className="px-3 py-2 text-center">
+                  <input 
+                    type="checkbox" 
+                    checked={m.used} 
+                    onChange={() => toggleMaterialUsed(m.material_id)}
+                    disabled={!canEdit}
+                  />
+                </td>
+                <td className="px-3 py-2">{m.material_name}</td>
+                <td className="px-3 py-2 text-gray-500">{m.unit}</td>
+                <td className="px-3 py-2 text-center text-gray-400">{m.default_qty || m.quantity}</td>
+                <td className="px-3 py-2">
+                  <input 
+                    type="number" 
+                    value={m.quantity} 
+                    onChange={e => updateMaterialQty(m.material_id, e.target.value)}
+                    disabled={!canEdit || !m.used}
+                    className="w-full px-2 py-1 border rounded text-center"
+                    min="0"
+                    step="0.1"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
   </>
 )}
 
