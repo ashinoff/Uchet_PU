@@ -646,11 +646,13 @@ useEffect(() => {
   api.get('/masters').then(r => setMasters(r.data))
 }, [itemId])
 
-  useEffect(() => {
+useEffect(() => {
   if (item && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
     loadMaterials()
+  } else {
+    setMaterials([])
   }
-}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id])
+}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id, itemId])
 
   // Автоформат договора с дефисами
   const formatContract = (value) => {
@@ -865,6 +867,11 @@ const update = async (field, value) => {
   
   setItem(newItem)
   if (errors[field]) setErrors({ ...errors, [field]: null })
+
+  // Загружаем материалы при выборе ТТР
+  if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
+    setTimeout(() => loadMaterials(), 100)
+  }
 }
 
   const loadMaterials = async () => {
