@@ -1653,6 +1653,8 @@ def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends
         "lsr_va": i.lsr_va,
         "price_truba_with_nds": i.price_truba_with_nds,
         "price_va_with_nds": i.price_va_with_nds,
+        "price_truba_no_nds": i.price_truba_no_nds,
+        "price_va_no_nds": i.price_va_no_nds,
         "price_total": (i.price_truba_with_nds or 0) + (i.price_va_with_nds or 0),
         "work_type_name": i.work_type_name,
     } for i in items]
