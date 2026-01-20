@@ -19,6 +19,11 @@ import pandas as pd
 import io
 import enum
 import re
+import openpyxl
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from openpyxl.utils import get_column_letter
+from fastapi.responses import StreamingResponse
+from urllib.parse import quote
 
 # ==================== КОНФИГ ====================
 class Settings(BaseSettings):
@@ -1681,179 +1686,191 @@ def export_request_to_excel(
     user: User = Depends(get_current_user)
 ):
     """Выгрузка заявки в Excel"""
-    from fastapi.responses import StreamingResponse
-    import openpyxl
-    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
-    from openpyxl.utils import get_column_letter
-    
-    q = db.query(PUItem).filter(PUItem.request_number == request_number)
-    if request_contract:
-        q = q.filter(PUItem.request_contract == request_contract)
-    
-    items = q.all()
-    
-    if not items:
-        raise HTTPException(404, "Заявка не найдена")
-    
-    # Создаём книгу Excel
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = f"Заявка {request_number}"
-    
-    # Стили
-    header_font = Font(bold=True, color="FFFFFF", size=10)
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    
-    cell_alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-    center_alignment = Alignment(horizontal="center", vertical="center")
-    money_alignment = Alignment(horizontal="right", vertical="center")
-    
-    thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    
-    # Заголовки
-    headers = [
-        ("№", 5),
-        ("Филиал", 20),
-        ("РЭС", 18),
-        ("Заявитель (ФИО)", 25),
-        ("Адрес объекта", 35),
-        ("Номер договора", 22),
-        ("Дата заключения", 14),
-        ("План. дата", 14),
-        ("Мощность", 10),
-        ("Фазность", 10),
-        ("Вид работ", 25),
-        ("ЛСР ПУ/ВА", 12),
-        ("Без НДС", 12),
-        ("С НДС", 12),
-        ("Трубост.", 10),
-        ("ЛСР Труб.", 12),
-        ("Без НДС", 12),
-        ("С НДС", 12),
-        ("ИТОГО без НДС", 14),
-        ("ИТОГО с НДС", 14),
-    ]
-    
-    # Записываем заголовки
-    for col, (header, width) in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = header_alignment
-        cell.border = thin_border
-        ws.column_dimensions[get_column_letter(col)].width = width
-    
-    # Высота заголовка
-    ws.row_dimensions[1].height = 40
-    
-    # Функция получения РЭС по ЭСК
-    def get_res_name(esk_unit):
-        if not esk_unit or not esk_unit.code:
-            return "—"
-        res_code = esk_unit.code.replace("ESK_", "RES_")
-        res_unit = db.query(Unit).filter(Unit.code == res_code).first()
-        return res_unit.name if res_unit else "—"
-    
-    # Записываем данные
-    total_no_nds = 0
-    total_with_nds = 0
-    
-    for idx, item in enumerate(items, 1):
-        row = idx + 1
+    try:
+        q = db.query(PUItem).filter(PUItem.request_number == request_number)
+        if request_contract:
+            q = q.filter(PUItem.request_contract == request_contract)
         
-        price_va_no = item.price_va_no_nds or 0
-        price_va_with = item.price_va_with_nds or 0
-        price_truba_no = item.price_truba_no_nds or 0
-        price_truba_with = item.price_truba_with_nds or 0
-        item_total_no = price_va_no + price_truba_no
-        item_total_with = price_va_with + price_truba_with
+        items = q.all()
         
-        total_no_nds += item_total_no
-        total_with_nds += item_total_with
+        if not items:
+            raise HTTPException(404, "Заявка не найдена")
         
-        data = [
-            idx,
-            "Сочинский ПЭС",
-            get_res_name(item.current_unit),
-            item.consumer or "",
-            item.address or "",
-            item.contract_number or "",
-            item.contract_date.strftime("%d.%m.%Y") if item.contract_date else "",
-            item.plan_date.strftime("%d.%m.%Y") if item.plan_date else "",
-            item.power or "",
-            item.faza or "",
-            item.work_type_name or "",
-            item.lsr_va or "",
-            price_va_no,
-            price_va_with,
-            "Да" if item.trubostoyka else "Нет",
-            item.lsr_truba or "",
-            price_truba_no if item.trubostoyka else "",
-            price_truba_with if item.trubostoyka else "",
-            item_total_no,
-            item_total_with,
+        # Создаём книгу Excel
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"Заявка {request_number}"[:31]  # Excel ограничивает имя листа 31 символом
+        
+        # Стили
+        header_font = Font(bold=True, color="FFFFFF", size=10)
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        cell_alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        center_alignment = Alignment(horizontal="center", vertical="center")
+        money_alignment = Alignment(horizontal="right", vertical="center")
+        
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Заголовки
+        headers = [
+            ("№", 5),
+            ("Филиал", 20),
+            ("РЭС", 18),
+            ("Заявитель (ФИО)", 25),
+            ("Адрес объекта", 35),
+            ("Номер договора", 22),
+            ("Дата заключения", 14),
+            ("План. дата", 14),
+            ("Мощность", 10),
+            ("Фазность", 10),
+            ("Вид работ", 25),
+            ("ЛСР ПУ/ВА", 12),
+            ("Без НДС", 12),
+            ("С НДС", 12),
+            ("Трубост.", 10),
+            ("ЛСР Труб.", 12),
+            ("Без НДС", 12),
+            ("С НДС", 12),
+            ("ИТОГО без НДС", 14),
+            ("ИТОГО с НДС", 14),
         ]
         
-        for col, value in enumerate(data, 1):
-            cell = ws.cell(row=row, column=col, value=value)
+        # Записываем заголовки
+        for col, (header, width) in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
             cell.border = thin_border
-            
-            # Выравнивание
-            if col == 1:  # №
-                cell.alignment = center_alignment
-            elif col in [7, 8, 9, 10, 15]:  # Даты, мощность, фазность, трубостойка
-                cell.alignment = center_alignment
-            elif col in [13, 14, 17, 18, 19, 20]:  # Деньги
-                cell.alignment = money_alignment
-                if isinstance(value, (int, float)) and value > 0:
-                    cell.number_format = '#,##0.00'
-            else:
-                cell.alignment = cell_alignment
+            ws.column_dimensions[get_column_letter(col)].width = width
         
-        ws.row_dimensions[row].height = 30
-    
-    # Итоговая строка
-    total_row = len(items) + 2
-    ws.cell(row=total_row, column=1, value="ИТОГО:")
-    ws.cell(row=total_row, column=1).font = Font(bold=True)
-    ws.cell(row=total_row, column=1).alignment = Alignment(horizontal="right")
-    
-    ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=18)
-    
-    ws.cell(row=total_row, column=19, value=total_no_nds)
-    ws.cell(row=total_row, column=19).font = Font(bold=True)
-    ws.cell(row=total_row, column=19).number_format = '#,##0.00'
-    ws.cell(row=total_row, column=19).border = thin_border
-    ws.cell(row=total_row, column=19).alignment = money_alignment
-    
-    ws.cell(row=total_row, column=20, value=total_with_nds)
-    ws.cell(row=total_row, column=20).font = Font(bold=True)
-    ws.cell(row=total_row, column=20).number_format = '#,##0.00'
-    ws.cell(row=total_row, column=20).border = thin_border
-    ws.cell(row=total_row, column=20).alignment = money_alignment
-    
-    # Количество ПУ
-    ws.cell(row=total_row + 1, column=1, value=f"Всего ПУ: {len(items)} шт.")
-    ws.cell(row=total_row + 1, column=1).font = Font(bold=True)
-    
-    # Сохраняем в поток
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    
-    filename = f"Заявка_{request_number}_{request_contract or ''}.xlsx"
-    
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"}
-    )
+        # Высота заголовка
+        ws.row_dimensions[1].height = 40
+        
+        # Функция получения РЭС по ЭСК
+        def get_res_name(esk_unit):
+            if not esk_unit or not esk_unit.code:
+                return "—"
+            res_code = esk_unit.code.replace("ESK_", "RES_")
+            res_unit = db.query(Unit).filter(Unit.code == res_code).first()
+            return res_unit.name if res_unit else "—"
+        
+        # Записываем данные
+        total_no_nds = 0
+        total_with_nds = 0
+        
+        for idx, item in enumerate(items, 1):
+            row = idx + 1
+            
+            price_va_no = item.price_va_no_nds or 0
+            price_va_with = item.price_va_with_nds or 0
+            price_truba_no = item.price_truba_no_nds or 0
+            price_truba_with = item.price_truba_with_nds or 0
+            item_total_no = price_va_no + price_truba_no
+            item_total_with = price_va_with + price_truba_with
+            
+            total_no_nds += item_total_no
+            total_with_nds += item_total_with
+            
+            data = [
+                idx,
+                "Сочинский ПЭС",
+                get_res_name(item.current_unit),
+                item.consumer or "",
+                item.address or "",
+                item.contract_number or "",
+                item.contract_date.strftime("%d.%m.%Y") if item.contract_date else "",
+                item.plan_date.strftime("%d.%m.%Y") if item.plan_date else "",
+                item.power or "",
+                item.faza or "",
+                item.work_type_name or "",
+                item.lsr_va or "",
+                price_va_no,
+                price_va_with,
+                "Да" if item.trubostoyka else "Нет",
+                item.lsr_truba or "",
+                price_truba_no if item.trubostoyka else "",
+                price_truba_with if item.trubostoyka else "",
+                item_total_no,
+                item_total_with,
+            ]
+            
+            for col, value in enumerate(data, 1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.border = thin_border
+                
+                # Выравнивание
+                if col == 1:  # №
+                    cell.alignment = center_alignment
+                elif col in [7, 8, 9, 10, 15]:  # Даты, мощность, фазность, трубостойка
+                    cell.alignment = center_alignment
+                elif col in [13, 14, 17, 18, 19, 20]:  # Деньги
+                    cell.alignment = money_alignment
+                    if isinstance(value, (int, float)) and value > 0:
+                        cell.number_format = '#,##0.00'
+                else:
+                    cell.alignment = cell_alignment
+            
+            ws.row_dimensions[row].height = 30
+        
+        # Итоговая строка
+        total_row = len(items) + 2
+        ws.cell(row=total_row, column=1, value="ИТОГО:")
+        ws.cell(row=total_row, column=1).font = Font(bold=True)
+        ws.cell(row=total_row, column=1).alignment = Alignment(horizontal="right")
+        
+        ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=18)
+        
+        ws.cell(row=total_row, column=19, value=total_no_nds)
+        ws.cell(row=total_row, column=19).font = Font(bold=True)
+        ws.cell(row=total_row, column=19).number_format = '#,##0.00'
+        ws.cell(row=total_row, column=19).border = thin_border
+        ws.cell(row=total_row, column=19).alignment = money_alignment
+        
+        ws.cell(row=total_row, column=20, value=total_with_nds)
+        ws.cell(row=total_row, column=20).font = Font(bold=True)
+        ws.cell(row=total_row, column=20).number_format = '#,##0.00'
+        ws.cell(row=total_row, column=20).border = thin_border
+        ws.cell(row=total_row, column=20).alignment = money_alignment
+        
+        # Количество ПУ
+        ws.cell(row=total_row + 1, column=1, value=f"Всего ПУ: {len(items)} шт.")
+        ws.cell(row=total_row + 1, column=1).font = Font(bold=True)
+        
+        # Сохраняем в поток
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Безопасное имя файла (ASCII + URL-encoded для UTF-8)
+        safe_request_number = request_number.replace("/", "-").replace("\\", "-")
+        safe_contract = (request_contract or "").replace("/", "-").replace("\\", "-")
+        filename_ascii = f"Zayavka_{safe_request_number}_{safe_contract}.xlsx"
+        filename_utf8 = f"Заявка_{safe_request_number}_{safe_contract}.xlsx"
+        
+        headers = {
+            "Content-Disposition": f"attachment; filename=\"{filename_ascii}\"; filename*=UTF-8''{quote(filename_utf8)}"
+        }
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Export error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Ошибка экспорта: {str(e)}")
 
 @app.get("/api/requests/last")
 def get_last_request(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
