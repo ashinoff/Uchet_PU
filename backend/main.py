@@ -1115,7 +1115,6 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
     if not is_res_user(user) and not is_sue_admin(user):
         raise HTTPException(403, "Нет доступа")
     
-    # Находим соответствующий ЭСК для этого РЭС
     if is_res_user(user) and user.unit:
         esk_code = user.unit.code.replace("RES_", "ESK_") if user.unit.code else ""
         esk_unit = db.query(Unit).filter(Unit.code == esk_code).first()
@@ -1127,13 +1126,27 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         else:
             items = []
     else:
-        # СУЭ видит все на согласовании
         items = db.query(PUItem).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
     
     return [{
-        "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
+        "id": i.id, 
+        "serial_number": i.serial_number, 
+        "pu_type": i.pu_type,
         "current_unit_name": i.current_unit.name if i.current_unit else None,
-        "contract_number": i.contract_number, "consumer": i.consumer
+        "contract_number": i.contract_number, 
+        "consumer": i.consumer,
+        "address": i.address,
+        "faza": i.faza,
+        "form_factor": i.form_factor,
+        "trubostoyka": i.trubostoyka,
+        "va_type": i.va_type,
+        "lsr_truba": i.lsr_truba,
+        "lsr_va": i.lsr_va,
+        "price_truba_with_nds": i.price_truba_with_nds,
+        "price_va_with_nds": i.price_va_with_nds,
+        "price_total": (i.price_truba_with_nds or 0) + (i.price_va_with_nds or 0),
+        "work_type_name": i.work_type_name,
+        "smr_date": i.smr_date.isoformat() if i.smr_date else None,
     } for i in items]
 
 # ==================== API: СПРАВОЧНИКИ (CRUD) ====================
@@ -1617,7 +1630,6 @@ def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends
         (PUItem.request_number == None) | (PUItem.request_number == "")
     )
     
-    # Только свои подразделения ЭСК
     visible = get_visible_units(user, db)
     q = q.filter(PUItem.current_unit_id.in_(visible))
     
@@ -1632,8 +1644,17 @@ def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends
         "current_unit_name": i.current_unit.name if i.current_unit else None,
         "contract_number": i.contract_number, 
         "consumer": i.consumer,
+        "address": i.address,
+        "faza": i.faza,
+        "form_factor": i.form_factor,
+        "trubostoyka": i.trubostoyka,
+        "va_type": i.va_type,
+        "lsr_truba": i.lsr_truba,
+        "lsr_va": i.lsr_va,
+        "price_truba_with_nds": i.price_truba_with_nds,
+        "price_va_with_nds": i.price_va_with_nds,
+        "price_total": (i.price_truba_with_nds or 0) + (i.price_va_with_nds or 0),
         "work_type_name": i.work_type_name,
-        "price_with_nds": (i.price_truba_with_nds or 0) + (i.price_va_with_nds or 0),
     } for i in items]
 
 @app.get("/api/requests/last")
