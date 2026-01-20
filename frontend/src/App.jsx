@@ -1470,32 +1470,44 @@ function ApprovalPage() {
         {loading ? <div className="p-8 text-center">Загрузка...</div> : items.length === 0 ? (
           <div className="p-8 text-center text-gray-500">Нет ПУ на согласовании</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left">Серийный номер</th>
-                <th className="px-4 py-3 text-left">Тип</th>
-                <th className="px-4 py-3 text-left">Подразделение</th>
-                <th className="px-4 py-3 text-left">Договор</th>
-                <th className="px-4 py-3 text-left">Потребитель</th>
-                <th className="w-32"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(i => (
-                <tr key={i.id} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono">{i.serial_number}</td>
-                  <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{i.pu_type || '—'}</td>
-                  <td className="px-4 py-3">{i.current_unit_name || '—'}</td>
-                  <td className="px-4 py-3">{i.contract_number || '—'}</td>
-                  <td className="px-4 py-3">{i.consumer || '—'}</td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => handleApprove(i.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">✓ Согласовать</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+<table className="w-full text-sm">
+  <thead className="bg-gray-50">
+    <tr>
+      <th className="px-3 py-3 text-left">Серийный номер</th>
+      <th className="px-3 py-3 text-left">Тип ПУ</th>
+      <th className="px-3 py-3 text-left">Потребитель</th>
+      <th className="px-3 py-3 text-left">Договор</th>
+      <th className="px-3 py-3 text-center">Фаза</th>
+      <th className="px-3 py-3 text-center">Трубост.</th>
+      <th className="px-3 py-3 text-left">ЛСР ВА</th>
+      <th className="px-3 py-3 text-left">ЛСР Труб.</th>
+      <th className="px-3 py-3 text-right">Стоим. ВА</th>
+      <th className="px-3 py-3 text-right">Стоим. Труб.</th>
+      <th className="px-3 py-3 text-right">Итого</th>
+      <th className="w-32"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {items.map(i => (
+      <tr key={i.id} className="border-t hover:bg-gray-50">
+        <td className="px-3 py-3 font-mono">{i.serial_number}</td>
+        <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
+        <td className="px-3 py-3">{i.consumer || '—'}</td>
+        <td className="px-3 py-3">{i.contract_number || '—'}</td>
+        <td className="px-3 py-3 text-center">{i.faza || '—'}</td>
+        <td className="px-3 py-3 text-center">{i.trubostoyka ? '✓' : '—'}</td>
+        <td className="px-3 py-3">{i.lsr_va || '—'}</td>
+        <td className="px-3 py-3">{i.lsr_truba || '—'}</td>
+        <td className="px-3 py-3 text-right">{i.price_va_with_nds?.toLocaleString() || '—'}</td>
+        <td className="px-3 py-3 text-right">{i.price_truba_with_nds?.toLocaleString() || '—'}</td>
+        <td className="px-3 py-3 text-right font-medium">{i.price_total?.toLocaleString() || '—'}</td>
+        <td className="px-3 py-3">
+          <button onClick={() => handleApprove(i.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">✓ Согласовать</button>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
         )}
       </div>
     </div>
@@ -2057,33 +2069,37 @@ function RequestsPage() {
                   </button>
                 </div>
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="w-10 px-4 py-3"></th>
-                      <th className="px-4 py-3 text-left">Серийный номер</th>
-                      <th className="px-4 py-3 text-left">ЭСК</th>
-                      <th className="px-4 py-3 text-left">Договор</th>
-                      <th className="px-4 py-3 text-left">Потребитель</th>
-                      <th className="px-4 py-3 text-left">Вид работ</th>
-                      <th className="px-4 py-3 text-left">Стоимость</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingItems.map(i => (
-                      <tr key={i.id} className="border-t hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => setSelectedItems(s => s.includes(i.id) ? s.filter(x => x !== i.id) : [...s, i.id])} />
-                        </td>
-                        <td className="px-4 py-3 font-mono">{i.serial_number}</td>
-                        <td className="px-4 py-3">{i.current_unit_name || '—'}</td>
-                        <td className="px-4 py-3">{i.contract_number || '—'}</td>
-                        <td className="px-4 py-3">{i.consumer || '—'}</td>
-                        <td className="px-4 py-3">{i.work_type_name || '—'}</td>
-                        <td className="px-4 py-3">{i.price_with_nds?.toLocaleString() || '—'} ₽</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+  <thead className="bg-gray-50">
+    <tr>
+      <th className="w-10 px-3 py-3"></th>
+      <th className="px-3 py-3 text-left">Серийный номер</th>
+      <th className="px-3 py-3 text-left">Тип ПУ</th>
+      <th className="px-3 py-3 text-left">Потребитель</th>
+      <th className="px-3 py-3 text-center">Фаза</th>
+      <th className="px-3 py-3 text-center">Трубост.</th>
+      <th className="px-3 py-3 text-left">ЛСР ВА</th>
+      <th className="px-3 py-3 text-left">ЛСР Труб.</th>
+      <th className="px-3 py-3 text-right">Итого</th>
+    </tr>
+  </thead>
+  <tbody>
+    {pendingItems.map(i => (
+      <tr key={i.id} className="border-t hover:bg-gray-50">
+        <td className="px-3 py-3">
+          <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => setSelectedItems(s => s.includes(i.id) ? s.filter(x => x !== i.id) : [...s, i.id])} />
+        </td>
+        <td className="px-3 py-3 font-mono">{i.serial_number}</td>
+        <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
+        <td className="px-3 py-3">{i.consumer || '—'}</td>
+        <td className="px-3 py-3 text-center">{i.faza || '—'}</td>
+        <td className="px-3 py-3 text-center">{i.trubostoyka ? '✓' : '—'}</td>
+        <td className="px-3 py-3">{i.lsr_va || '—'}</td>
+        <td className="px-3 py-3">{i.lsr_truba || '—'}</td>
+        <td className="px-3 py-3 text-right font-medium">{i.price_total?.toLocaleString() || '—'} ₽</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
               </>
             )}
           </div>
