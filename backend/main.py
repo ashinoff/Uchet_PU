@@ -748,12 +748,11 @@ def get_items(
         q = q.filter(PUItem.current_unit_id.in_(esk_units))
     if contract:
         q = q.filter(PUItem.contract_number.ilike(f"%{contract}%"))
-if ls:
+    if ls:
         q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
 
     # Фильтр по типу реестра
     if filter == 'work':
-        # В работе: нет ТЗ И нет Заявки И не согласовано
         from sqlalchemy import and_, or_
         q = q.filter(
             and_(
@@ -763,15 +762,14 @@ if ls:
             )
         )
     elif filter == 'done':
-    # Завершённые: есть ТЗ ИЛИ есть Заявка ИЛИ согласовано (для ЭСК)
-    from sqlalchemy import or_
-    q = q.filter(
-        or_(
-            (PUItem.tz_number != None) & (PUItem.tz_number != ""),
-            (PUItem.request_number != None) & (PUItem.request_number != ""),
-            PUItem.approval_status == ApprovalStatus.APPROVED
+        from sqlalchemy import or_
+        q = q.filter(
+            or_(
+                (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+                (PUItem.request_number != None) & (PUItem.request_number != ""),
+                PUItem.approval_status == ApprovalStatus.APPROVED
+            )
         )
-    )
 
     total = q.count()
     items = q.order_by(PUItem.created_at.desc()).offset((page-1)*size).limit(size).all()
