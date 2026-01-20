@@ -1188,7 +1188,7 @@ const updateMaterialQty = (materialId, qty) => {
             <option value="">Выберите...</option>
             {item.trubostoyka !== true && <option value="opora">Опора</option>}
             {item.trubostoyka !== true && <option value="fasad">Фасад</option>}
-            <option value="trubostoyka">Трубостойка</option>
+            {item.trubostoyka === true && <option value="trubostoyka">Трубостойка</option>}
           </select>
       </div>
     </div>
