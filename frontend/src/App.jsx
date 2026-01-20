@@ -800,6 +800,23 @@ const handleSendApproval = async () => {
 const update = async (field, value) => {
   if (field === 'contract_number') {
     value = formatContract(value)
+    
+    // Проверяем дубликат если номер полный (19 символов)
+    if (value && value.length === 19) {
+      try {
+        const r = await api.get('/pu/check-contract', { 
+          params: { contract_number: value, exclude_id: item.id } 
+        })
+        if (r.data.duplicate) {
+          setErrors(prev => ({ 
+            ...prev, 
+            contract_number: `Дубликат! ПУ: ${r.data.existing_serial} (${r.data.existing_unit || '—'})` 
+          }))
+        } else {
+          setErrors(prev => ({ ...prev, contract_number: null }))
+        }
+      } catch (err) { /* игнорируем */ }
+    }
   }
   
   let newItem = { ...item, [field]: value }
@@ -1397,6 +1414,9 @@ function UploadPage() {
             <div className="text-4xl mb-4">✅</div>
             <h3 className="text-xl font-semibold">Загружено {result.items_count} ПУ</h3>
             <p className="text-gray-500">Файл: {result.filename}</p>
+            {result.skipped_duplicates > 0 && (
+            <p className="text-orange-600 mt-2">⚠️ Пропущено дубликатов: {result.skipped_duplicates}</p>
+            )}
             <button onClick={() => setResult(null)} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Загрузить ещё</button>
           </div>
         ) : (
