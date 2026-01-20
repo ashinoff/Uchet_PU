@@ -748,23 +748,30 @@ def get_items(
         q = q.filter(PUItem.current_unit_id.in_(esk_units))
     if contract:
         q = q.filter(PUItem.contract_number.ilike(f"%{contract}%"))
-    if ls:
+if ls:
         q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
 
-# Фильтр по типу реестра
+    # Фильтр по типу реестра
     if filter == 'work':
-        # В работе: нет ТЗ И нет Заявки (любой статус)
-        q = q.filter((PUItem.tz_number == None) | (PUItem.tz_number == ""))
-        q = q.filter((PUItem.request_number == None) | (PUItem.request_number == ""))
-    elif filter == 'done':
-        # Завершённые: есть ТЗ ИЛИ есть Заявка
-        from sqlalchemy import or_
+        # В работе: нет ТЗ И нет Заявки И не согласовано
+        from sqlalchemy import and_, or_
         q = q.filter(
-            or_(
-                (PUItem.tz_number != None) & (PUItem.tz_number != ""),
-                (PUItem.request_number != None) & (PUItem.request_number != "")
+            and_(
+                (PUItem.tz_number == None) | (PUItem.tz_number == ""),
+                (PUItem.request_number == None) | (PUItem.request_number == ""),
+                or_(PUItem.approval_status != ApprovalStatus.APPROVED, PUItem.approval_status == None)
             )
         )
+    elif filter == 'done':
+    # Завершённые: есть ТЗ ИЛИ есть Заявка ИЛИ согласовано (для ЭСК)
+    from sqlalchemy import or_
+    q = q.filter(
+        or_(
+            (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+            (PUItem.request_number != None) & (PUItem.request_number != ""),
+            PUItem.approval_status == ApprovalStatus.APPROVED
+        )
+    )
 
     total = q.count()
     items = q.order_by(PUItem.created_at.desc()).offset((page-1)*size).limit(size).all()
@@ -1619,6 +1626,14 @@ def get_request_items(request_number: str, request_contract: Optional[str] = Non
         "current_unit_name": i.current_unit.name if i.current_unit else None,
     } for idx, i in enumerate(items)]
 
+def get_res_name_for_esk(esk_unit, db):
+    """Получить название РЭС для подразделения ЭСК"""
+    if not esk_unit or not esk_unit.code:
+        return "—"
+    res_code = esk_unit.code.replace("ESK_", "RES_")
+    res_unit = db.query(Unit).filter(Unit.code == res_code).first()
+    return res_unit.name if res_unit else "—"
+
 @app.get("/api/requests/pending")
 def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Согласованные ПУ для заявки ЭСК"""
@@ -1639,6 +1654,7 @@ def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends
     items = q.all()
     return [{
         "id": i.id, 
+        "res_name": get_res_name_for_esk(i.current_unit, db),
         "serial_number": i.serial_number, 
         "pu_type": i.pu_type,
         "current_unit_name": i.current_unit.name if i.current_unit else None,
