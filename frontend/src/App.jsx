@@ -1819,44 +1819,33 @@ function RequestsPage() {
     }
   }
 
-  const exportToExcel = () => {
-    if (reqItems.length === 0) return
-    const headers = [
-      '№', 
-      'Филиал ПАО «Россети ЮГ» - "Кубаньэнерго"',
-      'Район электрических сетей',
-      'Заявитель (ФИО)',
-      'Адрес объекта',
-      'Номер договора',
-      'Дата заключения договора на ТП',
-      'Планируемая дата исполнения',
-      'Мощность',
-      'Фазность',
-      'Вид работ',
-      'Стоимость работ (руб., с НДС)'
-    ]
-    const rows = reqItems.map((i) => [
-      i.row_num,
-      i.filial,
-      i.res_name,
-      i.consumer || '',
-      i.address || '',
-      i.contract_number || '',
-      i.contract_date || '',
-      i.plan_date || '',
-      i.power || '',
-      i.faza || '',
-      i.work_type_name || '',
-      i.price_with_nds || ''
-    ])
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(';')).join('\n')
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `Заявка_${expandedReq}.csv`
-    a.click()
+const exportToExcel = async () => {
+  if (!expandedReq) return
+  
+  const req = requestsList.find(r => `${r.request_number}|${r.request_contract || ''}` === expandedReq)
+  if (!req) return
+  
+  try {
+    const params = new URLSearchParams()
+    if (req.request_contract) params.append('request_contract', req.request_contract)
+    
+    const response = await api.get(
+      `/requests/${encodeURIComponent(req.request_number)}/export?${params.toString()}`,
+      { responseType: 'blob' }
+    )
+    
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `Заявка_${req.request_number}_${req.request_contract || ''}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    alert('Ошибка выгрузки: ' + (err.response?.data?.detail || err.message))
   }
+}
 
   const handleCreate = async () => {
     if (selectedItems.length === 0) {
