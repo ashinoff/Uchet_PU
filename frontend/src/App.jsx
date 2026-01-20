@@ -1479,7 +1479,7 @@ function ApprovalPage() {
       <th className="px-3 py-3 text-left">Договор</th>
       <th className="px-3 py-3 text-center">Фаза</th>
       <th className="px-3 py-3 text-center">Трубост.</th>
-      <th className="px-3 py-3 text-left">ЛСР ВА</th>
+      <th className="px-3 py-3 text-left">ЛСР ПУ/ВА</th>
       <th className="px-3 py-3 text-left">ЛСР Труб.</th>
       <th className="px-3 py-3 text-right">Стоим. ВА</th>
       <th className="px-3 py-3 text-right">Стоим. Труб.</th>
@@ -2044,17 +2044,53 @@ function RequestsPage() {
               </div>
             )}
             
-            <div className="flex items-center justify-between bg-green-50 rounded-lg p-3">
-              <div>
-                <span className="text-sm text-gray-600">Будет создана заявка: </span>
-                <span className="font-bold text-green-700 text-lg">
-                  № {requestNumber || '?'} {requestContract ? `Договор № ${requestContract}` : ''}
-                </span>
-              </div>
-              <button onClick={handleCreate} disabled={loading || selectedItems.length === 0 || !requestNumber} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
-                {loading ? 'Создание...' : `Создать заявку (${selectedItems.length})`}
-              </button>
-            </div>
+            <div className="bg-green-50 rounded-lg p-4 space-y-3">
+  <div className="flex items-center justify-between">
+    <div>
+      <span className="text-sm text-gray-600">Будет создана заявка: </span>
+      <span className="font-bold text-green-700 text-lg">
+        № {requestNumber || '?'} {requestContract ? `Договор № ${requestContract}` : ''}
+      </span>
+    </div>
+  </div>
+  
+  {/* Итоги по выбранным */}
+  {selectedItems.length > 0 && (
+    <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-green-200">
+      <div className="flex gap-6">
+        <div>
+          <span className="text-gray-600 text-sm">Выбрано ПУ:</span>
+          <span className="ml-2 font-bold text-lg">{selectedItems.length} шт</span>
+        </div>
+        <div>
+          <span className="text-gray-600 text-sm">Без НДС:</span>
+          <span className="ml-2 font-bold text-lg">
+            {pendingItems
+              .filter(i => selectedItems.includes(i.id))
+              .reduce((sum, i) => sum + ((i.price_truba_no_nds || 0) + (i.price_va_no_nds || 0)), 0)
+              .toLocaleString()} ₽
+          </span>
+        </div>
+        <div>
+          <span className="text-gray-600 text-sm">С НДС:</span>
+          <span className="ml-2 font-bold text-green-700 text-lg">
+            {pendingItems
+              .filter(i => selectedItems.includes(i.id))
+              .reduce((sum, i) => sum + (i.price_total || 0), 0)
+              .toLocaleString()} ₽
+          </span>
+        </div>
+      </div>
+      <button onClick={handleCreate} disabled={loading || selectedItems.length === 0 || !requestNumber} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
+        {loading ? 'Создание...' : 'Создать заявку'}
+      </button>
+    </div>
+  )}
+  
+  {selectedItems.length === 0 && (
+    <div className="text-center text-gray-500 py-2">Выберите ПУ для формирования заявки</div>
+  )}
+</div>
           </div>
 
           <div className="bg-white rounded-xl border overflow-hidden">
@@ -2077,7 +2113,7 @@ function RequestsPage() {
       <th className="px-3 py-3 text-left">Потребитель</th>
       <th className="px-3 py-3 text-center">Фаза</th>
       <th className="px-3 py-3 text-center">Трубост.</th>
-      <th className="px-3 py-3 text-left">ЛСР ВА</th>
+      <th className="px-3 py-3 text-left">ЛСР ПУ/ВА</th>
       <th className="px-3 py-3 text-left">ЛСР Труб.</th>
       <th className="px-3 py-3 text-right">Итого</th>
     </tr>
