@@ -815,6 +815,23 @@ const update = async (field, value) => {
       } catch (err) { /* игнорируем */ }
     }
   }
+
+  // Автоматика трубостойки
+if (field === 'trubostoyka' && isEsk) {
+  if (value === true) {
+    // Трубостойка ДА → ставим ВА = трубостойка
+    newItem.va_type = 'trubostoyka'
+  } else {
+    // Трубостойка НЕТ → сбрасываем если было trubostoyka
+    if (newItem.va_type === 'trubostoyka') {
+      newItem.va_type = ''
+    }
+    // Очищаем ЛСР трубостойки
+    newItem.lsr_truba = null
+    newItem.price_truba_no_nds = null
+    newItem.price_truba_with_nds = null
+  }
+}
   
   // Автоподбор ЛСР при изменении параметров (для ЭСК)
   if (['faza', 'form_factor', 'va_type', 'trubostoyka'].includes(field) && isEsk) {
@@ -1167,12 +1184,12 @@ const updateMaterialQty = (materialId, qty) => {
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-600 mb-1">Щит с ВА *</label>
-        <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit} className={`w-full px-3 py-2 border rounded-lg ${errors.va_type ? 'border-red-500 bg-red-50' : ''}`}>
-          <option value="">Выберите...</option>
-          <option value="opora">Опора</option>
-          <option value="fasad">Фасад</option>
-          <option value="trubostoyka">Трубостойка</option>
-        </select>
+          <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit || item.trubostoyka === true} className={`w-full px-3 py-2 border rounded-lg ${errors.va_type ? 'border-red-500 bg-red-50' : ''}`}>
+            <option value="">Выберите...</option>
+            {item.trubostoyka !== true && <option value="opora">Опора</option>}
+            {item.trubostoyka !== true && <option value="fasad">Фасад</option>}
+            <option value="trubostoyka">Трубостойка</option>
+          </select>
       </div>
     </div>
     
