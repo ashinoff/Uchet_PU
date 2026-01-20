@@ -466,6 +466,31 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 Base.metadata.create_all(bind=engine)
 
 # ==================== API: AUTH ====================
+
+@app.get("/api/pu/check-contract")
+def check_contract_duplicate(
+    contract_number: str,
+    exclude_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Проверка дубликата номера договора"""
+    if not contract_number or len(contract_number) < 10:
+        return {"duplicate": False}
+    
+    q = db.query(PUItem).filter(PUItem.contract_number == contract_number)
+    if exclude_id:
+        q = q.filter(PUItem.id != exclude_id)
+    
+    existing = q.first()
+    if existing:
+        return {
+            "duplicate": True,
+            "existing_serial": existing.serial_number,
+            "existing_unit": existing.current_unit.name if existing.current_unit else None
+        }
+    return {"duplicate": False}
+
 @app.get("/")
 def root():
     return {"status": "ok", "message": "Система учета ПУ v2"}
@@ -959,9 +984,16 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
             units_map[u.code.lower()] = u
     
     count = 0
+    skipped_duplicates = 0
     for _, row in df.iterrows():
         serial = str(row.get(serial_col, '')).strip()
         if not serial or serial == 'nan':
+            continue
+    
+        # Проверка дубликата серийного номера
+        existing = db.query(PUItem).filter(PUItem.serial_number == serial).first()
+        if existing:
+            skipped_duplicates += 1
             continue
         
         pu_type = str(row.get(type_col, '')).strip() if type_col else None
@@ -993,7 +1025,13 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
     
     register.items_count = count
     db.commit()
-    return {"id": register.id, "filename": register.filename, "items_count": count, "uploaded_at": register.uploaded_at}
+    return {
+    "id": register.id, 
+    "filename": register.filename, 
+    "items_count": count, 
+    "skipped_duplicates": skipped_duplicates,
+    "uploaded_at": register.uploaded_at
+}
 
 @app.post("/api/pu/move")
 def move_items(req: MoveReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1728,6 +1766,7 @@ def export_request_to_excel(
             ("Дата заключения", 14),
             ("План. дата", 14),
             ("Мощность", 10),
+            ("Тип ПУ", 35),
             ("Фазность", 10),
             ("Вид работ", 25),
             ("ЛСР ПУ/ВА", 12),
@@ -1788,6 +1827,7 @@ def export_request_to_excel(
                 item.contract_date.strftime("%d.%m.%Y") if item.contract_date else "",
                 item.plan_date.strftime("%d.%m.%Y") if item.plan_date else "",
                 item.power or "",
+                item.pu_type or "",
                 item.faza or "",
                 item.work_type_name or "",
                 item.lsr_va or "",
@@ -1808,9 +1848,9 @@ def export_request_to_excel(
                 # Выравнивание
                 if col == 1:  # №
                     cell.alignment = center_alignment
-                elif col in [7, 8, 9, 10, 15]:  # Даты, мощность, фазность, трубостойка
+                elif col in [7, 8, 9, 11, 16]:  # Даты, мощность, фазность, трубостойка
                     cell.alignment = center_alignment
-                elif col in [13, 14, 17, 18, 19, 20]:  # Деньги
+                elif col in [14, 15, 18, 19, 20, 21]:  # Деньги
                     cell.alignment = money_alignment
                     if isinstance(value, (int, float)) and value > 0:
                         cell.number_format = '#,##0.00'
