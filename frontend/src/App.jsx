@@ -2108,6 +2108,7 @@ function RequestsPage() {
   <thead className="bg-gray-50">
     <tr>
       <th className="w-10 px-3 py-3"></th>
+      <th className="px-3 py-3 text-left">РЭС</th>
       <th className="px-3 py-3 text-left">Серийный номер</th>
       <th className="px-3 py-3 text-left">Тип ПУ</th>
       <th className="px-3 py-3 text-left">Потребитель</th>
@@ -2118,12 +2119,12 @@ function RequestsPage() {
       <th className="px-3 py-3 text-right">Итого</th>
     </tr>
   </thead>
-  <tbody>
-    {pendingItems.map(i => (
-      <tr key={i.id} className="border-t hover:bg-gray-50">
-        <td className="px-3 py-3">
-          <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => setSelectedItems(s => s.includes(i.id) ? s.filter(x => x !== i.id) : [...s, i.id])} />
-        </td>
+<tbody>
+  {pendingItems.map(i => (
+    <tr key={i.id} className="border-t hover:bg-gray-50">
+      <td className="px-3 py-3">
+        <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => setSelectedItems(s => s.includes(i.id) ? s.filter(x => x !== i.id) : [...s, i.id])} />
+      </td>
         <td className="px-3 py-3 font-mono">{i.serial_number}</td>
         <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
         <td className="px-3 py-3">{i.consumer || '—'}</td>
