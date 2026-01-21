@@ -361,6 +361,36 @@ function PUListPage({ filter = 'all' }) {
     load()
   }
 
+  const handleExport = async () => {
+  try {
+    const params = new URLSearchParams()
+    if (search) params.append('search', search)
+    if (status) params.append('status', status)
+    if (unitFilter) params.append('unit_id', unitFilter)
+    if (unitTypeFilter !== 'all') params.append('unit_type_filter', unitTypeFilter)
+    if (contractSearch) params.append('contract', contractSearch)
+    if (lsSearch) params.append('ls', lsSearch)
+    if (filter) params.append('filter', filter)
+    
+    const response = await api.get(`/pu/export?${params.toString()}`, { responseType: 'blob' })
+    
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    
+    // Получаем имя файла из заголовка или генерируем
+    const filterName = {work: 'В_работе', done: 'Завершенные'}[filter] || 'Все'
+    link.setAttribute('download', `Реестр_ПУ_${filterName}_${new Date().toISOString().slice(0,10)}.xlsx`)
+    
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    alert('Ошибка выгрузки: ' + (err.response?.data?.detail || err.message))
+  }
+}
+
   const handleDelete = async (adminCode) => {
     try {
       await api.post('/pu/delete', { pu_item_ids: selected, admin_code: adminCode })
@@ -404,18 +434,21 @@ function PUListPage({ filter = 'all' }) {
     : Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">
-            {filter === 'all' && 'Все приборы учета'}
-            {filter === 'work' && '🔧 В работе'}
-            {filter === 'done' && '✅ Завершённые СМР'}
-          </h1>
-          <p className="text-gray-500">Всего: {total}</p>
-        </div>
+  <div className="space-y-4">
+    <div className="flex justify-between items-center">
+      <div>
+        <h1 className="text-2xl font-bold">
+          {filter === 'all' && 'Все приборы учета'}
+          {filter === 'work' && '🔧 В работе'}
+          {filter === 'done' && '✅ Завершённые СМР'}
+        </h1>
+        <p className="text-gray-500">Всего: {total}</p>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">📥 Выгрузить в Excel</button>
         <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
       </div>
+    </div>
 
       <div className="bg-white rounded-xl border p-4 space-y-3">
         <div className="flex flex-wrap gap-3">
