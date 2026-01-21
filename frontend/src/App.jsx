@@ -337,6 +337,16 @@ function PUListPage({ filter = 'all' }) {
   const [cardModal, setCardModal] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // Debounce для автопоиска
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      load()
+    }, 500) // 500мс задержка
+  
+    return () => clearTimeout(timer)
+  }, [search, contractSearch, lsSearch])
+
   useEffect(() => { api.get('/units').then(r => setUnits(r.data)) }, [])
   useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter])
 
@@ -357,7 +367,7 @@ function PUListPage({ filter = 'all' }) {
     setLoading(false)
   }
 
-  const handleSearch = () => { setPage(1); load() }
+  
 
   const handleMove = async (toUnitId, comment) => {
     await api.post('/pu/move', { pu_item_ids: selected, to_unit_id: toUnitId, comment })
@@ -458,10 +468,61 @@ function PUListPage({ filter = 'all' }) {
 
       <div className="bg-white rounded-xl border p-4 space-y-3">
         <div className="flex flex-wrap gap-3">
-          <input type="text" placeholder="Поиск по номеру ПУ..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-48 px-3 py-2 border rounded-lg" />
-          <input type="text" placeholder="Договор ТП..." value={contractSearch} onChange={e => setContractSearch(e.target.value)} className="w-40 px-3 py-2 border rounded-lg" />
-          {!isEskAdmin && <input type="text" placeholder="Номер ЛС..." value={lsSearch} onChange={e => setLsSearch(e.target.value)} className="w-40 px-3 py-2 border rounded-lg" />}
-          <button onClick={handleSearch} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Найти</button>
+          <div className="relative flex-1 min-w-48">
+  <input 
+    type="text" 
+    placeholder="Поиск по номеру ПУ..." 
+    value={search} 
+    onChange={e => setSearch(e.target.value)} 
+    className="w-full px-3 py-2 pr-8 border rounded-lg" 
+  />
+  {search && (
+    <button 
+      onClick={() => setSearch('')} 
+      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+    >
+      ✕
+    </button>
+  )}
+</div>
+
+<div className="relative w-48">
+  <input 
+    type="text" 
+    placeholder="Договор ТП..." 
+    value={contractSearch} 
+    onChange={e => setContractSearch(e.target.value)} 
+    className="w-full px-3 py-2 pr-8 border rounded-lg" 
+  />
+  {contractSearch && (
+    <button 
+      onClick={() => setContractSearch('')} 
+      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+    >
+      ✕
+    </button>
+  )}
+</div>
+
+{!isEskAdmin && (
+  <div className="relative w-40">
+    <input 
+      type="text" 
+      placeholder="Номер ЛС..." 
+      value={lsSearch} 
+      onChange={e => setLsSearch(e.target.value)} 
+      className="w-full px-3 py-2 pr-8 border rounded-lg" 
+    />
+    {lsSearch && (
+      <button 
+        onClick={() => setLsSearch('')} 
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+      >
+        ✕
+      </button>
+    )}
+  </div>
+)}
         </div>
         <div className="flex flex-wrap gap-3">
           <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }} className="px-3 py-2 border rounded-lg">
