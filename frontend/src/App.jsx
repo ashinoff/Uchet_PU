@@ -733,6 +733,26 @@ useEffect(() => {
       }
       
       setItem(itemData)
+      
+      // Загружаем ТТР привязанные к типу ПУ
+      if (itemData.pu_type) {
+        try {
+          const [ouRes, olRes, orRes] = await Promise.all([
+            api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OU' } }),
+            api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OL' } }),
+            api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OR' } })
+          ])
+          setTtrRes([...ouRes.data, ...olRes.data, ...orRes.data])
+        } catch (err) {
+          // Если ошибка — загружаем все ТТР
+          const allTtr = await api.get('/ttr/res')
+          setTtrRes(allTtr.data)
+        }
+      } else {
+        const allTtr = await api.get('/ttr/res')
+        setTtrRes(allTtr.data)
+      }
+      
       setLoading(false)
     } catch (err) {
       console.error('Ошибка загрузки ПУ:', err)
@@ -741,7 +761,6 @@ useEffect(() => {
   }
   
   loadItem()
-  api.get('/ttr/res').then(r => setTtrRes(r.data))
   api.get('/ttr/esk').then(r => setTtrEsk(r.data))
   api.get('/masters').then(r => setMasters(r.data))
 }, [itemId])
@@ -2623,6 +2642,7 @@ function TTRResTab() {
   const [filter, setFilter] = useState('')
   const [materialsModal, setMaterialsModal] = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
+  const [puTypesModal, setPuTypesModal] = useState(null)
 
   useEffect(() => { api.get('/ttr/res').then(r => setItems(r.data)) }, [])
 
@@ -2670,6 +2690,7 @@ function TTRResTab() {
           <div style={{display: 'flex', gap: '4px', flexWrap: 'nowrap', justifyContent: 'flex-end'}}>
             <button onClick={() => setModal({ item: i })} title="Редактировать">✏️</button>
             <button onClick={() => setMaterialsModal(i)} title="Материалы">📦</button>
+            <button onClick={() => setPuTypesModal(i)} title="Типы ПУ">🔌</button>
             <button onClick={() => setDeleteModal(i)} style={{color: 'red'}} title="Удалить">🗑️</button>
           </div>
         </td>
@@ -2706,6 +2727,12 @@ function TTRResTab() {
         alert(err.response?.data?.detail || 'Ошибка удаления')
       }
     }}
+  />
+)}
+      {puTypesModal && (
+  <TTRPUTypesModal 
+    ttr={puTypesModal} 
+    onClose={() => setPuTypesModal(null)} 
   />
 )}
     </>
@@ -2825,6 +2852,77 @@ function TTRMaterialsModal({ ttr, onClose }) {
               ))}
             </tbody>
           </table>
+        </div>
+        
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+          <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TTRPUTypesModal({ ttr, onClose }) {
+  const [allPUTypes, setAllPUTypes] = useState([])
+  const [linkedIds, setLinkedIds] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/pu-types'),
+      api.get(`/ttr/res/${ttr.id}/pu-types`)
+    ]).then(([typesRes, linkedRes]) => {
+      setAllPUTypes(typesRes.data)
+      setLinkedIds(linkedRes.data.map(l => l.pu_type_id))
+      setLoading(false)
+    })
+  }, [ttr.id])
+
+  const toggleType = (id) => {
+    setLinkedIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const handleSave = async () => {
+    await api.post(`/ttr/res/${ttr.id}/pu-types`, { pu_type_ids: linkedIds })
+    onClose()
+  }
+
+  if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b flex justify-between items-center">
+          <h2 className="font-semibold">📦 Типы ПУ для {ttr.code}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+        </div>
+        
+        <div className="p-4 overflow-y-auto max-h-96">
+          {allPUTypes.length === 0 ? (
+            <p className="text-gray-500 text-center">Нет типов ПУ в справочнике</p>
+          ) : (
+            <div className="space-y-2">
+              {allPUTypes.map(pt => (
+                <label key={pt.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={linkedIds.includes(pt.id)}
+                    onChange={() => toggleType(pt.id)}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <div className="font-medium">{pt.pattern}</div>
+                    <div className="text-sm text-gray-500">
+                      {pt.faza || '—'} • {pt.voltage ? `${pt.voltage} кВ` : '—'}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
         
         <div className="p-4 border-t flex justify-end gap-2">
