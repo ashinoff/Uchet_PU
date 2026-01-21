@@ -105,6 +105,7 @@ function Main() {
           {page === 'memo' && <MemoPage />}
           {page === 'settings' && <SettingsPage />}
           {page === 'move-bulk' && <MoveBulkPage />}
+          {page === 'analysis' && <AnalysisPage />}
         </div>
       </div>
     </div>
@@ -129,12 +130,13 @@ function Sidebar({ page, setPage }) {
     { id: 'pu-sklad', label: '🏪 Склад', show: true },
     { id: 'pu-done', label: '✅ Завершённые СМР', show: true },
     { id: 'pu-actioned', label: '📋 Актированные ПУ', show: true },
+    { id: 'analysis', label: '📊 Анализ остатков', show: true },
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
     { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
     { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin || isEskAdmin || isEskUser },
     { id: 'move-bulk', label: '📦 Массовое перемещение', show: isEskAdmin || isSueAdmin },
     { id: 'memo', label: '📄 Служебки', show: isSueAdmin },
-    { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin },
+    { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin || isResUser || isEskUser },
     ].filter(i => i.show)
 
   return (
@@ -2453,7 +2455,7 @@ function MemoPage() {
 
 // ==================== НАСТРОЙКИ ====================
 function SettingsPage() {
-  const { canManageUsers, isSueAdmin, isEskAdmin } = useAuth()
+  const { canManageUsers, isSueAdmin, isEskAdmin, isResUser, isEskUser } = useAuth()
   const [tab, setTab] = useState(isSueAdmin ? 'users' : 'masters')
 
   if (!canManageUsers && !isEskAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
@@ -2461,10 +2463,10 @@ function SettingsPage() {
   const tabs = [
     { id: 'users', label: '👥 Пользователи', show: isSueAdmin },
     { id: 'masters', label: '👷 Мастера ЭСК', show: isEskAdmin || isSueAdmin },
-    { id: 'ttr-res', label: '📐 ТТР (РЭС)', show: isSueAdmin },
-    { id: 'ttr-esk', label: '📐 ТТР (ЭСК)', show: isSueAdmin || isEskAdmin },
-    { id: 'materials', label: '🔧 Материалы', show: isSueAdmin },
-    { id: 'pu-types', label: '📦 Типы ПУ', show: isSueAdmin },
+    { id: 'ttr-res', label: '📐 ТТР (РЭС)', show: isSueAdmin || isResUser },
+    { id: 'ttr-esk', label: '📐 ТТР (ЭСК)', show: isSueAdmin || isEskAdmin || isEskUser },
+    { id: 'materials', label: '🔧 Материалы', show: isSueAdmin || isResUser },
+    { id: 'pu-types', label: '📦 Типы ПУ', show: isSueAdmin || isResUser || isEskUser },
     { id: 'system', label: '⚠️ Система', show: isSueAdmin },
   ].filter(t => t.show)
 
@@ -2663,6 +2665,7 @@ function MasterForm({ master, units, onSave, onClose }) {
 
 // --- ТТР РЭС ---
 function TTRResTab() {
+  const { isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
   const [filter, setFilter] = useState('')
@@ -2693,7 +2696,9 @@ function TTRResTab() {
           <option value="OL">Обустройство линии</option>
           <option value="OR">Распред. щит</option>
         </select>
-        <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        {isSueAdmin && (
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
@@ -2713,12 +2718,14 @@ function TTRResTab() {
         <td className="px-4 py-3">{i.name}</td>
         <td className="px-4 py-3">{i.ttr_type === 'OU' ? 'Орг. учета' : i.ttr_type === 'OL' ? 'Обуст. линии' : 'Распред. щит'}</td>
         <td className="px-4 py-3">
-          <div style={{display: 'flex', gap: '4px', flexWrap: 'nowrap', justifyContent: 'flex-end'}}>
-            <button onClick={() => setModal({ item: i })} title="Редактировать">✏️</button>
-            <button onClick={() => setMaterialsModal(i)} title="Материалы">📦</button>
-            <button onClick={() => setPuTypesModal(i)} title="Типы ПУ">🔌</button>
-            <button onClick={() => setDeleteModal(i)} style={{color: 'red'}} title="Удалить">🗑️</button>
-          </div>
+          {isSueAdmin && (
+            <div style={{display: 'flex', gap: '4px', flexWrap: 'nowrap', justifyContent: 'flex-end'}}>
+              <button onClick={() => setModal({ item: i })} title="Редактировать">✏️</button>
+              <button onClick={() => setMaterialsModal(i)} title="Материалы">📦</button>
+              <button onClick={() => setPuTypesModal(i)} title="Типы ПУ">🔌</button>
+              <button onClick={() => setDeleteModal(i)} style={{color: 'red'}} title="Удалить">🗑️</button>
+            </div>
+          )}
         </td>
       </tr>
     ))}
@@ -3125,6 +3132,7 @@ function TTREskForm({ item, onSave, onClose }) {
 
 // --- Материалы ---
 function MaterialsTab() {
+  const { isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
@@ -3143,9 +3151,11 @@ function MaterialsTab() {
 
   return (
     <>
-      <div className="flex justify-end">
-        <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
-      </div>
+      {isSueAdmin && (
+        <div className="flex justify-end">
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
@@ -3153,7 +3163,7 @@ function MaterialsTab() {
     <tr>
       <th className="px-4 py-3 text-left">Название</th>
       <th className="px-4 py-3 text-left">Ед. изм.</th>
-      <th className="px-4 py-3 text-right w-24">Действия</th>
+      {isSueAdmin && <th className="px-4 py-3 text-right w-24">Действия</th>}
     </tr>
   </thead>
   <tbody>
@@ -3161,10 +3171,12 @@ function MaterialsTab() {
       <tr key={i.id} className="border-t">
         <td className="px-4 py-3">{i.name}</td>
         <td className="px-4 py-3">{i.unit}</td>
-        <td className="px-4 py-3 text-right">
-          <button onClick={() => setModal({ item: i })} className="px-1" title="Редактировать">✏️</button>
-          <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500" title="Удалить">🗑️</button>
-        </td>
+        {isSueAdmin && (
+          <td className="px-4 py-3 text-right">
+            <button onClick={() => setModal({ item: i })} className="px-1" title="Редактировать">✏️</button>
+            <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500" title="Удалить">🗑️</button>
+          </td>
+        )}
       </tr>
     ))}
   </tbody>
@@ -3214,6 +3226,7 @@ function MaterialForm({ item, onSave, onClose }) {
 
 // --- Типы ПУ ---
 function PUTypesTab() {
+  const { isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
 
@@ -3238,13 +3251,15 @@ function PUTypesTab() {
 
   return (
     <>
-      <div className="flex justify-end">
-        <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
-      </div>
+      {isSueAdmin && (
+        <div className="flex justify-end">
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Паттерн</th><th className="px-4 py-3 text-left">Фазность</th><th className="px-4 py-3 text-left">Напряжение</th><th className="px-4 py-3 text-left">Форм-фактор</th><th className="w-24"></th></tr></thead>
+          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Паттерн</th><th className="px-4 py-3 text-left">Фазность</th><th className="px-4 py-3 text-left">Напряжение</th><th className="px-4 py-3 text-left">Форм-фактор</th>{isSueAdmin && <th className="w-24"></th>}</tr></thead>
           <tbody>
             {items.map(i => (
               <tr key={i.id} className="border-t">
@@ -3252,10 +3267,12 @@ function PUTypesTab() {
                 <td className="px-4 py-3">{i.faza || '—'}</td>
                 <td className="px-4 py-3">{i.voltage || '—'}</td>
                 <td className="px-4 py-3">{i.form_factor === 'split' ? 'Сплит' : i.form_factor === 'classic' ? 'Классика' : '—'}</td>
-                 <td className="px-4 py-3">
-                  <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                  <button onClick={() => handleDelete(i.id)}>🗑️</button>
-                </td>
+                 {isSueAdmin && (
+                  <td className="px-4 py-3">
+                    <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
+                    <button onClick={() => handleDelete(i.id)}>🗑️</button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -3493,6 +3510,196 @@ function MoveBulkPage() {
           >
             {loading ? '⏳ Обработка...' : '📦 Переместить ПУ'}
           </button>
+        </div>
+      )}
+    </div>
+  )
+}
+function AnalysisPage() {
+  const { isSueAdmin, isEskAdmin, isResUser, isEskUser } = useAuth()
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  useEffect(() => { load() }, [])
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const params = {}
+      if (dateFrom) params.date_from = dateFrom
+      if (dateTo) params.date_to = dateTo
+      const r = await api.get('/pu/analysis', { params })
+      setData(r.data)
+    } catch (err) {
+      console.error('Analysis error:', err)
+    }
+    setLoading(false)
+  }
+
+  const handleFilter = () => {
+    load()
+  }
+
+  const clearFilter = () => {
+    setDateFrom('')
+    setDateTo('')
+    setTimeout(load, 100)
+  }
+
+  const isAdmin = isSueAdmin || isEskAdmin
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">📊 Анализ остатков</h1>
+        <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
+      </div>
+
+      {/* Фильтр по периоду */}
+      <div className="bg-white rounded-xl border p-4">
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-1">Период с</label>
+            <input 
+              type="date" 
+              value={dateFrom} 
+              onChange={e => setDateFrom(e.target.value)} 
+              className="px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-1">по</label>
+            <input 
+              type="date" 
+              value={dateTo} 
+              onChange={e => setDateTo(e.target.value)} 
+              className="px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <button onClick={handleFilter} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Применить</button>
+          {(dateFrom || dateTo) && (
+            <button onClick={clearFilter} className="px-4 py-2 bg-gray-100 rounded-lg">Сбросить</button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-12"><RossetiLoader /></div>
+      ) : data && (
+        <div className="space-y-6">
+          {/* Общий итог для админов */}
+          {isAdmin && data.grand_total && (
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
+              <h2 className="text-lg font-semibold mb-4">🏢 ВСЕГО ФЭС</h2>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-white/20 rounded-lg p-4 text-center">
+                  <div className="text-3xl font-bold">{data.grand_total.total}</div>
+                  <div className="text-blue-100">Всего ПУ</div>
+                </div>
+                <div className="bg-white/20 rounded-lg p-4 text-center">
+                  <div className="text-3xl font-bold">{data.grand_total.installed}</div>
+                  <div className="text-blue-100">Установлено</div>
+                </div>
+                <div className="bg-white/20 rounded-lg p-4 text-center">
+                  <div className="text-3xl font-bold">{data.grand_total.actioned}</div>
+                  <div className="text-blue-100">Актировано</div>
+                </div>
+                <div className="bg-white/20 rounded-lg p-4 text-center">
+                  <div className="text-3xl font-bold">{data.grand_total.sklad}</div>
+                  <div className="text-blue-100">Остаток склад</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Блок РЭС */}
+          {data.res && data.res.length > 0 && (
+            <div className="bg-white rounded-xl border overflow-hidden">
+              <div className="bg-green-50 px-4 py-3 border-b">
+                <h2 className="font-semibold text-green-800">🏢 РЭС (РСК)</h2>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Подразделение</th>
+                    <th className="px-4 py-3 text-right">Всего ПУ</th>
+                    <th className="px-4 py-3 text-right">Установлено</th>
+                    <th className="px-4 py-3 text-right">Актировано</th>
+                    <th className="px-4 py-3 text-right">Остаток склад</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.res.map(unit => (
+                    <tr key={unit.id} className="border-t hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{unit.name}</td>
+                      <td className="px-4 py-3 text-right">{unit.total}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{unit.installed}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{unit.actioned}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{unit.sklad}</td>
+                    </tr>
+                  ))}
+                  {isAdmin && data.res_total && (
+                    <tr className="border-t bg-green-50 font-semibold">
+                      <td className="px-4 py-3">ИТОГО РЭС</td>
+                      <td className="px-4 py-3 text-right">{data.res_total.total}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{data.res_total.installed}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{data.res_total.actioned}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{data.res_total.sklad}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Блок ЭСК */}
+          {data.esk && data.esk.length > 0 && (
+            <div className="bg-white rounded-xl border overflow-hidden">
+              <div className="bg-orange-50 px-4 py-3 border-b">
+                <h2 className="font-semibold text-orange-800">⚡ ЭСК</h2>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Подразделение</th>
+                    <th className="px-4 py-3 text-right">Всего ПУ</th>
+                    <th className="px-4 py-3 text-right">Установлено</th>
+                    <th className="px-4 py-3 text-right">Актировано</th>
+                    <th className="px-4 py-3 text-right">Остаток склад</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.esk.map(unit => (
+                    <tr key={unit.id} className="border-t hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{unit.name}</td>
+                      <td className="px-4 py-3 text-right">{unit.total}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{unit.installed}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{unit.actioned}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{unit.sklad}</td>
+                    </tr>
+                  ))}
+                  {isAdmin && data.esk_total && (
+                    <tr className="border-t bg-orange-50 font-semibold">
+                      <td className="px-4 py-3">ИТОГО ЭСК</td>
+                      <td className="px-4 py-3 text-right">{data.esk_total.total}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{data.esk_total.installed}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{data.esk_total.actioned}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{data.esk_total.sklad}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Если нет данных */}
+          {(!data.res || data.res.length === 0) && (!data.esk || data.esk.length === 0) && (
+            <div className="bg-white rounded-xl border p-8 text-center text-gray-500">
+              Нет данных для отображения
+            </div>
+          )}
         </div>
       )}
     </div>
