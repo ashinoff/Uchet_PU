@@ -757,6 +757,121 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         traceback.print_exc()
         raise HTTPException(500, f"Ошибка: {str(e)}")
 
+@app.get("/api/pu/analysis")
+def get_analysis(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Анализ остатков по подразделениям"""
+    try:
+        from datetime import datetime
+        
+        # Парсим даты
+        start_date = None
+        end_date = None
+        if date_from:
+            start_date = datetime.strptime(date_from, '%Y-%m-%d')
+        if date_to:
+            end_date = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        
+        def get_unit_stats(unit_id):
+            q = db.query(PUItem).filter(PUItem.current_unit_id == unit_id)
+            
+            # Фильтр по периоду (дата загрузки)
+            if start_date:
+                q = q.filter(PUItem.created_at >= start_date)
+            if end_date:
+                q = q.filter(PUItem.created_at <= end_date)
+            
+            total = q.count()
+            sklad = q.filter(PUItem.status == PUStatus.SKLAD).count()
+            installed = q.filter(PUItem.status != PUStatus.SKLAD).count()
+            
+            # Актированные — есть ТЗ или Заявка
+            actioned = q.filter(
+                or_(
+                    (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+                    (PUItem.request_number != None) & (PUItem.request_number != "")
+                )
+            ).count()
+            
+            return {
+                "total": total,
+                "installed": installed,
+                "actioned": actioned,
+                "sklad": sklad
+            }
+        
+        result = {"res": [], "esk": []}
+        
+        # Для производственников — только своё подразделение
+        if is_res_user(user) or is_esk_user(user):
+            if user.unit_id:
+                unit = db.query(Unit).filter(Unit.id == user.unit_id).first()
+                if unit:
+                    stats = get_unit_stats(unit.id)
+                    item = {
+                        "id": unit.id,
+                        "name": unit.name,
+                        **stats
+                    }
+                    if unit.unit_type == UnitType.RES:
+                        result["res"].append(item)
+                    else:
+                        result["esk"].append(item)
+            return result
+        
+        # Для админов — все подразделения
+        res_units = db.query(Unit).filter(Unit.unit_type == UnitType.RES).order_by(Unit.name).all()
+        esk_units = db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).order_by(Unit.name).all()
+        
+        # Итого по РЭС
+        res_total = {"total": 0, "installed": 0, "actioned": 0, "sklad": 0}
+        for unit in res_units:
+            stats = get_unit_stats(unit.id)
+            result["res"].append({
+                "id": unit.id,
+                "name": unit.name,
+                **stats
+            })
+            res_total["total"] += stats["total"]
+            res_total["installed"] += stats["installed"]
+            res_total["actioned"] += stats["actioned"]
+            res_total["sklad"] += stats["sklad"]
+        
+        # Итого по ЭСК
+        esk_total = {"total": 0, "installed": 0, "actioned": 0, "sklad": 0}
+        for unit in esk_units:
+            stats = get_unit_stats(unit.id)
+            result["esk"].append({
+                "id": unit.id,
+                "name": unit.name,
+                **stats
+            })
+            esk_total["total"] += stats["total"]
+            esk_total["installed"] += stats["installed"]
+            esk_total["actioned"] += stats["actioned"]
+            esk_total["sklad"] += stats["sklad"]
+        
+        result["res_total"] = res_total
+        result["esk_total"] = esk_total
+        result["grand_total"] = {
+            "total": res_total["total"] + esk_total["total"],
+            "installed": res_total["installed"] + esk_total["installed"],
+            "actioned": res_total["actioned"] + esk_total["actioned"],
+            "sklad": res_total["sklad"] + esk_total["sklad"]
+        }
+        
+        return result
+        
+    except Exception as e:
+        print(f"Analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Ошибка: {str(e)}")
+
 @app.get("/api/pu/items")
 def get_items(
     page: int = 1, size: int = 50,
