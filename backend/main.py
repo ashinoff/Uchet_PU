@@ -820,6 +820,170 @@ def get_items(
         "total": total, "page": page, "size": size, "pages": (total + size - 1) // size
     }
 
+@app.get("/api/pu/export")
+def export_pu_items(
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    unit_id: Optional[int] = None,
+    unit_type_filter: Optional[str] = None,
+    contract: Optional[str] = None,
+    ls: Optional[str] = None,
+    filter: Optional[str] = None,  # all, work, done
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Выгрузка реестра ПУ в Excel"""
+    try:
+        visible = get_visible_units(user, db)
+        q = db.query(PUItem)
+        
+        # Те же фильтры что и в get_items
+        if is_lab_user(user):
+            regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
+            q = q.filter(PUItem.register_id.in_(regs))
+        elif not is_sue_admin(user):
+            q = q.filter(PUItem.current_unit_id.in_(visible))
+        
+        if search:
+            q = q.filter(PUItem.serial_number.ilike(f"%{search}%"))
+        if status:
+            q = q.filter(PUItem.status == status)
+        if unit_id:
+            q = q.filter(PUItem.current_unit_id == unit_id)
+        if unit_type_filter == 'res':
+            res_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.RES)
+            q = q.filter(PUItem.current_unit_id.in_(res_units))
+        elif unit_type_filter == 'esk':
+            esk_units = db.query(Unit.id).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT]))
+            q = q.filter(PUItem.current_unit_id.in_(esk_units))
+        if contract:
+            q = q.filter(PUItem.contract_number.ilike(f"%{contract}%"))
+        if ls:
+            q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
+        
+        if filter == 'work':
+            q = q.filter(
+                (PUItem.tz_number == None) | (PUItem.tz_number == ""),
+                (PUItem.request_number == None) | (PUItem.request_number == ""),
+                (PUItem.approval_status != ApprovalStatus.APPROVED) | (PUItem.approval_status == None)
+            )
+        elif filter == 'done':
+            from sqlalchemy import or_
+            q = q.filter(
+                or_(
+                    (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+                    (PUItem.request_number != None) & (PUItem.request_number != ""),
+                    PUItem.approval_status == ApprovalStatus.APPROVED
+                )
+            )
+        
+        items = q.order_by(PUItem.created_at.desc()).all()
+        
+        # Создаём Excel
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Реестр ПУ"
+        
+        # Стили
+        header_font = Font(bold=True, color="FFFFFF", size=10)
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        
+        # Заголовки
+        headers = [
+            ("№", 5),
+            ("Серийный номер", 20),
+            ("Тип ПУ", 40),
+            ("Подразделение", 20),
+            ("Статус", 12),
+            ("Фазность", 10),
+            ("Напряжение", 12),
+            ("Мощность", 10),
+            ("№ Договора", 22),
+            ("Потребитель", 25),
+            ("Адрес", 35),
+            ("ЛС", 15),
+            ("№ ТЗ", 15),
+            ("№ Заявки", 12),
+            ("Согласование", 15),
+            ("Дата СМР", 12),
+            ("Дата загрузки", 12),
+        ]
+        
+        for col, (header, width) in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+            ws.column_dimensions[get_column_letter(col)].width = width
+        
+        ws.row_dimensions[1].height = 35
+        
+        # Данные
+        status_labels = {
+            'SKLAD': 'Склад', 'TECHPRIS': 'Техприс', 
+            'ZAMENA': 'Замена', 'IZHC': 'ИЖЦ', 'INSTALLED': 'Установлен'
+        }
+        approval_labels = {
+            'APPROVED': 'Согласовано', 'PENDING': 'На согласовании', 
+            'REJECTED': 'Отклонено', 'NONE': '—'
+        }
+        
+        for idx, item in enumerate(items, 1):
+            row = idx + 1
+            data = [
+                idx,
+                item.serial_number or "",
+                item.pu_type or "",
+                item.current_unit.name if item.current_unit else "",
+                status_labels.get(item.status.value, item.status.value) if item.status else "",
+                item.faza or "",
+                item.voltage or "",
+                item.power or "",
+                item.contract_number or "",
+                item.consumer or "",
+                item.address or "",
+                item.ls_number or "",
+                item.tz_number or "",
+                item.request_number or "",
+                approval_labels.get(item.approval_status.value if item.approval_status else 'NONE', '—'),
+                item.smr_date.strftime("%d.%m.%Y") if item.smr_date else "",
+                item.created_at.strftime("%d.%m.%Y") if item.created_at else "",
+            ]
+            
+            for col, value in enumerate(data, 1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+            
+            ws.row_dimensions[row].height = 25
+        
+        # Сохраняем
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Имя файла
+        filter_name = {"work": "В_работе", "done": "Завершенные"}.get(filter, "Все")
+        filename = f"Reestr_PU_{filter_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"}
+        )
+        
+    except Exception as e:
+        print(f"Export error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Ошибка экспорта: {str(e)}")
+
 @app.get("/api/pu/detect-type")
 def detect_type(pu_type: str, db: Session = Depends(get_db)):
     """Определить фазность и напряжение по типу ПУ"""
@@ -1850,7 +2014,7 @@ def export_request_to_excel(
                     cell.alignment = center_alignment
                 elif col in [7, 8, 9, 11, 16]:  # Даты, мощность, фазность, трубостойка
                     cell.alignment = center_alignment
-                elif col in [14, 15, 18, 19, 20, 21]:  # Деньги
+                elif col in [15, 16, 19, 20, 21, 22]:  # Деньги 
                     cell.alignment = money_alignment
                     if isinstance(value, (int, float)) and value > 0:
                         cell.number_format = '#,##0.00'
