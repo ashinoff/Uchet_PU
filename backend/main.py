@@ -975,14 +975,19 @@ def export_pu_items(
         wb.save(output)
         output.seek(0)
         
-        # Имя файла
-        filter_name = {"work": "В_работе", "done": "Завершенные"}.get(filter, "Все")
-        filename = f"Reestr_PU_{filter_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-        
+        # Имя файла (ASCII для совместимости + UTF-8 для красоты)
+        filter_name_ascii = {"work": "V_rabote", "done": "Zavershennye"}.get(filter, "Vse")
+        filter_name_rus = {"work": "В_работе", "done": "Завершенные"}.get(filter, "Все")
+
+        filename_ascii = f"Reestr_PU_{filter_name_ascii}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        filename_rus = f"Реестр_ПУ_{filter_name_rus}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"}
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{filename_ascii}\"; filename*=UTF-8''{quote(filename_rus)}"
+            }
         )
         
     except Exception as e:
