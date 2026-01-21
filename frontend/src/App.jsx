@@ -75,8 +75,9 @@ function Main() {
         <div className="p-6">
           {page === 'home' && <HomePage setPage={setPage} />}
           {page === 'pu' && <PUListPage filter="all" />}
-          {page === 'pu-work' && <PUListPage filter="work" />}
+          {page === 'pu-sklad' && <PUListPage filter="sklad" />}
           {page === 'pu-done' && <PUListPage filter="done" />}
+          {page === 'pu-actioned' && <PUListPage filter="actioned" />}
           {page === 'upload' && <UploadPage />}
           {page === 'approval' && <ApprovalPage />}
           {page === 'tz' && <TZPage />}
@@ -103,17 +104,18 @@ function Sidebar({ page, setPage }) {
 
   const items = [
     { id: 'home', label: '🏠 Главная', show: true },
-    { id: 'move-bulk', label: '📦 Массовое перемещение', show: isEskAdmin || isSueAdmin },
     { id: 'pu', label: '📦 Приборы учета', show: true },
     { id: 'upload', label: '📤 Загрузка', show: canUpload },
-    { id: 'pu-work', label: '🔧 В работе', show: true },
+    { id: 'pu-sklad', label: '🏪 Склад', show: true },
     { id: 'pu-done', label: '✅ Завершённые СМР', show: true },
+    { id: 'pu-actioned', label: '📋 Актированные ПУ', show: true },
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
     { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
     { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin || isEskAdmin || isEskUser },
+    { id: 'move-bulk', label: '📦 Массовое перемещение', show: isEskAdmin || isSueAdmin },
     { id: 'memo', label: '📄 Служебки', show: isSueAdmin },
     { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin },
-  ].filter(i => i.show)
+    ].filter(i => i.show)
 
   return (
     <aside className="fixed left-0 top-0 h-full w-56 bg-slate-800 text-white flex flex-col">
@@ -382,7 +384,7 @@ function PUListPage({ filter = 'all' }) {
     link.href = url
     
     // Получаем имя файла из заголовка или генерируем
-    const filterName = {work: 'В_работе', done: 'Завершенные'}[filter] || 'Все'
+    const filterName = {sklad: 'Склад', done: 'Завершенные_СМР', actioned: 'Актированные'}[filter] || 'Все'
     link.setAttribute('download', `Реестр_ПУ_${filterName}_${new Date().toISOString().slice(0,10)}.xlsx`)
     
     document.body.appendChild(link)
@@ -442,8 +444,9 @@ function PUListPage({ filter = 'all' }) {
       <div>
         <h1 className="text-2xl font-bold">
           {filter === 'all' && 'Все приборы учета'}
-          {filter === 'work' && '🔧 В работе'}
+          {filter === 'sklad' && '🏪 Склад'}
           {filter === 'done' && '✅ Завершённые СМР'}
+          {filter === 'actioned' && '📋 Актированные ПУ'}
         </h1>
         <p className="text-gray-500">Всего: {total}</p>
       </div>
