@@ -1234,6 +1234,106 @@ def move_items(req: MoveReq, db: Session = Depends(get_db), user: User = Depends
     db.commit()
     return {"moved": moved}
 
+@app.post("/api/pu/move-bulk")
+async def move_bulk(
+    file: UploadFile = File(...),
+    admin_code: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Массовое перемещение ПУ по Excel файлу (ЭСК Админ)"""
+    if not is_esk_admin(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Только ЭСК Админ или СУЭ")
+    
+    if admin_code != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    try:
+        contents = await file.read()
+        df = pd.read_excel(io.BytesIO(contents), header=None)
+        
+        # Ищем заголовки или берём первые 2 колонки
+        serial_col = 0
+        unit_col = 1
+        
+        # Проверяем есть ли заголовок
+        first_val = str(df.iloc[0, 0]).lower() if len(df) > 0 else ""
+        start_row = 1 if 'номер' in first_val or 'серийн' in first_val or 'пу' in first_val else 0
+        
+        # Словарь подразделений ЭСК
+        esk_units = db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).all()
+        units_map = {}
+        for u in esk_units:
+            units_map[u.name.lower()] = u
+            if u.code:
+                units_map[u.code.lower()] = u
+            # Короткие варианты: "Адлерский" -> "Адлерский ЭСК"
+            short_name = u.name.replace(" ЭСК", "").lower()
+            units_map[short_name] = u
+        
+        moved = 0
+        not_found_pu = []
+        not_found_unit = []
+        errors = []
+        
+        for idx in range(start_row, len(df)):
+            row = df.iloc[idx]
+            serial = str(row.iloc[serial_col]).strip() if pd.notna(row.iloc[serial_col]) else ""
+            unit_name = str(row.iloc[unit_col]).strip() if pd.notna(row.iloc[unit_col]) else ""
+            
+            if not serial or serial == 'nan' or not unit_name or unit_name == 'nan':
+                continue
+            
+            # Ищем ПУ
+            pu_item = db.query(PUItem).filter(PUItem.serial_number == serial).first()
+            if not pu_item:
+                not_found_pu.append(serial)
+                continue
+            
+            # Ищем подразделение
+            target_unit = units_map.get(unit_name.lower())
+            if not target_unit:
+                # Пробуем частичное совпадение
+                for key, u in units_map.items():
+                    if unit_name.lower() in key or key in unit_name.lower():
+                        target_unit = u
+                        break
+            
+            if not target_unit:
+                not_found_unit.append(f"{serial}: {unit_name}")
+                continue
+            
+            # Перемещаем
+            try:
+                mov = PUMovement(
+                    pu_item_id=pu_item.id,
+                    from_unit_id=pu_item.current_unit_id,
+                    to_unit_id=target_unit.id,
+                    moved_by=user.id,
+                    comment=f"Массовое перемещение из файла {file.filename}"
+                )
+                db.add(mov)
+                pu_item.current_unit_id = target_unit.id
+                moved += 1
+            except Exception as e:
+                errors.append(f"{serial}: {str(e)}")
+        
+        db.commit()
+        
+        return {
+            "moved": moved,
+            "not_found_pu": not_found_pu,
+            "not_found_unit": not_found_unit,
+            "errors": errors,
+            "total_rows": len(df) - start_row
+        }
+        
+    except Exception as e:
+        print(f"Move bulk error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Ошибка: {str(e)}")
+
 @app.post("/api/pu/delete")
 def delete_items(req: DeleteReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Удаление ПУ - только СУЭ с кодом"""
