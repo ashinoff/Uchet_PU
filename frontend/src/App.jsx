@@ -102,6 +102,7 @@ function Sidebar({ page, setPage }) {
   }, [canApprove, page])
 
   const items = [
+    { id: 'home', label: '🏠 Главная', show: true },
     { id: 'move-bulk', label: '📦 Массовое перемещение', show: isEskAdmin || isSueAdmin },
     { id: 'pu', label: '📦 Приборы учета', show: true },
     { id: 'upload', label: '📤 Загрузка', show: canUpload },
