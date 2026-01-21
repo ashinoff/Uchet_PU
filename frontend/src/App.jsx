@@ -54,6 +54,26 @@ function AuthProvider({ children }) {
 
 const useAuth = () => useContext(AuthContext)
 
+// Компонент загрузки РОССЕТИ
+function RossetiLoader({ size = 'normal' }) {
+  const letters = ['Р', 'О', 'С', 'С', 'Е', 'Т', 'И']
+  const fontSize = size === 'small' ? 'text-xl' : 'text-4xl'
+  
+  return (
+    <div className="flex gap-1 justify-center items-center">
+      {letters.map((letter, idx) => (
+        <span
+          key={idx}
+          className={`${fontSize} font-bold rosseti-letter`}
+          style={{ animationDelay: `${idx * 0.3}s` }}
+        >
+          {letter}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 
 // ==================== ГЛАВНЫЙ КОМПОНЕНТ ====================
 export default function App() {
@@ -64,7 +84,7 @@ function Main() {
   const { user, loading } = useAuth()
   const [page, setPage] = useState('home')
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full" /></div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><RossetiLoader /></div>
   if (!user) return <LoginPage />
 
   return (
@@ -560,7 +580,7 @@ function PUListPage({ filter = 'all' }) {
       )}
 
       <div className="bg-white rounded-xl border overflow-hidden">
-        {loading ? <div className="p-8 text-center">Загрузка...</div> : (
+        {loading ? <div className="p-8"><RossetiLoader /></div> : (
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -1071,7 +1091,13 @@ const updateMaterialQty = (materialId, qty) => {
   ))
 }
 
-  if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
+  if (loading) return (
+  <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+    <div className="bg-white rounded-xl p-8">
+      <RossetiLoader />
+    </div>
+  </div>
+)
 
     const isEsk = item?.current_unit_type === 'ESK_UNIT' || item?.current_unit_type === 'ESK'
     const isRes = item?.current_unit_type === 'RES'
@@ -1606,7 +1632,7 @@ function ApprovalPage() {
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
-        {loading ? <div className="p-8 text-center">Загрузка...</div> : items.length === 0 ? (
+        {loading ? <div className="p-8"><RossetiLoader /></div> : items.length === 0 ? (
           <div className="p-8 text-center text-gray-500">Нет ПУ на согласовании</div>
         ) : (
 <table className="w-full text-sm">
@@ -2376,7 +2402,7 @@ function MemoPage() {
       </div>
 
       {/* Превью служебки */}
-      {loading && <div className="text-center py-8">Загрузка...</div>}
+      {loading && <div className="py-8"><RossetiLoader /></div>}
       
       {memoData && !loading && (
         <div className="bg-white rounded-xl border">
@@ -2804,7 +2830,7 @@ function TTRMaterialsModal({ ttr, onClose }) {
     onClose()
   }
 
-  if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
+  if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8"><RossetiLoader /></div></div>
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
@@ -2890,7 +2916,7 @@ function TTRPUTypesModal({ ttr, onClose }) {
     onClose()
   }
 
-  if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8">Загрузка...</div></div>
+  if (loading) return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-8"><RossetiLoader /></div></div>
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
