@@ -259,6 +259,15 @@ class TTR_Material(Base):
     material_id = Column(Integer, ForeignKey("materials.id"))
     quantity = Column(Float, default=0)
 
+class TTR_PUType(Base):
+    """Связь ТТР РЭС и типов ПУ"""
+    __tablename__ = "ttr_pu_types"
+    id = Column(Integer, primary_key=True)
+    ttr_res_id = Column(Integer, ForeignKey("ttr_res.id"))
+    pu_type_id = Column(Integer, ForeignKey("pu_type_reference.id"))
+    ttr = relationship("TTR_RES")
+    pu_type = relationship("PUTypeReference")
+
 class PUMaterial(Base):
     """Использованные материалы в конкретном ПУ"""
     __tablename__ = "pu_materials"
@@ -1648,6 +1657,81 @@ def set_ttr_materials(ttr_id: int, data: dict, db: Session = Depends(get_db), us
         db.add(tm)
     db.commit()
     return {"ok": True}
+
+@app.get("/api/ttr/res/{ttr_id}/pu-types")
+def get_ttr_pu_types(ttr_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить привязанные типы ПУ к ТТР"""
+    items = db.query(TTR_PUType).filter(TTR_PUType.ttr_res_id == ttr_id).all()
+    result = []
+    for item in items:
+        pu_type = db.query(PUTypeReference).filter(PUTypeReference.id == item.pu_type_id).first()
+        if pu_type:
+            result.append({
+                "id": item.id,
+                "pu_type_id": pu_type.id,
+                "pattern": pu_type.pattern,
+                "faza": pu_type.faza,
+                "voltage": pu_type.voltage
+            })
+    return result
+
+
+@app.post("/api/ttr/res/{ttr_id}/pu-types")
+def set_ttr_pu_types(ttr_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Установить привязку типов ПУ к ТТР"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    # Удаляем старые связи
+    db.query(TTR_PUType).filter(TTR_PUType.ttr_res_id == ttr_id).delete()
+    
+    # Добавляем новые
+    for pu_type_id in data.get("pu_type_ids", []):
+        link = TTR_PUType(ttr_res_id=ttr_id, pu_type_id=pu_type_id)
+        db.add(link)
+    
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/ttr/res/for-pu")
+def get_ttr_for_pu(pu_type: str, ttr_type: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить ТТР доступные для данного типа ПУ"""
+    if not pu_type:
+        return []
+    
+    pu_type_upper = pu_type.upper().strip()
+    
+    # Ищем подходящий тип ПУ из справочника
+    all_pu_types = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
+    matched_pu_type = None
+    
+    for pt in sorted(all_pu_types, key=lambda x: len(x.pattern or ''), reverse=True):
+        if pt.pattern and pt.pattern.upper() in pu_type_upper:
+            matched_pu_type = pt
+            break
+    
+    if not matched_pu_type:
+        # Если тип ПУ не найден — возвращаем пустой список
+        return []
+    
+    # Ищем ТТР привязанные к этому типу ПУ
+    linked_ttr_ids = db.query(TTR_PUType.ttr_res_id).filter(
+        TTR_PUType.pu_type_id == matched_pu_type.id
+    ).all()
+    linked_ttr_ids = [t[0] for t in linked_ttr_ids]
+    
+    if not linked_ttr_ids:
+        return []
+    
+    # Фильтруем по типу ТТР (OU, OL, OR)
+    ttrs = db.query(TTR_RES).filter(
+        TTR_RES.id.in_(linked_ttr_ids),
+        TTR_RES.ttr_type == ttr_type,
+        TTR_RES.is_active == True
+    ).all()
+    
+    return [{"id": t.id, "code": t.code, "name": t.name} for t in ttrs]
 
 @app.get("/api/pu/items/{item_id}/materials")
 def get_pu_materials(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
