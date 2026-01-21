@@ -789,22 +789,20 @@ def get_items(
         q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
 
     # Фильтр по типу реестра
-    if filter == 'work':
-        from sqlalchemy import and_, or_
-        q = q.filter(
-            and_(
-                (PUItem.tz_number == None) | (PUItem.tz_number == ""),
-                (PUItem.request_number == None) | (PUItem.request_number == ""),
-                or_(PUItem.approval_status != ApprovalStatus.APPROVED, PUItem.approval_status == None)
-            )
-        )
+    # Фильтр по типу реестра
+    if filter == 'sklad':
+        # Только склад
+        q = q.filter(PUItem.status == PUStatus.SKLAD)
     elif filter == 'done':
+        # Завершённые СМР — любой статус кроме склада
+        q = q.filter(PUItem.status != PUStatus.SKLAD)
+    elif filter == 'actioned':
+        # Актированные — есть ТЗ или Заявка
         from sqlalchemy import or_
         q = q.filter(
             or_(
                 (PUItem.tz_number != None) & (PUItem.tz_number != ""),
-                (PUItem.request_number != None) & (PUItem.request_number != ""),
-                PUItem.approval_status == ApprovalStatus.APPROVED
+                (PUItem.request_number != None) & (PUItem.request_number != "")
             )
         )
 
@@ -868,11 +866,17 @@ def export_pu_items(
         if ls:
             q = q.filter(PUItem.ls_number.ilike(f"%{ls}%"))
         
-        if filter == 'work':
+        if filter == 'sklad':
+            q = q.filter(PUItem.status == PUStatus.SKLAD)
+        elif filter == 'done':
+            q = q.filter(PUItem.status != PUStatus.SKLAD)
+        elif filter == 'actioned':
+            from sqlalchemy import or_
             q = q.filter(
-                (PUItem.tz_number == None) | (PUItem.tz_number == ""),
-                (PUItem.request_number == None) | (PUItem.request_number == ""),
-                (PUItem.approval_status != ApprovalStatus.APPROVED) | (PUItem.approval_status == None)
+                or_(
+                    (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+                    (PUItem.request_number != None) & (PUItem.request_number != "")
+                )
             )
         elif filter == 'done':
             from sqlalchemy import or_
@@ -976,8 +980,8 @@ def export_pu_items(
         output.seek(0)
         
         # Имя файла (ASCII для совместимости + UTF-8 для красоты)
-        filter_name_ascii = {"work": "V_rabote", "done": "Zavershennye"}.get(filter, "Vse")
-        filter_name_rus = {"work": "В_работе", "done": "Завершенные"}.get(filter, "Все")
+        filter_name_ascii = {"sklad": "Sklad", "done": "Zavershennye_SMR", "actioned": "Aktirovannye"}.get(filter, "Vse")
+        filter_name_rus = {"sklad": "Склад", "done": "Завершенные_СМР", "actioned": "Актированные"}.get(filter, "Все")
 
         filename_ascii = f"Reestr_PU_{filter_name_ascii}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
         filename_rus = f"Реестр_ПУ_{filter_name_rus}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
