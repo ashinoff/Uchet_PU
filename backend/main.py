@@ -189,6 +189,7 @@ class PUItem(Base):
     approval_status = Column(SQLEnum(ApprovalStatus), default=ApprovalStatus.NONE)
     approved_by = Column(Integer, ForeignKey("users.id"))
     approved_at = Column(DateTime)
+    rejection_comment = Column(Text)
     
     # Заявка ЭСК
     request_number = Column(String(50))  # Номер заявки (например 1-26)
@@ -1181,6 +1182,7 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "price_va_with_nds": item.price_va_with_nds,
         "request_contract": item.request_contract,
         "work_type_name": item.work_type_name,
+        "rejection_comment": item.rejection_comment,
     }
 
 @app.put("/api/pu/items/{item_id}")
@@ -1199,6 +1201,9 @@ def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db),
     visible = get_visible_units(user, db)
     if item.current_unit_id not in visible:
         raise HTTPException(403, "Нет доступа к этому ПУ")
+    # Согласованные ПУ нельзя редактировать
+    if item.approval_status == ApprovalStatus.APPROVED:
+        raise HTTPException(403, "Согласованные ПУ нельзя редактировать")
     
     # Валидация договора
     if data.contract_number:
@@ -1588,6 +1593,7 @@ def send_for_approval(item_id: int, db: Session = Depends(get_db), user: User = 
         raise HTTPException(404, "ПУ не найден")
     
     item.approval_status = ApprovalStatus.PENDING
+    item.rejection_comment = None  # Сбрасываем комментарий при повторной отправке
     db.commit()
     return {"ok": True}
 
@@ -1625,6 +1631,27 @@ def approve_item(item_id: int, db: Session = Depends(get_db), user: User = Depen
     db.commit()
     return {"ok": True}
 
+@app.post("/api/pu/items/{item_id}/reject")
+def reject_item(item_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Отклонить ПУ (РЭС) с комментарием"""
+    if not is_res_user(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Только РЭС может отклонять")
+    
+    item = db.query(PUItem).filter(PUItem.id == item_id).first()
+    if not item:
+        raise HTTPException(404, "ПУ не найден")
+    
+    comment = data.get("comment", "").strip()
+    if not comment:
+        raise HTTPException(400, "Укажите причину отклонения")
+    
+    item.approval_status = ApprovalStatus.REJECTED
+    item.rejection_comment = comment
+    item.approved_by = user.id
+    item.approved_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True}
+
 @app.post("/api/pu/items/{item_id}/unlock")
 def unlock_item(item_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Разблокировать согласованную карточку (только СУЭ с кодом)"""
@@ -1642,6 +1669,7 @@ def unlock_item(item_id: int, data: dict, db: Session = Depends(get_db), user: U
     item.approved_at = None
     db.commit()
     return {"ok": True}
+
 
 @app.get("/api/pu/pending-approval")
 def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1662,11 +1690,19 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
     else:
         items = db.query(PUItem).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
     
+    def get_res_name(esk_unit):
+        if not esk_unit or not esk_unit.code:
+            return "—"
+        res_code = esk_unit.code.replace("ESK_", "RES_")
+        res_unit = db.query(Unit).filter(Unit.code == res_code).first()
+        return res_unit.name if res_unit else "—"
+    
     return [{
         "id": i.id, 
         "serial_number": i.serial_number, 
         "pu_type": i.pu_type,
         "current_unit_name": i.current_unit.name if i.current_unit else None,
+        "res_name": get_res_name(i.current_unit),
         "contract_number": i.contract_number, 
         "consumer": i.consumer,
         "address": i.address,
@@ -1674,11 +1710,6 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         "form_factor": i.form_factor,
         "trubostoyka": i.trubostoyka,
         "va_type": i.va_type,
-        "lsr_truba": i.lsr_truba,
-        "lsr_va": i.lsr_va,
-        "price_truba_with_nds": i.price_truba_with_nds,
-        "price_va_with_nds": i.price_va_with_nds,
-        "price_total": (i.price_truba_with_nds or 0) + (i.price_va_with_nds or 0),
         "work_type_name": i.work_type_name,
         "smr_date": i.smr_date.isoformat() if i.smr_date else None,
     } for i in items]
