@@ -1864,14 +1864,24 @@ def get_ttr_for_pu(pu_type: str, ttr_type: str, db: Session = Depends(get_db), u
     return [{"id": t.id, "code": t.code, "name": t.name, "ttr_type": t.ttr_type} for t in ttrs]
 
 @app.get("/api/pu/items/{item_id}/materials")
-def get_pu_materials(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_pu_materials(
+    item_id: int, 
+    ttr_ou_id: Optional[int] = None,
+    ttr_ol_id: Optional[int] = None, 
+    ttr_or_id: Optional[int] = None,
+    db: Session = Depends(get_db), 
+    user: User = Depends(get_current_user)
+):
     """Получить материалы для ПУ (из выбранных ТТР)"""
     item = db.query(PUItem).filter(PUItem.id == item_id).first()
     if not item:
         raise HTTPException(404, "ПУ не найден")
     
-    # Собираем все ТТР с этого ПУ
-    ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+    # Если переданы параметры - используем их, иначе берём из сохранённого item
+    if ttr_ou_id is not None or ttr_ol_id is not None or ttr_or_id is not None:
+        ttr_ids = [t for t in [ttr_ou_id, ttr_ol_id, ttr_or_id] if t]
+    else:
+        ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
     
     if not ttr_ids:
         return {"defaults": [], "facts": []}
