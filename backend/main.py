@@ -1715,9 +1715,11 @@ def update_ttr_esk(ttr_id: int, data: dict, db: Session = Depends(get_db), user:
     return {"ok": True}
 
 @app.delete("/api/ttr/esk/{ttr_id}")
-def delete_ttr_esk(ttr_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_ttr_esk(ttr_id: int, data: dict = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not is_sue_admin(user):
         raise HTTPException(403, "Нет доступа")
+    if not data or data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
     db.query(TTR_ESK).filter(TTR_ESK.id == ttr_id).update({"is_active": False})
     db.commit()
     return {"ok": True}
@@ -1987,9 +1989,11 @@ def update_pu_type(type_id: int, data: dict, db: Session = Depends(get_db), user
     return {"ok": True}
 
 @app.delete("/api/pu-types/{type_id}")
-def delete_pu_type(type_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_pu_type(type_id: int, data: dict = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not is_sue_admin(user):
         raise HTTPException(403, "Нет доступа")
+    if not data or data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
     db.query(PUTypeReference).filter(PUTypeReference.id == type_id).update({"is_active": False})
     db.commit()
     return {"ok": True}
