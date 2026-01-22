@@ -1110,7 +1110,11 @@ const updateMaterialQty = (materialId, qty) => {
     const isRes = item?.current_unit_type === 'RES'
 // СУЭ только просмотр, РЭС редактирует свои, ЭСК редактирует свои
     const isApproved = item?.approval_status === 'APPROVED'
+    const isApproved = item?.approval_status === 'APPROVED'
+    const isRejected = item?.approval_status === 'REJECTED'
     const canEdit = ((isResUser && isRes) || (isEskUser && isEsk)) && !isApproved
+    // ЭСК может редактировать если REJECTED или NONE
+    const canEditEsk = isEskUser && isEsk && (item?.approval_status === 'REJECTED' || item?.approval_status === 'NONE' || !item?.approval_status)
 
   // Для ЭСК только Техприс и Склад
   const statusOptions = isEsk 
@@ -1486,20 +1490,33 @@ const updateMaterialQty = (materialId, qty) => {
 
           {/* Согласование */}
 {item.approval_status && item.approval_status !== 'NONE' && (
-  <div className={`p-4 rounded-lg ${item.approval_status === 'APPROVED' ? 'bg-green-50 border border-green-200' : item.approval_status === 'PENDING' ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50'}`}>
+  <div className={`p-4 rounded-lg ${
+    item.approval_status === 'APPROVED' ? 'bg-green-50 border border-green-200' : 
+    item.approval_status === 'REJECTED' ? 'bg-red-50 border border-red-200' :
+    'bg-yellow-50 border border-yellow-200'
+  }`}>
     <div className="flex justify-between items-center">
-      <span className={item.approval_status === 'APPROVED' ? 'text-green-700 font-medium' : 'text-yellow-700'}>
-        {item.approval_status === 'APPROVED' ? '✅ Согласовано — редактирование заблокировано' : item.approval_status === 'PENDING' ? '⏳ На согласовании' : '—'}
+      <span className={
+        item.approval_status === 'APPROVED' ? 'text-green-700 font-medium' : 
+        item.approval_status === 'REJECTED' ? 'text-red-700 font-medium' :
+        'text-yellow-700'
+      }>
+        {item.approval_status === 'APPROVED' && '✅ Согласовано — редактирование заблокировано'}
+        {item.approval_status === 'PENDING' && '⏳ На согласовании'}
+        {item.approval_status === 'REJECTED' && '❌ Отклонено — требуется исправление'}
       </span>
       {item.approval_status === 'APPROVED' && isSueAdmin && (
         <button 
-          onClick={() => {
+          onClick={async () => {
             const code = prompt('Введите код администратора для разблокировки:')
-            if (code === '2233') {
-              setItem({ ...item, approval_status: 'NONE' })
-              alert('✅ Карточка разблокирована для редактирования')
-            } else if (code) {
-              alert('❌ Неверный код')
+            if (code) {
+              try {
+                await api.post(`/pu/items/${item.id}/unlock`, { admin_code: code })
+                setItem({ ...item, approval_status: 'NONE' })
+                alert('✅ Карточка разблокирована')
+              } catch (err) {
+                alert(err.response?.data?.detail || 'Ошибка')
+              }
             }
           }}
           className="px-3 py-1 bg-orange-500 text-white rounded-lg text-sm"
@@ -1508,6 +1525,12 @@ const updateMaterialQty = (materialId, qty) => {
         </button>
       )}
     </div>
+    {item.approval_status === 'REJECTED' && item.rejection_comment && (
+      <div className="mt-3 p-3 bg-white rounded border border-red-200">
+        <div className="text-sm text-red-600 font-medium mb-1">📝 Причина отклонения:</div>
+        <div className="text-sm text-gray-700">{item.rejection_comment}</div>
+      </div>
+    )}
   </div>
 )}
         </div>
@@ -1606,9 +1629,10 @@ function UploadPage() {
 
 // ==================== СОГЛАСОВАНИЕ ====================
 function ApprovalPage() {
-  const { canApprove } = useAuth()
+  const { canApprove, isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [rejectModal, setRejectModal] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -1620,6 +1644,16 @@ function ApprovalPage() {
   const handleApprove = async (id) => {
     try {
       await api.post(`/pu/items/${id}/approve`)
+      load()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка')
+    }
+  }
+
+  const handleReject = async (id, comment) => {
+    try {
+      await api.post(`/pu/items/${id}/reject`, { comment })
+      setRejectModal(null)
       load()
     } catch (err) {
       alert(err.response?.data?.detail || 'Ошибка')
@@ -1642,45 +1676,94 @@ function ApprovalPage() {
         {loading ? <div className="p-8"><RossetiLoader /></div> : items.length === 0 ? (
           <div className="p-8 text-center text-gray-500">Нет ПУ на согласовании</div>
         ) : (
-<table className="w-full text-sm">
-  <thead className="bg-gray-50">
-    <tr>
-      <th className="px-3 py-3 text-left">Серийный номер</th>
-      <th className="px-3 py-3 text-left">Тип ПУ</th>
-      <th className="px-3 py-3 text-left">Потребитель</th>
-      <th className="px-3 py-3 text-left">Договор</th>
-      <th className="px-3 py-3 text-center">Фаза</th>
-      <th className="px-3 py-3 text-center">Трубост.</th>
-      <th className="px-3 py-3 text-left">ЛСР ПУ/ВА</th>
-      <th className="px-3 py-3 text-left">ЛСР Труб.</th>
-      <th className="px-3 py-3 text-right">Стоим. ВА</th>
-      <th className="px-3 py-3 text-right">Стоим. Труб.</th>
-      <th className="px-3 py-3 text-right">Итого</th>
-      <th className="w-32"></th>
-    </tr>
-  </thead>
-  <tbody>
-    {items.map(i => (
-      <tr key={i.id} className="border-t hover:bg-gray-50">
-        <td className="px-3 py-3 font-mono">{i.serial_number}</td>
-        <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
-        <td className="px-3 py-3">{i.consumer || '—'}</td>
-        <td className="px-3 py-3">{i.contract_number || '—'}</td>
-        <td className="px-3 py-3 text-center">{i.faza || '—'}</td>
-        <td className="px-3 py-3 text-center">{i.trubostoyka ? '✓' : '—'}</td>
-        <td className="px-3 py-3">{i.lsr_va || '—'}</td>
-        <td className="px-3 py-3">{i.lsr_truba || '—'}</td>
-        <td className="px-3 py-3 text-right">{i.price_va_with_nds?.toLocaleString() || '—'}</td>
-        <td className="px-3 py-3 text-right">{i.price_truba_with_nds?.toLocaleString() || '—'}</td>
-        <td className="px-3 py-3 text-right font-medium">{i.price_total?.toLocaleString() || '—'}</td>
-        <td className="px-3 py-3">
-          <button onClick={() => handleApprove(i.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">✓ Согласовать</button>
-        </td>
-      </tr>
-    ))}
-  </tbody>
-</table>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-3 text-left">Серийный номер</th>
+                <th className="px-3 py-3 text-left">Тип ПУ</th>
+                {isSueAdmin && <th className="px-3 py-3 text-left">РЭС</th>}
+                <th className="px-3 py-3 text-left">Потребитель</th>
+                <th className="px-3 py-3 text-left">Договор</th>
+                <th className="px-3 py-3 text-center">Фаза</th>
+                <th className="px-3 py-3 text-center">Трубост.</th>
+                <th className="px-3 py-3 text-left">Вид работ</th>
+                <th className="px-3 py-3 text-left">Дата СМР</th>
+                <th className="w-48"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(i => (
+                <tr key={i.id} className="border-t hover:bg-gray-50">
+                  <td className="px-3 py-3 font-mono">{i.serial_number}</td>
+                  <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
+                  {isSueAdmin && <td className="px-3 py-3">{i.res_name || '—'}</td>}
+                  <td className="px-3 py-3">{i.consumer || '—'}</td>
+                  <td className="px-3 py-3">{i.contract_number || '—'}</td>
+                  <td className="px-3 py-3 text-center">{i.faza || '—'}</td>
+                  <td className="px-3 py-3 text-center">{i.trubostoyka ? '✓' : '—'}</td>
+                  <td className="px-3 py-3">{i.work_type_name || '—'}</td>
+                  <td className="px-3 py-3">{i.smr_date || '—'}</td>
+                  <td className="px-3 py-3">
+                    <div className="flex gap-2">
+                      <button onClick={() => handleApprove(i.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">✓ Согласовать</button>
+                      <button onClick={() => setRejectModal(i)} className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm">✕ Отклонить</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
+      </div>
+
+      {rejectModal && (
+        <RejectModal 
+          item={rejectModal} 
+          onClose={() => setRejectModal(null)} 
+          onReject={handleReject} 
+        />
+      )}
+    </div>
+  )
+}
+
+function RejectModal({ item, onClose, onReject }) {
+  const [comment, setComment] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!comment.trim()) {
+      alert('Укажите причину отклонения')
+      return
+    }
+    setLoading(true)
+    await onReject(item.id, comment)
+    setLoading(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold mb-2">Отклонить ПУ</h2>
+        <p className="text-gray-600 text-sm mb-4">Серийный номер: <span className="font-mono">{item.serial_number}</span></p>
+        
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Причина отклонения *</label>
+          <textarea 
+            value={comment} 
+            onChange={e => setComment(e.target.value)} 
+            placeholder="Укажите что нужно исправить..."
+            className="w-full px-3 py-2 border rounded-lg" 
+            rows={4}
+          />
+        </div>
+        
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+          <button onClick={handleSubmit} disabled={loading || !comment.trim()} className="px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50">
+            {loading ? 'Отклонение...' : 'Отклонить'}
+          </button>
+        </div>
       </div>
     </div>
   )
