@@ -1478,11 +1478,21 @@ async def update_types_bulk(
     
     try:
         contents = await file.read()
-        df = pd.read_excel(io.BytesIO(contents), header=None)
+        
+        # Читаем Excel с явными параметрами
+        xl = pd.ExcelFile(io.BytesIO(contents))
+        print(f"=== UPDATE TYPES BULK ===")
+        print(f"Листы в файле: {xl.sheet_names}")
+        
+        # Читаем первый лист без заголовка, все строки
+        df = pd.read_excel(xl, sheet_name=0, header=None, dtype=str)
+        print(f"Всего строк в DataFrame: {len(df)}")
+        print(f"Первые 5 строк: {df.head()}")
         
         # Проверяем есть ли заголовок
         first_val = str(df.iloc[0, 0]).lower() if len(df) > 0 else ""
-        start_row = 1 if 'номер' in first_val or 'серийн' in first_val or 'пу' in first_val else 0
+        start_row = 1 if 'номер' in first_val or 'серийн' in first_val or 'пу' in first_val or 'заводской' in first_val else 0
+        print(f"Начинаем с строки: {start_row}")
         
         updated = 0
         not_found = []
@@ -1490,11 +1500,18 @@ async def update_types_bulk(
         
         for idx in range(start_row, len(df)):
             row = df.iloc[idx]
+            
+            # Получаем значения из первых двух колонок
             serial = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
             new_type = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
             
-            if not serial or serial == 'nan':
+            # Пропускаем пустые строки
+            if not serial or serial == 'nan' or serial == 'None':
                 continue
+            
+            # Убираем .0 если число было прочитано как float
+            if serial.endswith('.0'):
+                serial = serial[:-2]
             
             # Ищем ПУ
             pu_item = db.query(PUItem).filter(PUItem.serial_number == serial).first()
@@ -1502,18 +1519,17 @@ async def update_types_bulk(
                 not_found.append(serial)
                 continue
             
-            if not new_type or new_type == 'nan':
+            if not new_type or new_type == 'nan' or new_type == 'None':
                 errors.append(f"{serial}: пустой тип")
                 continue
             
             # Обновляем тип
-            try:
-                pu_item.pu_type = new_type[:500]  # Ограничиваем длину
-                updated += 1
-            except Exception as e:
-                errors.append(f"{serial}: {str(e)}")
+            pu_item.pu_type = new_type[:500]
+            updated += 1
         
         db.commit()
+        
+        print(f"Обновлено: {updated}, Не найдено: {len(not_found)}, Ошибок: {len(errors)}")
         
         return {
             "updated": updated,
