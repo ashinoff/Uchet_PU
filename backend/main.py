@@ -1812,39 +1812,57 @@ def set_ttr_pu_types(ttr_id: int, data: dict, db: Session = Depends(get_db), use
 @app.get("/api/ttr/res/for-pu")
 def get_ttr_for_pu(pu_type: str, ttr_type: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Получить ТТР доступные для данного типа ПУ"""
+    print(f"=== TTR FOR PU ===")
+    print(f"pu_type: {pu_type}")
+    print(f"ttr_type: {ttr_type}")
+    
     if not pu_type:
+        print("pu_type пустой — возвращаем []")
         return []
     
     pu_type_upper = pu_type.upper().strip()
     
-    # Ищем подходящий тип ПУ из справочника
-    all_pu_types = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
+    # Ищем подходящий тип ПУ из справочника (без фильтра is_active для отладки)
+    all_pu_types = db.query(PUTypeReference).all()
+    print(f"Всего типов ПУ в справочнике: {len(all_pu_types)}")
+    for pt in all_pu_types:
+        print(f"  - id={pt.id}, pattern='{pt.pattern}', is_active={pt.is_active}")
+    
     matched_pu_type = None
     
     for pt in sorted(all_pu_types, key=lambda x: len(x.pattern or ''), reverse=True):
         if pt.pattern and pt.pattern.upper() in pu_type_upper:
+            print(f"  ✓ СОВПАЛ: '{pt.pattern}' в '{pu_type_upper}'")
             matched_pu_type = pt
             break
     
     if not matched_pu_type:
-        # Если тип ПУ не найден — возвращаем пустой список
+        print("Тип ПУ не найден — возвращаем []")
         return []
     
+    print(f"Найден тип ПУ: id={matched_pu_type.id}, pattern={matched_pu_type.pattern}")
+    
     # Ищем ТТР привязанные к этому типу ПУ
-    linked_ttr_ids = db.query(TTR_PUType.ttr_res_id).filter(
-        TTR_PUType.pu_type_id == matched_pu_type.id
-    ).all()
-    linked_ttr_ids = [t[0] for t in linked_ttr_ids]
+    linked = db.query(TTR_PUType).filter(TTR_PUType.pu_type_id == matched_pu_type.id).all()
+    print(f"Записей в TTR_PUType для pu_type_id={matched_pu_type.id}: {len(linked)}")
+    for l in linked:
+        print(f"  - ttr_res_id={l.ttr_res_id}")
+    
+    linked_ttr_ids = [l.ttr_res_id for l in linked]
     
     if not linked_ttr_ids:
+        print("Нет привязанных ТТР — возвращаем []")
         return []
     
     # Фильтруем по типу ТТР (OU, OL, OR)
     ttrs = db.query(TTR_RES).filter(
         TTR_RES.id.in_(linked_ttr_ids),
-        TTR_RES.ttr_type == ttr_type,
-        TTR_RES.is_active == True
+        TTR_RES.ttr_type == ttr_type
     ).all()
+    
+    print(f"Найдено ТТР типа '{ttr_type}': {len(ttrs)}")
+    for t in ttrs:
+        print(f"  - id={t.id}, code={t.code}, ttr_type={t.ttr_type}")
     
     return [{"id": t.id, "code": t.code, "name": t.name} for t in ttrs]
 
