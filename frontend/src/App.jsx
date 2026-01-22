@@ -1049,15 +1049,25 @@ if (field === 'trubostoyka' && isEsk) {
   }
 }
 
-  const loadMaterials = async () => {
-  if (!item.ttr_ou_id && !item.ttr_ol_id && !item.ttr_or_id) {
+const loadMaterials = async () => {
+  const ttrOuId = item?.ttr_ou_id
+  const ttrOlId = item?.ttr_ol_id  
+  const ttrOrId = item?.ttr_or_id
+  
+  if (!ttrOuId && !ttrOlId && !ttrOrId) {
     setMaterials([])
     return
   }
   
   setLoadingMaterials(true)
   try {
-    const r = await api.get(`/pu/items/${itemId}/materials`)
+    // Передаём текущие выбранные ТТР как параметры
+    const params = new URLSearchParams()
+    if (ttrOuId) params.append('ttr_ou_id', ttrOuId)
+    if (ttrOlId) params.append('ttr_ol_id', ttrOlId)
+    if (ttrOrId) params.append('ttr_or_id', ttrOrId)
+    
+    const r = await api.get(`/pu/items/${itemId}/materials?${params.toString()}`)
     
     // Если есть факт - используем его, иначе дефолты
     if (r.data.facts && r.data.facts.length > 0) {
