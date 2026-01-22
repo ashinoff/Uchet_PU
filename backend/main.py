@@ -1823,7 +1823,7 @@ def get_ttr_for_pu(pu_type: str, ttr_type: str, db: Session = Depends(get_db), u
     pu_type_upper = pu_type.upper().strip()
     
     # Ищем подходящий тип ПУ из справочника (без фильтра is_active для отладки)
-    all_pu_types = db.query(PUTypeReference).all()
+    all_pu_types = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
     print(f"Всего типов ПУ в справочнике: {len(all_pu_types)}")
     for pt in all_pu_types:
         print(f"  - id={pt.id}, pattern='{pt.pattern}', is_active={pt.is_active}")
