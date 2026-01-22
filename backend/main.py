@@ -1462,6 +1462,72 @@ async def move_bulk(
         traceback.print_exc()
         raise HTTPException(500, f"Ошибка: {str(e)}")
 
+@app.post("/api/pu/update-types-bulk")
+async def update_types_bulk(
+    file: UploadFile = File(...),
+    admin_code: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Массовое обновление типов ПУ по Excel файлу"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ")
+    
+    if admin_code != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    try:
+        contents = await file.read()
+        df = pd.read_excel(io.BytesIO(contents), header=None)
+        
+        # Проверяем есть ли заголовок
+        first_val = str(df.iloc[0, 0]).lower() if len(df) > 0 else ""
+        start_row = 1 if 'номер' in first_val or 'серийн' in first_val or 'пу' in first_val else 0
+        
+        updated = 0
+        not_found = []
+        errors = []
+        
+        for idx in range(start_row, len(df)):
+            row = df.iloc[idx]
+            serial = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            new_type = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
+            
+            if not serial or serial == 'nan':
+                continue
+            
+            # Ищем ПУ
+            pu_item = db.query(PUItem).filter(PUItem.serial_number == serial).first()
+            if not pu_item:
+                not_found.append(serial)
+                continue
+            
+            if not new_type or new_type == 'nan':
+                errors.append(f"{serial}: пустой тип")
+                continue
+            
+            # Обновляем тип
+            try:
+                pu_item.pu_type = new_type[:500]  # Ограничиваем длину
+                updated += 1
+            except Exception as e:
+                errors.append(f"{serial}: {str(e)}")
+        
+        db.commit()
+        
+        return {
+            "updated": updated,
+            "not_found": not_found,
+            "errors": errors,
+            "total_rows": len(df) - start_row
+        }
+        
+    except Exception as e:
+        print(f"Update types bulk error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Ошибка: {str(e)}")
+
 @app.post("/api/pu/delete")
 def delete_items(req: DeleteReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Удаление ПУ - только СУЭ с кодом"""
