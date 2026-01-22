@@ -1109,7 +1109,7 @@ const updateMaterialQty = (materialId, qty) => {
     const isEsk = item?.current_unit_type === 'ESK_UNIT' || item?.current_unit_type === 'ESK'
     const isRes = item?.current_unit_type === 'RES'
 // СУЭ только просмотр, РЭС редактирует свои, ЭСК редактирует свои
-    const isApproved = item?.approval_status === 'APPROVED'
+    
     const isApproved = item?.approval_status === 'APPROVED'
     const isRejected = item?.approval_status === 'REJECTED'
     const canEdit = ((isResUser && isRes) || (isEskUser && isEsk)) && !isApproved
