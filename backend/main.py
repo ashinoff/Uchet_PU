@@ -1822,14 +1822,11 @@ def get_ttr_for_pu(pu_type: str, ttr_type: str, db: Session = Depends(get_db), u
     
     pu_type_upper = pu_type.upper().strip()
     
-    # Ищем подходящий тип ПУ из справочника (без фильтра is_active для отладки)
+    # Ищем подходящий тип ПУ из справочника
     all_pu_types = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
     print(f"Всего типов ПУ в справочнике: {len(all_pu_types)}")
-    for pt in all_pu_types:
-        print(f"  - id={pt.id}, pattern='{pt.pattern}', is_active={pt.is_active}")
     
     matched_pu_type = None
-    
     for pt in sorted(all_pu_types, key=lambda x: len(x.pattern or ''), reverse=True):
         if pt.pattern and pt.pattern.upper() in pu_type_upper:
             print(f"  ✓ СОВПАЛ: '{pt.pattern}' в '{pu_type_upper}'")
@@ -1845,8 +1842,6 @@ def get_ttr_for_pu(pu_type: str, ttr_type: str, db: Session = Depends(get_db), u
     # Ищем ТТР привязанные к этому типу ПУ
     linked = db.query(TTR_PUType).filter(TTR_PUType.pu_type_id == matched_pu_type.id).all()
     print(f"Записей в TTR_PUType для pu_type_id={matched_pu_type.id}: {len(linked)}")
-    for l in linked:
-        print(f"  - ttr_res_id={l.ttr_res_id}")
     
     linked_ttr_ids = [l.ttr_res_id for l in linked]
     
@@ -1857,14 +1852,16 @@ def get_ttr_for_pu(pu_type: str, ttr_type: str, db: Session = Depends(get_db), u
     # Фильтруем по типу ТТР (OU, OL, OR)
     ttrs = db.query(TTR_RES).filter(
         TTR_RES.id.in_(linked_ttr_ids),
-        TTR_RES.ttr_type == ttr_type
+        TTR_RES.ttr_type == ttr_type,
+        TTR_RES.is_active == True
     ).all()
     
     print(f"Найдено ТТР типа '{ttr_type}': {len(ttrs)}")
     for t in ttrs:
         print(f"  - id={t.id}, code={t.code}, ttr_type={t.ttr_type}")
     
-    return [{"id": t.id, "code": t.code, "name": t.name} for t in ttrs]
+    # ⭐ ИСПРАВЛЕНИЕ: добавляем ttr_type в ответ!
+    return [{"id": t.id, "code": t.code, "name": t.name, "ttr_type": t.ttr_type} for t in ttrs]
 
 @app.get("/api/pu/items/{item_id}/materials")
 def get_pu_materials(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
