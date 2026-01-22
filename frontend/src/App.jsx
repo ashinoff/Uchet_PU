@@ -2472,6 +2472,7 @@ function SettingsPage() {
     { id: 'ttr-esk', label: '📐 ТТР (ЭСК)', show: isSueAdmin || isEskAdmin || isEskUser },
     { id: 'materials', label: '🔧 Материалы', show: isSueAdmin || isResUser },
     { id: 'pu-types', label: '📦 Типы ПУ', show: isSueAdmin || isResUser || isEskUser },
+    { id: 'bulk-update', label: '📝 Корректировка', show: isSueAdmin },
     { id: 'system', label: '⚠️ Система', show: isSueAdmin },
   ].filter(t => t.show)
 
@@ -2493,6 +2494,7 @@ function SettingsPage() {
       {tab === 'ttr-esk' && <TTREskTab />}
       {tab === 'materials' && <MaterialsTab />}
       {tab === 'pu-types' && <PUTypesTab />}
+      {tab === 'bulk-update' && <BulkUpdateTab />}
       {tab === 'system' && <SystemTab />}
     </div>
   )
@@ -3401,6 +3403,160 @@ function SystemTab() {
             }
           }}
         />
+      )}
+    </div>
+  )
+}
+
+function BulkUpdateTab() {
+  const [file, setFile] = useState(null)
+  const [adminCode, setAdminCode] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
+  const [mode, setMode] = useState('types') // types или move
+
+  const handleUpload = async () => {
+    if (!file || !adminCode) {
+      alert('Выберите файл и введите код администратора')
+      return
+    }
+
+    setLoading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('admin_code', adminCode)
+
+    try {
+      const endpoint = mode === 'types' ? '/pu/update-types-bulk' : '/pu/move-bulk'
+      const r = await api.post(endpoint, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      setResult(r.data)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка загрузки')
+    }
+    setLoading(false)
+  }
+
+  const resetForm = () => {
+    setFile(null)
+    setAdminCode('')
+    setResult(null)
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Выбор режима */}
+      <div className="flex gap-2">
+        <button 
+          onClick={() => { setMode('types'); resetForm() }} 
+          className={`px-4 py-2 rounded-lg ${mode === 'types' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+        >
+          📝 Корректировка типов ПУ
+        </button>
+        <button 
+          onClick={() => { setMode('move'); resetForm() }} 
+          className={`px-4 py-2 rounded-lg ${mode === 'move' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+        >
+          📦 Массовое перемещение
+        </button>
+      </div>
+
+      {/* Инструкция */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <h3 className="font-medium text-blue-800 mb-2">📋 Формат файла Excel:</h3>
+        {mode === 'types' ? (
+          <ul className="text-blue-700 text-sm space-y-1">
+            <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
+            <li>• <b>Колонка B:</b> Новый тип ПУ</li>
+          </ul>
+        ) : (
+          <ul className="text-blue-700 text-sm space-y-1">
+            <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
+            <li>• <b>Колонка B:</b> Название подразделения ЭСК</li>
+          </ul>
+        )}
+      </div>
+
+      {result ? (
+        <div className="bg-white rounded-xl border p-6 space-y-4">
+          <div className="text-center">
+            <div className="text-4xl mb-4">✅</div>
+            <h3 className="text-xl font-semibold text-green-600">
+              {mode === 'types' ? 'Обновлено' : 'Перемещено'}: {result.updated || result.moved} ПУ
+            </h3>
+            <p className="text-gray-500">Всего строк в файле: {result.total_rows}</p>
+          </div>
+
+          {(result.not_found_pu?.length > 0 || result.not_found?.length > 0) && (
+            <div className="bg-yellow-50 rounded-lg p-4">
+              <h4 className="font-medium text-yellow-800 mb-2">
+                ⚠️ ПУ не найдены ({(result.not_found_pu || result.not_found).length}):
+              </h4>
+              <div className="text-sm text-yellow-700 max-h-32 overflow-y-auto">
+                {(result.not_found_pu || result.not_found).join(', ')}
+              </div>
+            </div>
+          )}
+
+          {result.not_found_unit?.length > 0 && (
+            <div className="bg-orange-50 rounded-lg p-4">
+              <h4 className="font-medium text-orange-800 mb-2">
+                ⚠️ Подразделения не найдены ({result.not_found_unit.length}):
+              </h4>
+              <div className="text-sm text-orange-700 max-h-32 overflow-y-auto">
+                {result.not_found_unit.map((item, idx) => <div key={idx}>{item}</div>)}
+              </div>
+            </div>
+          )}
+
+          {result.errors?.length > 0 && (
+            <div className="bg-red-50 rounded-lg p-4">
+              <h4 className="font-medium text-red-800 mb-2">❌ Ошибки ({result.errors.length}):</h4>
+              <div className="text-sm text-red-700 max-h-32 overflow-y-auto">
+                {result.errors.map((err, idx) => <div key={idx}>{err}</div>)}
+              </div>
+            </div>
+          )}
+
+          <div className="text-center">
+            <button onClick={resetForm} className="px-6 py-2 bg-blue-600 text-white rounded-lg">
+              Загрузить ещё
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Файл Excel (.xlsx)</label>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={e => setFile(e.target.files[0])}
+              className="w-full px-3 py-2 border rounded-lg"
+            />
+            {file && <p className="mt-2 text-sm text-green-600">✓ {file.name}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Код администратора</label>
+            <input
+              type="password"
+              value={adminCode}
+              onChange={e => setAdminCode(e.target.value)}
+              placeholder="Введите код"
+              className="w-full px-3 py-2 border rounded-lg"
+            />
+          </div>
+
+          <button
+            onClick={handleUpload}
+            disabled={loading || !file || !adminCode}
+            className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : '📦 Переместить ПУ'}
+          </button>
+        </div>
       )}
     </div>
   )
