@@ -2978,6 +2978,7 @@ function TTREskTab() {
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
   const [filter, setFilter] = useState('')
+  const [deleteModal, setDeleteModal] = useState(null)  // ← ДОБАВЛЕНО
 
   useEffect(() => { api.get('/ttr/esk').then(r => setItems(r.data)) }, [])
 
@@ -2991,12 +2992,7 @@ function TTREskTab() {
     setModal(null)
   }
 
-  const handleDelete = async (id) => {
-    if (confirm('Удалить?')) {
-      await api.delete(`/ttr/esk/${id}`)
-      api.get('/ttr/esk').then(r => setItems(r.data))
-    }
-  }
+  // ← УДАЛЁН старый handleDelete с confirm()
 
   const ttrTypeLabels = { PU: 'ПУ', TRUBOSTOYKA: 'Трубостойка', OTVETVLENIE: 'Ответвление' }
   const vaTypeLabels = { opora: 'Опора', fasad: 'Фасад', trubostoyka: 'Трубостойка' }
@@ -3031,34 +3027,34 @@ function TTREskTab() {
               <th className="px-4 py-3 text-left">№ ЛСР</th>
               <th className="px-4 py-3 text-left">Без НДС</th>
               <th className="px-4 py-3 text-left">С НДС</th>
-              {isSueAdmin && <th className="w-32"></th>}
+              {isSueAdmin && <th className="w-24"></th>}
             </tr>
           </thead>
           <tbody>
-  {filtered.map(i => (
-    <tr key={i.id} className="border-t">
-      <td className="px-4 py-3">
-        <span className={`px-2 py-1 rounded-full text-xs ${i.ttr_type === 'PU' ? 'bg-blue-100 text-blue-700' : i.ttr_type === 'TRUBOSTOYKA' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-          {ttrTypeLabels[i.ttr_type] || i.ttr_type}
-        </span>
-      </td>
-      <td className="px-4 py-3">{i.work_type_name || '—'}</td>
-      <td className="px-4 py-3">{i.pu_pattern || '—'}</td>
-      <td className="px-4 py-3">{i.faza || '—'}</td>
-      <td className="px-4 py-3">{formFactorLabels[i.form_factor] || '—'}</td>
-      <td className="px-4 py-3">{vaTypeLabels[i.va_type] || '—'}</td>
-      <td className="px-4 py-3 font-mono">{i.lsr_number || '—'}</td>
-      <td className="px-4 py-3">{i.price_no_nds?.toLocaleString() || '—'} ₽</td>
-      <td className="px-4 py-3">{i.price_with_nds?.toLocaleString() || '—'} ₽</td>
-      {isSueAdmin && (
-        <td className="px-4 py-3">
-          <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-          <button onClick={() => handleDelete(i.id)}>🗑️</button>
-        </td>
-      )}
-    </tr>
-  ))}
-</tbody>
+            {filtered.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-xs ${i.ttr_type === 'PU' ? 'bg-blue-100 text-blue-700' : i.ttr_type === 'TRUBOSTOYKA' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                    {ttrTypeLabels[i.ttr_type] || i.ttr_type}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{i.work_type_name || '—'}</td>
+                <td className="px-4 py-3">{i.pu_pattern || '—'}</td>
+                <td className="px-4 py-3">{i.faza || '—'}</td>
+                <td className="px-4 py-3">{formFactorLabels[i.form_factor] || '—'}</td>
+                <td className="px-4 py-3">{vaTypeLabels[i.va_type] || '—'}</td>
+                <td className="px-4 py-3 font-mono">{i.lsr_number || '—'}</td>
+                <td className="px-4 py-3">{i.price_no_nds?.toLocaleString() || '—'} ₽</td>
+                <td className="px-4 py-3">{i.price_with_nds?.toLocaleString() || '—'} ₽</td>
+                {isSueAdmin && (
+                  <td className="px-4 py-3">
+                    <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
+                    <button onClick={() => setDeleteModal(i)} className="text-red-500">🗑️</button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
 
@@ -3069,6 +3065,23 @@ function TTREskTab() {
             <TTREskForm item={modal.item} onSave={handleSave} onClose={() => setModal(null)} />
           </div>
         </div>
+      )}
+
+      {/* ← ДОБАВЛЕНО: Модалка удаления с паролем */}
+      {deleteModal && (
+        <DeleteWithCodeModal
+          title={`Удалить ТТР "${deleteModal.work_type_name || deleteModal.lsr_number}"?`}
+          onClose={() => setDeleteModal(null)}
+          onDelete={async (code) => {
+            try {
+              await api.delete(`/ttr/esk/${deleteModal.id}`, { data: { admin_code: code } })
+              api.get('/ttr/esk').then(r => setItems(r.data))
+              setDeleteModal(null)
+            } catch (err) {
+              alert(err.response?.data?.detail || 'Ошибка удаления')
+            }
+          }}
+        />
       )}
     </>
   )
@@ -3234,6 +3247,7 @@ function PUTypesTab() {
   const { isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
+  const [deleteModal, setDeleteModal] = useState(null)  // ← добавлено
 
   useEffect(() => { api.get('/pu-types').then(r => setItems(r.data)) }, [])
 
@@ -3247,13 +3261,6 @@ function PUTypesTab() {
     setModal(null)
   }
 
-  const handleDelete = async (id) => {
-    if (confirm('Удалить?')) {
-      await api.delete(`/pu-types/${id}`)
-      api.get('/pu-types').then(r => setItems(r.data))
-    }
-  }
-
   return (
     <>
       {isSueAdmin && (
@@ -3264,7 +3271,15 @@ function PUTypesTab() {
 
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Паттерн</th><th className="px-4 py-3 text-left">Фазность</th><th className="px-4 py-3 text-left">Напряжение</th><th className="px-4 py-3 text-left">Форм-фактор</th>{isSueAdmin && <th className="w-24"></th>}</tr></thead>
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left">Паттерн</th>
+              <th className="px-4 py-3 text-left">Фазность</th>
+              <th className="px-4 py-3 text-left">Напряжение</th>
+              <th className="px-4 py-3 text-left">Форм-фактор</th>
+              {isSueAdmin && <th className="w-24"></th>}
+            </tr>
+          </thead>
           <tbody>
             {items.map(i => (
               <tr key={i.id} className="border-t">
@@ -3272,10 +3287,10 @@ function PUTypesTab() {
                 <td className="px-4 py-3">{i.faza || '—'}</td>
                 <td className="px-4 py-3">{i.voltage || '—'}</td>
                 <td className="px-4 py-3">{i.form_factor === 'split' ? 'Сплит' : i.form_factor === 'classic' ? 'Классика' : '—'}</td>
-                 {isSueAdmin && (
+                {isSueAdmin && (
                   <td className="px-4 py-3">
                     <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                    <button onClick={() => handleDelete(i.id)}>🗑️</button>
+                    <button onClick={() => setDeleteModal(i)} className="text-red-500">🗑️</button>
                   </td>
                 )}
               </tr>
@@ -3291,6 +3306,22 @@ function PUTypesTab() {
             <PUTypeForm item={modal.item} onSave={handleSave} onClose={() => setModal(null)} />
           </div>
         </div>
+      )}
+
+      {deleteModal && (
+        <DeleteWithCodeModal
+          title={`Удалить тип ПУ "${deleteModal.pattern}"?`}
+          onClose={() => setDeleteModal(null)}
+          onDelete={async (code) => {
+            try {
+              await api.delete(`/pu-types/${deleteModal.id}`, { data: { admin_code: code } })
+              api.get('/pu-types').then(r => setItems(r.data))
+              setDeleteModal(null)
+            } catch (err) {
+              alert(err.response?.data?.detail || 'Ошибка удаления')
+            }
+          }}
+        />
       )}
     </>
   )
