@@ -206,12 +206,7 @@ function LoginPage() {
             {loading ? 'Вход...' : 'Войти'}
           </button>
         </form>
-        <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-500">
-          <b>Тестовые:</b><br/>
-          admin/admin123 — СУЭ<br/>
-          lab/lab123 — Лаборатория<br/>
-          esk/esk123 — ЭСК Админ
-        </div>
+        
       </div>
     </div>
   )
