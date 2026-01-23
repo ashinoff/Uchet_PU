@@ -134,7 +134,6 @@ function Sidebar({ page, setPage }) {
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
     { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
     { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin || isEskAdmin || isEskUser },
-    { id: 'move-bulk', label: '📦 Массовое перемещение', show: isEskAdmin || isSueAdmin },
     { id: 'memo', label: '📄 Служебки', show: isSueAdmin },
     { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin || isResUser || isEskUser },
     ].filter(i => i.show)
