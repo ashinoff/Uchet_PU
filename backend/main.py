@@ -1715,6 +1715,110 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         "smr_date": i.smr_date.isoformat() if i.smr_date else None,
     } for i in items]
 
+@app.get("/api/pu/pending-approval/export")
+def export_pending_approval(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Выгрузка реестра на согласовании в Excel"""
+    if not is_res_user(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    if is_res_user(user) and user.unit:
+        esk_code = user.unit.code.replace("RES_", "ESK_") if user.unit.code else ""
+        esk_unit = db.query(Unit).filter(Unit.code == esk_code).first()
+        if esk_unit:
+            items = db.query(PUItem).filter(
+                PUItem.current_unit_id == esk_unit.id,
+                PUItem.approval_status == ApprovalStatus.PENDING
+            ).all()
+        else:
+            items = []
+    else:
+        items = db.query(PUItem).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
+    
+    def get_res_name(esk_unit):
+        if not esk_unit or not esk_unit.code:
+            return "—"
+        res_code = esk_unit.code.replace("ESK_", "RES_")
+        res_unit = db.query(Unit).filter(Unit.code == res_code).first()
+        return res_unit.name if res_unit else "—"
+    
+    # Создаём Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "На согласовании"
+    
+    # Стили
+    header_font = Font(bold=True, color="FFFFFF", size=10)
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    
+    # Заголовки
+    headers = [
+        ("№", 5),
+        ("РЭС", 18),
+        ("Серийный номер", 20),
+        ("Тип ПУ", 40),
+        ("Потребитель", 25),
+        ("Адрес", 35),
+        ("Договор", 22),
+        ("Фазность", 10),
+        ("Трубостойка", 12),
+        ("№ ТТР ЭСК", 15),
+        ("Дата СМР", 12),
+    ]
+    
+    for col, (header, width) in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+        ws.column_dimensions[get_column_letter(col)].width = width
+    
+    ws.row_dimensions[1].height = 35
+    
+    # Данные
+    for idx, item in enumerate(items, 1):
+        row = idx + 1
+        data = [
+            idx,
+            get_res_name(item.current_unit),
+            item.serial_number or "",
+            item.pu_type or "",
+            item.consumer or "",
+            item.address or "",
+            item.contract_number or "",
+            item.faza or "",
+            "Да" if item.trubostoyka else "Нет",
+            item.lsr_va or item.lsr_truba or "",
+            item.smr_date.strftime("%d.%m.%Y") if item.smr_date else "",
+        ]
+        
+        for col, value in enumerate(data, 1):
+            cell = ws.cell(row=row, column=col, value=value)
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+        
+        ws.row_dimensions[row].height = 25
+    
+    # Сохраняем
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename_rus = f"На_согласовании_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"pending_approval.xlsx\"; filename*=UTF-8''{quote(filename_rus)}"
+        }
+    )
+
 # ==================== API: СПРАВОЧНИКИ (CRUD) ====================
 
 # --- Мастера ЭСК ---
