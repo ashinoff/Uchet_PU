@@ -1697,7 +1697,7 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         res_unit = db.query(Unit).filter(Unit.code == res_code).first()
         return res_unit.name if res_unit else "—"
     
-    return [{
+   return [{
         "id": i.id, 
         "serial_number": i.serial_number, 
         "pu_type": i.pu_type,
@@ -1710,7 +1710,8 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         "form_factor": i.form_factor,
         "trubostoyka": i.trubostoyka,
         "va_type": i.va_type,
-        "work_type_name": i.work_type_name,
+        "lsr_va": i.lsr_va,
+        "lsr_truba": i.lsr_truba,
         "smr_date": i.smr_date.isoformat() if i.smr_date else None,
     } for i in items]
 
