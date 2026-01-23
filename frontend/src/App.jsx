@@ -1357,13 +1357,13 @@ const updateMaterialQty = (materialId, qty) => {
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-600 mb-1">Щит с ВА *</label>
-          <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit || item.trubostoyka === true} className={`w-full px-3 py-2 border rounded-lg ${errors.va_type ? 'border-red-500 bg-red-50' : ''}`}>
-            <option value="">Выберите...</option>
-            {item.trubostoyka !== true && <option value="opora">Опора</option>}
-            {item.trubostoyka !== true && <option value="fasad">Фасад</option>}
-            {item.trubostoyka === true && <option value="trubostoyka">Трубостойка</option>}
-          </select>
-      </div>
+         <select value={item.va_type || ''} onChange={e => update('va_type', e.target.value)} disabled={!canEdit || item.trubostoyka === true} className={`w-full px-3 py-2 border rounded-lg ${errors.va_type ? 'border-red-500 bg-red-50' : ''}`}>
+          <option value="">Выберите...</option>
+          {item.trubostoyka !== true && <option value="opora">Опора</option>}
+          {item.trubostoyka !== true && <option value="fasad">Фасад</option>}
+         <option value="trubostoyka">Трубостойка</option>
+       </select>
+     </div>
     </div>
     
     {/* ЛСР Трубостойки (если выбрана) */}
