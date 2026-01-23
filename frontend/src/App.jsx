@@ -1641,6 +1641,22 @@ function ApprovalPage() {
     api.get('/pu/pending-approval').then(r => { setItems(r.data); setLoading(false) })
   }
 
+  const handleExport = async () => {
+  try {
+    const response = await api.get('/pu/pending-approval/export', { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `На_согласовании_${new Date().toISOString().slice(0,10)}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    alert('Ошибка выгрузки: ' + (err.response?.data?.detail || err.message))
+  }
+}
+
   const handleApprove = async (id) => {
     try {
       await api.post(`/pu/items/${id}/approve`)
@@ -1669,7 +1685,10 @@ function ApprovalPage() {
           <h1 className="text-2xl font-bold">Согласование СМР</h1>
           <p className="text-gray-500">ПУ от ЭСК на проверку</p>
         </div>
-        <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
+        <div className="flex gap-2">
+          <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">📥 Выгрузить в Excel</button>
+          <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
