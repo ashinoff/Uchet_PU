@@ -606,6 +606,7 @@ function PUListPage({ filter = 'all' }) {
                   <td className="px-4 py-3">
                     {i.approval_status === 'APPROVED' && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">✓ Согласовано</span>}
                     {i.approval_status === 'PENDING' && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">⏳ На согласовании</span>}
+                    {i.approval_status === 'REJECTED' && <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">❌ Отклонено</span>}
                     {(!i.approval_status || i.approval_status === 'NONE') && <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{i.uploaded_at ? new Date(i.uploaded_at).toLocaleDateString('ru') : '—'}</td>
@@ -1679,14 +1680,14 @@ function ApprovalPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-3 py-3 text-left">РЭС</th>
                 <th className="px-3 py-3 text-left">Серийный номер</th>
                 <th className="px-3 py-3 text-left">Тип ПУ</th>
-                {isSueAdmin && <th className="px-3 py-3 text-left">РЭС</th>}
                 <th className="px-3 py-3 text-left">Потребитель</th>
                 <th className="px-3 py-3 text-left">Договор</th>
                 <th className="px-3 py-3 text-center">Фаза</th>
                 <th className="px-3 py-3 text-center">Трубост.</th>
-                <th className="px-3 py-3 text-left">Вид работ</th>
+                <th className="px-3 py-3 text-left">№ ТТР ЭСК</th>
                 <th className="px-3 py-3 text-left">Дата СМР</th>
                 <th className="w-48"></th>
               </tr>
@@ -1694,14 +1695,14 @@ function ApprovalPage() {
             <tbody>
               {items.map(i => (
                 <tr key={i.id} className="border-t hover:bg-gray-50">
+                  <td className="px-3 py-3">{i.res_name || '—'}</td>
                   <td className="px-3 py-3 font-mono">{i.serial_number}</td>
                   <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
-                  {isSueAdmin && <td className="px-3 py-3">{i.res_name || '—'}</td>}
                   <td className="px-3 py-3">{i.consumer || '—'}</td>
                   <td className="px-3 py-3">{i.contract_number || '—'}</td>
                   <td className="px-3 py-3 text-center">{i.faza || '—'}</td>
                   <td className="px-3 py-3 text-center">{i.trubostoyka ? '✓' : '—'}</td>
-                  <td className="px-3 py-3">{i.work_type_name || '—'}</td>
+                  <td className="px-3 py-3">{i.lsr_va || i.lsr_truba || '—'}</td>
                   <td className="px-3 py-3">{i.smr_date || '—'}</td>
                   <td className="px-3 py-3">
                     <div className="flex gap-2">
