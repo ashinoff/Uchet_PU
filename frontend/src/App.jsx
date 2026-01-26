@@ -3997,20 +3997,47 @@ function SystemTab() {
     setLoadingBackup(false)
   }
 
+  const handleRestore = async (e) => {
+  const file = e.target.files[0]
+  if (!file) return
+  
+  const code = prompt('⚠️ ВНИМАНИЕ! Восстановление добавит данные из бэкапа.\n\nВведите код администратора:')
+  if (!code) return
+  
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('admin_code', code)
+  
+  try {
+    const r = await api.post('/admin/restore', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    alert(`✅ Восстановлено:\n• ПУ: ${r.data.restored.pu_items}\n• ТТР РЭС: ${r.data.restored.ttr_res}\n• ТТР ЭСК: ${r.data.restored.ttr_esk}\n• Материалы: ${r.data.restored.materials}\n• Номиналы ВА: ${r.data.restored.va_nominals}\n• Номиналы ТТ: ${r.data.restored.tt_nominals}`)
+    runHealthCheck()
+  } catch (err) {
+    alert('Ошибка восстановления: ' + (err.response?.data?.detail || err.message))
+  }
+  e.target.value = ''
+}
+
   return (
     <div className="space-y-6">
       {/* Диагностика */}
       <div className="bg-white rounded-xl border p-6 space-y-4">
         <h2 className="font-semibold text-blue-600">🔍 Диагностика системы</h2>
         
-        <div className="flex gap-4">
-          <button onClick={runHealthCheck} disabled={loadingHealth} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-            {loadingHealth ? '⏳ Проверка...' : '🔍 Проверить базу'}
-          </button>
-          <button onClick={downloadBackup} disabled={loadingBackup} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
-            {loadingBackup ? '⏳ Создание...' : '💾 Скачать бэкап'}
-          </button>
-        </div>
+    <div className="flex gap-4 flex-wrap">
+      <button onClick={runHealthCheck} disabled={loadingHealth} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+        {loadingHealth ? '⏳ Проверка...' : '🔍 Проверить базу'}
+      </button>
+      <button onClick={downloadBackup} disabled={loadingBackup} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
+        {loadingBackup ? '⏳ Создание...' : '💾 Скачать бэкап'}
+      </button>
+      <label className="px-4 py-2 bg-orange-500 text-white rounded-lg cursor-pointer hover:bg-orange-600">
+        📥 Восстановить из бэкапа
+        <input type="file" accept=".json" onChange={handleRestore} className="hidden" />
+      </label>
+    </div>
 
         {healthCheck && (
           <div className={`p-4 rounded-lg ${healthCheck.status === 'OK' ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
