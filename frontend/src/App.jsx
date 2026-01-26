@@ -3963,26 +3963,108 @@ function PUTypeForm({ item, onSave, onClose }) {
 // --- Система ---
 function SystemTab() {
   const [clearModal, setClearModal] = useState(false)
+  const [healthCheck, setHealthCheck] = useState(null)
+  const [loadingHealth, setLoadingHealth] = useState(false)
+  const [loadingBackup, setLoadingBackup] = useState(false)
 
-  const handleClearDB = async (code) => {
+  const runHealthCheck = async () => {
+    setLoadingHealth(true)
     try {
-      await api.post('/pu/clear-database', { admin_code: code })
-      alert('База очищена')
-      setClearModal(false)
+      const r = await api.get('/admin/health-check')
+      setHealthCheck(r.data)
     } catch (err) {
       alert(err.response?.data?.detail || 'Ошибка')
     }
+    setLoadingHealth(false)
+  }
+
+  const downloadBackup = async () => {
+    const code = prompt('Введите код администратора:')
+    if (!code) return
+    setLoadingBackup(true)
+    try {
+      const response = await api.get(`/admin/backup?admin_code=${code}`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `backup_${new Date().toISOString().slice(0,10)}.json`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    } catch (err) {
+      alert('Ошибка создания бэкапа')
+    }
+    setLoadingBackup(false)
   }
 
   return (
-    <div className="bg-white rounded-xl border p-6 space-y-4">
-      <h2 className="font-semibold text-red-600">⚠️ Опасная зона</h2>
-      <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
-        <div>
-          <div className="font-medium">Очистить базу данных</div>
-          <div className="text-sm text-gray-500">Удалить все ПУ и загрузки</div>
+    <div className="space-y-6">
+      {/* Диагностика */}
+      <div className="bg-white rounded-xl border p-6 space-y-4">
+        <h2 className="font-semibold text-blue-600">🔍 Диагностика системы</h2>
+        
+        <div className="flex gap-4">
+          <button onClick={runHealthCheck} disabled={loadingHealth} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+            {loadingHealth ? '⏳ Проверка...' : '🔍 Проверить базу'}
+          </button>
+          <button onClick={downloadBackup} disabled={loadingBackup} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
+            {loadingBackup ? '⏳ Создание...' : '💾 Скачать бэкап'}
+          </button>
         </div>
-        <button onClick={() => setClearModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">Очистить</button>
+
+        {healthCheck && (
+          <div className={`p-4 rounded-lg ${healthCheck.status === 'OK' ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`text-xl ${healthCheck.status === 'OK' ? 'text-green-600' : 'text-yellow-600'}`}>
+                {healthCheck.status === 'OK' ? '✅' : '⚠️'}
+              </span>
+              <span className="font-semibold">
+                {healthCheck.status === 'OK' ? 'Всё в порядке' : `Найдено проблем: ${healthCheck.issues_count}`}
+              </span>
+            </div>
+            
+            {healthCheck.issues.length > 0 && (
+              <div className="mb-3 p-3 bg-white rounded border text-sm">
+                {healthCheck.issues.map((issue, idx) => (
+                  <div key={idx} className="py-1">{issue}</div>
+                ))}
+              </div>
+            )}
+            
+            <div className="grid grid-cols-4 gap-3 text-sm">
+              <div className="bg-white p-2 rounded border text-center">
+                <div className="font-bold text-lg">{healthCheck.stats.total_pu}</div>
+                <div className="text-gray-500">ПУ</div>
+              </div>
+              <div className="bg-white p-2 rounded border text-center">
+                <div className="font-bold text-lg">{healthCheck.stats.total_users}</div>
+                <div className="text-gray-500">Пользователи</div>
+              </div>
+              <div className="bg-white p-2 rounded border text-center">
+                <div className="font-bold text-lg">{healthCheck.stats.total_ttr_res}</div>
+                <div className="text-gray-500">ТТР РЭС</div>
+              </div>
+              <div className="bg-white p-2 rounded border text-center">
+                <div className="font-bold text-lg">{healthCheck.stats.total_materials}</div>
+                <div className="text-gray-500">Материалы</div>
+              </div>
+            </div>
+            
+            <div className="mt-2 text-xs text-gray-400">Проверено: {new Date(healthCheck.checked_at).toLocaleString('ru')}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Опасная зона */}
+      <div className="bg-white rounded-xl border p-6 space-y-4">
+        <h2 className="font-semibold text-red-600">⚠️ Опасная зона</h2>
+        <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
+          <div>
+            <div className="font-medium">Очистить базу данных</div>
+            <div className="text-sm text-gray-500">Удалить все ПУ и загрузки</div>
+          </div>
+          <button onClick={() => setClearModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">Очистить</button>
+        </div>
       </div>
 
       {clearModal && (
