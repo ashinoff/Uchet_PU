@@ -1144,7 +1144,8 @@ const updateMaterialQty = (materialId, qty) => {
     
     const isApproved = item?.approval_status === 'APPROVED'
     const isRejected = item?.approval_status === 'REJECTED'
-    const canEdit = ((isResUser && isRes) || (isEskUser && isEsk)) && !isApproved
+    const hasTZ = item?.tz_number && item.tz_number.trim() !== ''
+    const canEdit = ((isResUser && isRes) || (isEskUser && isEsk)) && !isApproved && !hasTZ
     // ЭСК может редактировать если REJECTED или NONE
     const canEditEsk = isEskUser && isEsk && (item?.approval_status === 'REJECTED' || item?.approval_status === 'NONE' || !item?.approval_status)
 
@@ -1588,6 +1589,36 @@ const updateMaterialQty = (materialId, qty) => {
             </div>
           </div>
 
+{/* Блокировка по ТЗ */}
+{hasTZ && (
+  <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+    <div className="flex justify-between items-center">
+      <span className="text-blue-700 font-medium">
+        📋 ТЗ: {item.tz_number} — редактирование заблокировано
+      </span>
+      {isSueAdmin && (
+        <button 
+          onClick={async () => {
+            const code = prompt('Введите код администратора для снятия ТЗ:')
+            if (code) {
+              try {
+                await api.put(`/pu/items/${item.id}`, { tz_number: null })
+                alert('✅ ТЗ снят, карточка разблокирована')
+                onClose()
+              } catch (err) {
+                alert(err.response?.data?.detail || 'Ошибка')
+              }
+            }
+          }}
+          className="px-3 py-1 bg-orange-500 text-white rounded-lg text-sm"
+        >
+          🔓 Снять ТЗ
+        </button>
+      )}
+    </div>
+  </div>
+)}
+          
           {/* Согласование */}
 {item.approval_status && item.approval_status !== 'NONE' && (
   <div className={`p-4 rounded-lg ${
@@ -1984,20 +2015,22 @@ function TZPage() {
     }
   }
 
-  const exportToExcel = () => {
-    if (tzItems.length === 0) return
-    const headers = ['№', 'Серийный номер', 'Тип ПУ', 'Потребитель', 'Адрес', 'Мощность', 'Фазность', 'Напряжение']
-    const rows = tzItems.map((i, idx) => [
-      idx + 1, i.serial_number, i.pu_type || '', i.consumer || '', i.address || '', 
-      i.power || '', i.faza || '', i.voltage || ''
-    ])
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(';')).join('\n')
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `ТЗ_${expandedTz}.csv`
-    a.click()
+const exportToExcel = async () => {
+    if (!expandedTz) return
+    try {
+      const response = await api.get(`/tz/${encodeURIComponent(expandedTz)}/export`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      const safeName = expandedTz.replace(/\//g, '_').replace(/\s/g, '_')
+      link.setAttribute('download', `ТЗ_${safeName}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Ошибка выгрузки: ' + (err.response?.data?.detail || err.message))
+    }
   }
 
   // Получить превью номера ТЗ с учетом ручной корректировки
@@ -2197,7 +2230,9 @@ function TZPage() {
                                 <th className="px-3 py-2 text-left">№</th>
                                 <th className="px-3 py-2 text-left">Серийный номер</th>
                                 <th className="px-3 py-2 text-left">Тип</th>
+                                <th className="px-3 py-2 text-left">ЛС</th>
                                 <th className="px-3 py-2 text-left">Потребитель</th>
+                                <th className="px-3 py-2 text-left">Адрес</th>
                                 <th className="px-3 py-2 text-left">Мощность</th>
                               </tr>
                             </thead>
@@ -2206,8 +2241,10 @@ function TZPage() {
                                 <tr key={item.id} className="border-t">
                                   <td className="px-3 py-2">{i + 1}</td>
                                   <td className="px-3 py-2 font-mono">{item.serial_number}</td>
-                                  <td className="px-3 py-2 max-w-xs truncate">{item.pu_type || '—'}</td>
+                                  <td className="px-3 py-2 max-w-xs truncate" title={item.pu_type}>{item.pu_type || '—'}</td>
+                                  <td className="px-3 py-2">{item.ls_number || '—'}</td>
                                   <td className="px-3 py-2">{item.consumer || '—'}</td>
+                                  <td className="px-3 py-2 max-w-xs truncate" title={item.address}>{item.address || '—'}</td>
                                   <td className="px-3 py-2">{item.power ? `${item.power} кВт` : '—'}</td>
                                 </tr>
                               ))}
