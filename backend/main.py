@@ -2173,6 +2173,108 @@ def save_pu_materials(item_id: int, data: dict, db: Session = Depends(get_db), u
     db.commit()
     return {"ok": True}
 
+@app.post("/api/pu/items/materials-bulk")
+def get_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить материалы для нескольких ПУ"""
+    item_ids = data.get("item_ids", [])
+    if not item_ids:
+        return []
+    
+    result = []
+    for item_id in item_ids:
+        item = db.query(PUItem).filter(PUItem.id == item_id).first()
+        if not item:
+            continue
+        
+        ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+        
+        # Материалы по умолчанию из ТТР
+        defaults = {}
+        for ttr_id in ttr_ids:
+            ttr_mats = db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).all()
+            for tm in ttr_mats:
+                mat = db.query(Material).filter(Material.id == tm.material_id).first()
+                if mat:
+                    key = mat.id
+                    if key in defaults:
+                        defaults[key]["quantity"] += tm.quantity
+                    else:
+                        defaults[key] = {
+                            "material_id": mat.id,
+                            "material_name": mat.name,
+                            "unit": mat.unit,
+                            "quantity": tm.quantity
+                        }
+        
+        # Фактические значения
+        facts = db.query(PUMaterial).filter(PUMaterial.pu_item_id == item_id).all()
+        if facts:
+            materials = []
+            for f in facts:
+                mat = db.query(Material).filter(Material.id == f.material_id).first()
+                if mat:
+                    materials.append({
+                        "material_id": mat.id,
+                        "material_name": mat.name,
+                        "unit": mat.unit,
+                        "quantity": f.quantity,
+                        "used": f.used
+                    })
+        else:
+            materials = [{"material_id": d["material_id"], "material_name": d["material_name"], 
+                          "unit": d["unit"], "quantity": d["quantity"], "used": True} 
+                         for d in defaults.values()]
+        
+        result.append({
+            "id": item.id,
+            "serial_number": item.serial_number,
+            "pu_type": item.pu_type,
+            "ttr_ou": item.ttr_ou.code if item.ttr_ou else None,
+            "ttr_ol": item.ttr_ol.code if item.ttr_ol else None,
+            "ttr_or": item.ttr_or.code if item.ttr_or else None,
+            "materials": materials
+        })
+    
+    return result
+
+
+@app.post("/api/pu/items/materials-bulk/save")
+def save_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Сохранить материалы для нескольких ПУ"""
+    if not is_res_user(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    items_data = data.get("items", [])
+    saved = 0
+    
+    for item_data in items_data:
+        item_id = item_data.get("item_id")
+        materials = item_data.get("materials", [])
+        
+        item = db.query(PUItem).filter(PUItem.id == item_id).first()
+        if not item:
+            continue
+        
+        # Удаляем старые записи
+        db.query(PUMaterial).filter(PUMaterial.pu_item_id == item_id).delete()
+        
+        # Добавляем новые
+        for m in materials:
+            if m.get("used", True):
+                pm = PUMaterial(
+                    pu_item_id=item_id,
+                    material_id=m["material_id"],
+                    quantity=m.get("quantity", 0),
+                    used=m.get("used", True)
+                )
+                db.add(pm)
+        
+        item.materials_used = True
+        saved += 1
+    
+    db.commit()
+    return {"saved": saved}
+
 # --- Справочник типов ПУ ---
 @app.get("/api/pu-types")
 def get_pu_types(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
