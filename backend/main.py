@@ -17,6 +17,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import bcrypt as _bcrypt
 import pandas as pd
 import io
+import json
 import enum
 import re
 import openpyxl
@@ -24,6 +25,7 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 from fastapi.responses import StreamingResponse
 from urllib.parse import quote
+
 
 # ==================== КОНФИГ ====================
 class Settings(BaseSettings):
@@ -1600,6 +1602,8 @@ def delete_items(req: DeleteReq, db: Session = Depends(get_db), user: User = Dep
     db.commit()
     return {"deleted": deleted}
 
+# ==================== ADMIN: БЭКАП И ДИАГНОСТИКА ====================
+
 @app.post("/api/pu/clear-database")
 def clear_database(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Очистка базы данных - только СУЭ с кодом"""
@@ -1615,6 +1619,164 @@ def clear_database(data: dict, db: Session = Depends(get_db), user: User = Depen
     db.commit()
     
     return {"message": "База очищена"}
+
+@app.get("/api/admin/backup")
+def create_backup(admin_code: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Создать бэкап базы в JSON"""
+    if admin_code != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код")
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    backup = {
+        "created_at": datetime.now().isoformat(),
+        "pu_items": [],
+        "users": [],
+        "units": [],
+        "ttr_res": [],
+        "ttr_esk": [],
+        "materials": [],
+        "va_nominals": [],
+        "tt_nominals": [],
+    }
+    
+    # ПУ
+    for item in db.query(PUItem).all():
+        backup["pu_items"].append({
+            "id": item.id,
+            "serial_number": item.serial_number,
+            "pu_type": item.pu_type,
+            "status": item.status.value if item.status else None,
+            "current_unit_id": item.current_unit_id,
+            "contract_number": item.contract_number,
+            "consumer": item.consumer,
+            "address": item.address,
+            "faza": item.faza,
+            "voltage": item.voltage,
+            "power": item.power,
+            "form_factor": item.form_factor,
+            "trubostoyka": item.trubostoyka,
+            "va_type": item.va_type,
+            "has_va": item.has_va,
+            "va_nominal_id": item.va_nominal_id,
+            "has_tt": item.has_tt,
+            "tt_nominal_id": item.tt_nominal_id,
+            "approval_status": item.approval_status.value if item.approval_status else None,
+            "tz_number": item.tz_number,
+            "request_number": item.request_number,
+        })
+    
+    # Номиналы ВА
+    for item in db.query(VA_Nominal).filter(VA_Nominal.is_active == True).all():
+        backup["va_nominals"].append({"id": item.id, "name": item.name})
+    
+    # Номиналы ТТ
+    for item in db.query(TT_Nominal).filter(TT_Nominal.is_active == True).all():
+        backup["tt_nominals"].append({"id": item.id, "name": item.name})
+    
+    # Материалы
+    for item in db.query(Material).filter(Material.is_active == True).all():
+        backup["materials"].append({"id": item.id, "name": item.name, "unit": item.unit})
+    
+    # ТТР РЭС
+    for item in db.query(TTR_RES).filter(TTR_RES.is_active == True).all():
+        backup["ttr_res"].append({
+            "id": item.id, "code": item.code, "name": item.name, 
+            "ttr_type": item.ttr_type, "use_tt": item.use_tt
+        })
+    
+    # ТТР ЭСК
+    for item in db.query(TTR_ESK).filter(TTR_ESK.is_active == True).all():
+        backup["ttr_esk"].append({
+            "id": item.id, "ttr_type": item.ttr_type, "work_type_name": item.work_type_name,
+            "faza": item.faza, "form_factor": item.form_factor, "va_type": item.va_type,
+            "lsr_number": item.lsr_number, "price_no_nds": item.price_no_nds, "price_with_nds": item.price_with_nds
+        })
+    
+    # Возвращаем JSON файл
+    output = io.BytesIO()
+    output.write(json.dumps(backup, ensure_ascii=False, indent=2).encode('utf-8'))
+    output.seek(0)
+    
+    filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.get("/api/admin/health-check")
+def health_check(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Проверка целостности базы"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    issues = []
+    
+    # 1. ПУ без подразделения
+    orphan_pu = db.query(PUItem).filter(PUItem.current_unit_id == None).count()
+    if orphan_pu > 0:
+        issues.append(f"⚠️ ПУ без подразделения: {orphan_pu}")
+    
+    # 2. ПУ с битыми ссылками на ТТР
+    for item in db.query(PUItem).filter(PUItem.ttr_ou_id != None).all():
+        ttr = db.query(TTR_RES).filter(TTR_RES.id == item.ttr_ou_id).first()
+        if not ttr:
+            issues.append(f"❌ ПУ {item.serial_number}: битая ссылка на ТТР ОУ (id={item.ttr_ou_id})")
+    
+    # 3. ПУ с ВА но без номинала
+    va_without_nominal = db.query(PUItem).filter(
+        PUItem.has_va == True, 
+        PUItem.va_nominal_id == None
+    ).count()
+    if va_without_nominal > 0:
+        issues.append(f"⚠️ ПУ с ВА но без номинала: {va_without_nominal}")
+    
+    # 4. ПУ с ТТ но без номинала
+    tt_without_nominal = db.query(PUItem).filter(
+        PUItem.has_tt == True, 
+        PUItem.tt_nominal_id == None
+    ).count()
+    if tt_without_nominal > 0:
+        issues.append(f"⚠️ ПУ с ТТ но без номинала: {tt_without_nominal}")
+    
+    # 5. Дубликаты серийных номеров
+    from sqlalchemy import func
+    duplicates = db.query(PUItem.serial_number, func.count(PUItem.id)).group_by(
+        PUItem.serial_number
+    ).having(func.count(PUItem.id) > 1).all()
+    if duplicates:
+        issues.append(f"❌ Дубликаты серийных номеров: {len(duplicates)}")
+        for sn, cnt in duplicates[:5]:
+            issues.append(f"   • {sn}: {cnt} шт")
+    
+    # 6. Дубликаты договоров
+    dup_contracts = db.query(PUItem.contract_number, func.count(PUItem.id)).filter(
+        PUItem.contract_number != None,
+        PUItem.contract_number != ''
+    ).group_by(PUItem.contract_number).having(func.count(PUItem.id) > 1).all()
+    if dup_contracts:
+        issues.append(f"⚠️ Дубликаты договоров: {len(dup_contracts)}")
+    
+    # Статистика
+    stats = {
+        "total_pu": db.query(PUItem).count(),
+        "total_users": db.query(User).filter(User.is_active == True).count(),
+        "total_ttr_res": db.query(TTR_RES).filter(TTR_RES.is_active == True).count(),
+        "total_ttr_esk": db.query(TTR_ESK).filter(TTR_ESK.is_active == True).count(),
+        "total_materials": db.query(Material).filter(Material.is_active == True).count(),
+        "total_va_nominals": db.query(VA_Nominal).filter(VA_Nominal.is_active == True).count(),
+        "total_tt_nominals": db.query(TT_Nominal).filter(TT_Nominal.is_active == True).count(),
+    }
+    
+    return {
+        "status": "OK" if len(issues) == 0 else "ISSUES_FOUND",
+        "issues_count": len(issues),
+        "issues": issues,
+        "stats": stats,
+        "checked_at": datetime.now().isoformat()
+    }
 
 # ==================== API: СОГЛАСОВАНИЕ (ЭСК -> РЭС) ====================
 @app.post("/api/pu/items/{item_id}/send-approval")
