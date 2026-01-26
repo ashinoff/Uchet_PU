@@ -1802,6 +1802,11 @@ function TZPage() {
   const [selectedPower, setSelectedPower] = useState('')
   const [selectedItems, setSelectedItems] = useState([])
   const [loading, setLoading] = useState(false)
+  
+  // Новые состояния для шага 2
+  const [step, setStep] = useState(1) // 1 = выбор ПУ, 2 = материалы
+  const [materialsData, setMaterialsData] = useState([])
+  const [loadingMaterials, setLoadingMaterials] = useState(false)
 
   useEffect(() => {
     api.get('/tz/list').then(r => setTzList(r.data))
@@ -1858,11 +1863,74 @@ function TZPage() {
     return `${selectedPower}${unit.short_code}/${month}-${year}`
   }
 
+  // Переход к шагу 2 — загрузка материалов
+  const goToMaterials = async () => {
+    if (selectedItems.length === 0) {
+      alert('Выберите ПУ')
+      return
+    }
+    setLoadingMaterials(true)
+    try {
+      const r = await api.post('/pu/items/materials-bulk', { item_ids: selectedItems })
+      setMaterialsData(r.data)
+      setStep(2)
+    } catch (err) {
+      alert('Ошибка загрузки материалов: ' + (err.response?.data?.detail || err.message))
+    }
+    setLoadingMaterials(false)
+  }
+
+  // Обновление материала в конкретном ПУ
+  const updateMaterial = (puId, materialId, field, value) => {
+    setMaterialsData(prev => prev.map(pu => {
+      if (pu.id !== puId) return pu
+      return {
+        ...pu,
+        materials: pu.materials.map(m => {
+          if (m.material_id !== materialId) return m
+          return { ...m, [field]: value }
+        })
+      }
+    }))
+  }
+
+  // Сохранить материалы одного ПУ
+  const saveSinglePU = async (puId) => {
+    const puData = materialsData.find(p => p.id === puId)
+    if (!puData) return
+    
+    try {
+      await api.post('/pu/items/materials-bulk/save', {
+        items: [{ item_id: puId, materials: puData.materials }]
+      })
+      alert('✅ Сохранено')
+    } catch (err) {
+      alert('Ошибка: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  // Сохранить все материалы
+  const saveAllMaterials = async () => {
+    try {
+      await api.post('/pu/items/materials-bulk/save', {
+        items: materialsData.map(pu => ({ item_id: pu.id, materials: pu.materials }))
+      })
+      alert('✅ Все материалы сохранены')
+    } catch (err) {
+      alert('Ошибка: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  // Создать ТЗ (финальный шаг)
   const handleCreate = async () => {
     if (!selectedUnit || !selectedPower || selectedItems.length === 0) {
       alert('Выберите РЭС, категорию мощности и ПУ')
       return
     }
+    
+    // Сначала сохраняем материалы
+    await saveAllMaterials()
+    
     setLoading(true)
     try {
       const r = await api.post('/tz/create', { 
@@ -1872,12 +1940,30 @@ function TZPage() {
       })
       alert(`✅ Создано ТЗ: ${r.data.tz_number}`)
       setSelectedItems([])
+      setStep(1)
+      setMaterialsData([])
       api.get('/tz/list').then(r => setTzList(r.data))
       loadPending()
     } catch (err) {
       alert(err.response?.data?.detail || 'Ошибка')
     }
     setLoading(false)
+  }
+
+  // Подсчёт итого по материалам
+  const getTotalMaterials = () => {
+    const totals = {}
+    materialsData.forEach(pu => {
+      pu.materials.forEach(m => {
+        if (m.used) {
+          if (!totals[m.material_id]) {
+            totals[m.material_id] = { name: m.material_name, unit: m.unit, quantity: 0 }
+          }
+          totals[m.material_id].quantity += m.quantity || 0
+        }
+      })
+    })
+    return Object.values(totals)
   }
 
   if (!isSueAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
@@ -1887,8 +1973,8 @@ function TZPage() {
       <h1 className="text-2xl font-bold">Технические задания</h1>
 
       <div className="flex gap-2 border-b">
-        <button onClick={() => setTab('list')} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>📋 Реестр ТЗ</button>
-        <button onClick={() => setTab('create')} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
+        <button onClick={() => { setTab('list'); setStep(1) }} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>📋 Реестр ТЗ</button>
+        <button onClick={() => { setTab('create'); setStep(1) }} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
       </div>
 
       {tab === 'list' && (
@@ -1956,7 +2042,7 @@ function TZPage() {
         </div>
       )}
 
-      {tab === 'create' && (
+      {tab === 'create' && step === 1 && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border p-4 space-y-4">
             <div className="flex flex-wrap gap-4">
@@ -1982,8 +2068,12 @@ function TZPage() {
                 <span className="text-sm text-gray-600">Номер ТЗ: </span>
                 <span className="font-bold text-blue-700 text-lg">{getPreviewTzNumber()}</span>
               </div>
-              <button onClick={handleCreate} disabled={loading || selectedItems.length === 0 || !selectedUnit || !selectedPower} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-                {loading ? 'Создание...' : `Создать ТЗ (${selectedItems.length})`}
+              <button 
+                onClick={goToMaterials} 
+                disabled={loadingMaterials || selectedItems.length === 0 || !selectedUnit || !selectedPower} 
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+              >
+                {loadingMaterials ? 'Загрузка...' : `Далее → Материалы (${selectedItems.length})`}
               </button>
             </div>
           </div>
@@ -2024,6 +2114,102 @@ function TZPage() {
                   </tbody>
                 </table>
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === 'create' && step === 2 && (
+        <div className="space-y-4">
+          {/* Шапка */}
+          <div className="bg-white rounded-xl border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold">Шаг 2: Корректировка материалов</h3>
+                <p className="text-sm text-gray-500">ТЗ: {getPreviewTzNumber()} • Выбрано ПУ: {materialsData.length}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setStep(1)} className="px-4 py-2 bg-gray-100 rounded-lg">← Назад</button>
+                <button onClick={saveAllMaterials} className="px-4 py-2 bg-green-600 text-white rounded-lg">💾 Сохранить все</button>
+                <button onClick={handleCreate} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+                  {loading ? 'Создание...' : '✅ Создать ТЗ'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Список ПУ с материалами */}
+          {materialsData.map((pu, idx) => (
+            <div key={pu.id} className="bg-white rounded-xl border overflow-hidden">
+              <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                <div>
+                  <span className="font-medium">{idx + 1}. {pu.serial_number}</span>
+                  <span className="text-gray-500 text-sm ml-3">{pu.pu_type || ''}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">
+                    ТТР: {[pu.ttr_ou, pu.ttr_ol, pu.ttr_or].filter(Boolean).join(', ') || '—'}
+                  </span>
+                  <button onClick={() => saveSinglePU(pu.id)} className="px-3 py-1 bg-blue-500 text-white rounded text-sm">💾 Сохранить</button>
+                </div>
+              </div>
+              
+              {pu.materials.length === 0 ? (
+                <div className="p-4 text-center text-gray-500 text-sm">Нет материалов (не выбраны ТТР)</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="w-10 px-3 py-2"></th>
+                      <th className="px-3 py-2 text-left">Материал</th>
+                      <th className="px-3 py-2 text-left w-20">Ед.</th>
+                      <th className="px-3 py-2 text-center w-24">Кол-во</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pu.materials.map(m => (
+                      <tr key={m.material_id} className={`border-t ${!m.used ? 'opacity-50 bg-gray-50' : ''}`}>
+                        <td className="px-3 py-2 text-center">
+                          <input 
+                            type="checkbox" 
+                            checked={m.used} 
+                            onChange={() => updateMaterial(pu.id, m.material_id, 'used', !m.used)}
+                          />
+                        </td>
+                        <td className="px-3 py-2">{m.material_name}</td>
+                        <td className="px-3 py-2 text-gray-500">{m.unit}</td>
+                        <td className="px-3 py-2">
+                          <input 
+                            type="number" 
+                            value={m.quantity} 
+                            onChange={e => updateMaterial(pu.id, m.material_id, 'quantity', parseFloat(e.target.value) || 0)}
+                            disabled={!m.used}
+                            className="w-full px-2 py-1 border rounded text-center"
+                            min="0"
+                            step="0.1"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ))}
+
+          {/* Итого по материалам */}
+          <div className="bg-green-50 rounded-xl border border-green-200 p-4">
+            <h4 className="font-semibold text-green-800 mb-3">📦 ИТОГО материалов</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {getTotalMaterials().map((m, idx) => (
+                <div key={idx} className="bg-white rounded-lg p-3 border">
+                  <div className="font-medium text-sm">{m.name}</div>
+                  <div className="text-lg font-bold text-green-700">{m.quantity} {m.unit}</div>
+                </div>
+              ))}
+            </div>
+            {getTotalMaterials().length === 0 && (
+              <p className="text-gray-500 text-sm">Нет материалов</p>
             )}
           </div>
         </div>
