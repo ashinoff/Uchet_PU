@@ -184,6 +184,12 @@ class PUItem(Base):
     
     # Материалы (JSON или отдельная таблица)
     materials_used = Column(Boolean, default=False)  # Материалы использованы
+
+    # ВА и ТТ
+    has_va = Column(Boolean, default=False)
+    va_nominal_id = Column(Integer, ForeignKey("va_nominals.id"))
+    has_tt = Column(Boolean, default=False)
+    tt_nominal_id = Column(Integer, ForeignKey("tt_nominals.id"))
     
     # Согласование (для ЭСК)
     approval_status = Column(SQLEnum(ApprovalStatus), default=ApprovalStatus.NONE)
@@ -207,6 +213,8 @@ class PUItem(Base):
     ttr_ol = relationship("TTR_RES", foreign_keys=[ttr_ol_id])
     ttr_or = relationship("TTR_RES", foreign_keys=[ttr_or_id])
     ttr_esk = relationship("TTR_ESK", foreign_keys=[ttr_esk_id])
+    va_nominal = relationship("VA_Nominal", foreign_keys=[va_nominal_id])
+    tt_nominal = relationship("TT_Nominal", foreign_keys=[tt_nominal_id])
 
 class PUMovement(Base):
     """История перемещений"""
@@ -227,6 +235,7 @@ class TTR_RES(Base):
     name = Column(String(200))
     ttr_type = Column(String(20))  # OU, OL, OR (организация учета, линии, распред)
     pu_types = Column(Text)  # Для каких типов ПУ применим (JSON или через запятую)
+    use_tt = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
 
 class TTR_ESK(Base):
@@ -295,6 +304,22 @@ class PUTypeReference(Base):
     faza = Column(String(20))  # 1ф, 3ф
     voltage = Column(String(20))
     form_factor = Column(String(20))  # split, classic
+    is_active = Column(Boolean, default=True)
+
+
+class VA_Nominal(Base):
+    """Справочник номиналов ВА"""
+    __tablename__ = "va_nominals"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100))  # Например: "16А", "25А", "32А"
+    is_active = Column(Boolean, default=True)
+
+
+class TT_Nominal(Base):
+    """Справочник номиналов ТТ"""
+    __tablename__ = "tt_nominals"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100))  # Например: "100/5", "200/5", "400/5"
     is_active = Column(Boolean, default=True)
 
 # ==================== АВТОРИЗАЦИЯ ====================
@@ -468,6 +493,10 @@ class PUCardUpdate(BaseModel):
     request_number: Optional[str] = None
     request_contract: Optional[str] = None
     work_type_name: Optional[str] = None
+    has_va: Optional[bool] = None
+    va_nominal_id: Optional[int] = None
+    has_tt: Optional[bool] = None
+    tt_nominal_id: Optional[int] = None
 
 # ==================== ПРИЛОЖЕНИЕ ====================
 app = FastAPI(title="Система учета ПУ")
@@ -537,7 +566,7 @@ def get_roles(db: Session = Depends(get_db), user: User = Depends(get_current_us
 def get_ttr_res(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Справочник ТТР для РЭС"""
     items = db.query(TTR_RES).filter(TTR_RES.is_active == True).all()
-    return [{"id": t.id, "code": t.code, "name": t.name, "ttr_type": t.ttr_type} for t in items]
+    return [{"id": t.id, "code": t.code, "name": t.name, "ttr_type": t.ttr_type, "use_tt": t.use_tt} for t in items]
 
 @app.get("/api/ttr/esk")
 def get_ttr_esk(ttr_type: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1183,6 +1212,12 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "request_contract": item.request_contract,
         "work_type_name": item.work_type_name,
         "rejection_comment": item.rejection_comment,
+        "has_va": item.has_va,
+        "va_nominal_id": item.va_nominal_id,
+        "va_nominal_name": item.va_nominal.name if item.va_nominal else None,
+        "has_tt": item.has_tt,
+        "tt_nominal_id": item.tt_nominal_id,
+        "tt_nominal_name": item.tt_nominal.name if item.tt_nominal else None,
     }
 
 @app.put("/api/pu/items/{item_id}")
@@ -1902,6 +1937,89 @@ def delete_material(mat_id: int, data: dict = None, db: Session = Depends(get_db
     db.commit()
     return {"ok": True}
 
+# ==================== API: СПРАВОЧНИКИ ВА и ТТ ====================
+
+@app.get("/api/va-nominals")
+def get_va_nominals(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    items = db.query(VA_Nominal).filter(VA_Nominal.is_active == True).all()
+    return [{"id": v.id, "name": v.name} for v in items]
+
+
+@app.post("/api/va-nominals")
+def create_va_nominal(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    v = VA_Nominal(name=data["name"])
+    db.add(v)
+    db.commit()
+    return {"id": v.id}
+
+
+@app.put("/api/va-nominals/{item_id}")
+def update_va_nominal(item_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    v = db.query(VA_Nominal).filter(VA_Nominal.id == item_id).first()
+    if not v:
+        raise HTTPException(404, "Не найден")
+    for k, val in data.items():
+        if hasattr(v, k):
+            setattr(v, k, val)
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/va-nominals/{item_id}")
+def delete_va_nominal(item_id: int, data: dict = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    if not data or data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    db.query(VA_Nominal).filter(VA_Nominal.id == item_id).update({"is_active": False})
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/tt-nominals")
+def get_tt_nominals(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    items = db.query(TT_Nominal).filter(TT_Nominal.is_active == True).all()
+    return [{"id": t.id, "name": t.name} for t in items]
+
+
+@app.post("/api/tt-nominals")
+def create_tt_nominal(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    t = TT_Nominal(name=data["name"])
+    db.add(t)
+    db.commit()
+    return {"id": t.id}
+
+
+@app.put("/api/tt-nominals/{item_id}")
+def update_tt_nominal(item_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    t = db.query(TT_Nominal).filter(TT_Nominal.id == item_id).first()
+    if not t:
+        raise HTTPException(404, "Не найден")
+    for k, val in data.items():
+        if hasattr(t, k):
+            setattr(t, k, val)
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/tt-nominals/{item_id}")
+def delete_tt_nominal(item_id: int, data: dict = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    if not data or data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    db.query(TT_Nominal).filter(TT_Nominal.id == item_id).update({"is_active": False})
+    db.commit()
+    return {"ok": True}
+
 # --- ТТР ЭСК ---
 @app.post("/api/ttr/esk")
 def create_ttr_esk(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -2232,6 +2350,10 @@ def get_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = D
             "ttr_ou": item.ttr_ou.code if item.ttr_ou else None,
             "ttr_ol": item.ttr_ol.code if item.ttr_ol else None,
             "ttr_or": item.ttr_or.code if item.ttr_or else None,
+            "has_va": item.has_va,
+            "va_nominal_name": item.va_nominal.name if item.va_nominal else None,
+            "has_tt": item.has_tt,
+            "tt_nominal_name": item.tt_nominal.name if item.tt_nominal else None,
             "materials": materials
         })
     
