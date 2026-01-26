@@ -2018,7 +2018,7 @@ function TZPage() {
 const exportToExcel = async () => {
     if (!expandedTz) return
     try {
-      const response = await api.get(`/tz/${encodeURIComponent(expandedTz)}/export`, { responseType: 'blob' })
+      const response = await api.get(`/tz/export?tz_number=${encodeURIComponent(expandedTz)}`, { responseType: 'blob' })
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
