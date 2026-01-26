@@ -726,6 +726,8 @@ function PUCardModal({ itemId, onClose }) {
   const [importing, setImporting] = useState(false)
   const [materials, setMaterials] = useState([])
   const [loadingMaterials, setLoadingMaterials] = useState(false)
+  const [vaNominals, setVaNominals] = useState([])
+  const [ttNominals, setTtNominals] = useState([])
 
 useEffect(() => {
   const loadItem = async () => {
@@ -780,6 +782,8 @@ useEffect(() => {
   loadItem()
   api.get('/ttr/esk').then(r => setTtrEsk(r.data))
   api.get('/masters').then(r => setMasters(r.data))
+  api.get('/va-nominals').then(r => setVaNominals(r.data))
+  api.get('/tt-nominals').then(r => setTtNominals(r.data))
 }, [itemId])
 
 useEffect(() => {
@@ -1423,6 +1427,74 @@ const updateMaterialQty = (materialId, qty) => {
   </>
 )}
 
+{/* ВА и ТТ для РЭС */}
+{isRes && item.status !== 'SKLAD' && canEdit && (
+  <div className="border-t pt-4 mt-4">
+    <h4 className="font-medium text-gray-700 mb-3">⚡ Оборудование</h4>
+    <div className="grid grid-cols-2 gap-4">
+      {/* ВА */}
+      <div className="space-y-2">
+        <label className="flex items-center gap-2">
+          <input 
+            type="checkbox" 
+            checked={item?.has_va || false} 
+            onChange={e => setItem(prev => ({ 
+              ...prev, 
+              has_va: e.target.checked,
+              va_nominal_id: e.target.checked ? prev.va_nominal_id : null 
+            }))} 
+          />
+          <span className="text-sm font-medium">ВА (автомат)</span>
+        </label>
+        {item?.has_va && (
+          <select 
+            value={item?.va_nominal_id || ''} 
+            onChange={e => setItem(prev => ({ ...prev, va_nominal_id: parseInt(e.target.value) || null }))}
+            className="w-full px-3 py-2 border rounded-lg text-sm"
+          >
+            <option value="">Выберите номинал ВА...</option>
+            {vaNominals.map(v => (
+              <option key={v.id} value={v.id}>{v.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+      
+      {/* ТТ - показываем только если выбран ТТР с use_tt */}
+      {ttrRes.some(t => 
+        (t.id === item?.ttr_ou_id || t.id === item?.ttr_ol_id || t.id === item?.ttr_or_id) && t.use_tt
+      ) && (
+        <div className="space-y-2">
+          <label className="flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              checked={item?.has_tt || false} 
+              onChange={e => setItem(prev => ({ 
+                ...prev, 
+                has_tt: e.target.checked,
+                tt_nominal_id: e.target.checked ? prev.tt_nominal_id : null 
+              }))} 
+            />
+            <span className="text-sm font-medium">ТТ (трансформатор тока)</span>
+          </label>
+          {item?.has_tt && (
+            <select 
+              value={item?.tt_nominal_id || ''} 
+              onChange={e => setItem(prev => ({ ...prev, tt_nominal_id: parseInt(e.target.value) || null }))}
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+            >
+              <option value="">Выберите номинал ТТ...</option>
+              {ttNominals.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+          
           {/* Материалы для РЭС */}
 {isRes && item.status !== 'SKLAD' && materials.length > 0 && (
   <>
@@ -2139,20 +2211,27 @@ function TZPage() {
           </div>
 
           {/* Список ПУ с материалами */}
-          {materialsData.map((pu, idx) => (
-            <div key={pu.id} className="bg-white rounded-xl border overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-                <div>
-                  <span className="font-medium">{idx + 1}. {pu.serial_number}</span>
-                  <span className="text-gray-500 text-sm ml-3">{pu.pu_type || ''}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">
-                    ТТР: {[pu.ttr_ou, pu.ttr_ol, pu.ttr_or].filter(Boolean).join(', ') || '—'}
-                  </span>
-                  <button onClick={() => saveSinglePU(pu.id)} className="px-3 py-1 bg-blue-500 text-white rounded text-sm">💾 Сохранить</button>
-                </div>
-              </div>
+{/* Список ПУ с материалами */}
+{materialsData.map((pu, idx) => (
+  <div key={pu.id} className="bg-white rounded-xl border overflow-hidden">
+    <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+      <div>
+        <span className="font-medium">{idx + 1}. {pu.serial_number}</span>
+        <span className="text-gray-500 text-sm ml-3">{pu.pu_type || ''}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-gray-400">
+          ТТР: {[pu.ttr_ou, pu.ttr_ol, pu.ttr_or].filter(Boolean).join(', ') || '—'}
+        </span>
+        {pu.va_nominal_name && (
+          <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">⚡ ВА: {pu.va_nominal_name}</span>
+        )}
+        {pu.tt_nominal_name && (
+          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">🔌 ТТ: {pu.tt_nominal_name}</span>
+        )}
+        <button onClick={() => saveSinglePU(pu.id)} className="px-3 py-1 bg-blue-500 text-white rounded text-sm">💾 Сохранить</button>
+      </div>
+    </div>
               
               {pu.materials.length === 0 ? (
                 <div className="p-4 text-center text-gray-500 text-sm">Нет материалов (не выбраны ТТР)</div>
@@ -2198,10 +2277,47 @@ function TZPage() {
           ))}
 
           {/* Итого по материалам */}
-          <div className="bg-green-50 rounded-xl border border-green-200 p-4">
-            <h4 className="font-semibold text-green-800 mb-3">📦 ИТОГО материалов</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {getTotalMaterials().map((m, idx) => (
+          {/* Итого по материалам */}
+<div className="bg-green-50 rounded-xl border border-green-200 p-4">
+  <h4 className="font-semibold text-green-800 mb-3">📦 ИТОГО материалов</h4>
+  
+  {/* ВА и ТТ */}
+  {(materialsData.some(pu => pu.va_nominal_name) || materialsData.some(pu => pu.tt_nominal_name)) && (
+    <div className="mb-4 p-3 bg-white rounded-lg border">
+      <div className="text-sm font-medium text-gray-700 mb-2">⚡ Оборудование:</div>
+      <div className="flex flex-wrap gap-2">
+        {/* Группируем ВА по номиналам */}
+        {Object.entries(
+          materialsData
+            .filter(pu => pu.va_nominal_name)
+            .reduce((acc, pu) => {
+              acc[pu.va_nominal_name] = (acc[pu.va_nominal_name] || 0) + 1
+              return acc
+            }, {})
+        ).map(([name, count]) => (
+          <span key={`va-${name}`} className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-lg text-sm">
+            ВА {name}: <b>{count} шт</b>
+          </span>
+        ))}
+        {/* Группируем ТТ по номиналам */}
+        {Object.entries(
+          materialsData
+            .filter(pu => pu.tt_nominal_name)
+            .reduce((acc, pu) => {
+              acc[pu.tt_nominal_name] = (acc[pu.tt_nominal_name] || 0) + 1
+              return acc
+            }, {})
+        ).map(([name, count]) => (
+          <span key={`tt-${name}`} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm">
+            ТТ {name}: <b>{count} шт</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  )}
+  
+  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+    {getTotalMaterials().map((m, idx) => (
                 <div key={idx} className="bg-white rounded-lg p-3 border">
                   <div className="font-medium text-sm">{m.name}</div>
                   <div className="text-lg font-bold text-green-700">{m.quantity} {m.unit}</div>
@@ -2759,6 +2875,8 @@ function SettingsPage() {
     { id: 'ttr-res', label: '📐 ТТР (РЭС)', show: isSueAdmin || isResUser },
     { id: 'ttr-esk', label: '📐 ТТР (ЭСК)', show: isSueAdmin || isEskAdmin || isEskUser },
     { id: 'materials', label: '🔧 Материалы', show: isSueAdmin || isResUser },
+    { id: 'va-nominals', label: '⚡ Номиналы ВА', show: isSueAdmin || isResUser },
+    { id: 'tt-nominals', label: '🔌 Номиналы ТТ', show: isSueAdmin || isResUser },
     { id: 'pu-types', label: '📦 Типы ПУ', show: isSueAdmin || isResUser || isEskUser },
     { id: 'bulk-update', label: '📝 Корректировка', show: isSueAdmin },
     { id: 'system', label: '⚠️ Система', show: isSueAdmin },
@@ -2782,6 +2900,8 @@ function SettingsPage() {
       {tab === 'ttr-esk' && <TTREskTab />}
       {tab === 'materials' && <MaterialsTab />}
       {tab === 'pu-types' && <PUTypesTab />}
+      {tab === 'va-nominals' && <VANominalsTab />}
+      {tab === 'tt-nominals' && <TTNominalsTab />}
       {tab === 'bulk-update' && <BulkUpdateTab />}
       {tab === 'system' && <SystemTab />}
     </div>
@@ -3068,7 +3188,7 @@ function TTRResTab() {
 }
 
 function TTRResForm({ item, onSave, onClose }) {
-  const [form, setForm] = useState({ code: item?.code || '', name: item?.name || '', ttr_type: item?.ttr_type || 'OU' })
+  const [form, setForm] = useState({ code: item?.code || '', name: item?.name || '', ttr_type: item?.ttr_type || 'OU', use_tt: item?.use_tt || false })
   return (
     <div className="space-y-3">
       <input type="text" placeholder="Код (напр. ТТР-1 ОУ)" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
@@ -3078,6 +3198,14 @@ function TTRResForm({ item, onSave, onClose }) {
         <option value="OL">Обустройство линии</option>
         <option value="OR">Распред. щит</option>
       </select>
+      <label className="flex items-center gap-2 mt-1">
+        <input 
+          type="checkbox" 
+          checked={form.use_tt || false} 
+          onChange={e => setForm({ ...form, use_tt: e.target.checked })} 
+        />
+        <span className="text-sm">Использовать ТТ (трансформатор тока)</span>
+      </label>
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
         <button onClick={() => onSave(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
@@ -3614,6 +3742,186 @@ function PUTypesTab() {
         />
       )}
     </>
+  )
+}
+
+// --- Номиналы ВА ---
+function VANominalsTab() {
+  const { isSueAdmin } = useAuth()
+  const [items, setItems] = useState([])
+  const [modal, setModal] = useState(null)
+  const [deleteModal, setDeleteModal] = useState(null)
+
+  useEffect(() => { api.get('/va-nominals').then(r => setItems(r.data)) }, [])
+
+  const handleSave = async (data) => {
+    if (modal.item) {
+      await api.put(`/va-nominals/${modal.item.id}`, data)
+    } else {
+      await api.post('/va-nominals', data)
+    }
+    api.get('/va-nominals').then(r => setItems(r.data))
+    setModal(null)
+  }
+
+  return (
+    <>
+      {isSueAdmin && (
+        <div className="flex justify-end">
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left">Номинал ВА</th>
+              {isSueAdmin && <th className="px-4 py-3 text-right w-24">Действия</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="px-4 py-3 font-medium">{i.name}</td>
+                {isSueAdmin && (
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => setModal({ item: i })} className="px-1">✏️</button>
+                    <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500">🗑️</button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">{modal.item ? 'Редактировать' : 'Новый номинал ВА'}</h2>
+            <NominalForm item={modal.item} onSave={handleSave} onClose={() => setModal(null)} placeholder="Например: 16А, 25А, 32А" />
+          </div>
+        </div>
+      )}
+
+      {deleteModal && (
+        <DeleteWithCodeModal
+          title={`Удалить номинал "${deleteModal.name}"?`}
+          onClose={() => setDeleteModal(null)}
+          onDelete={async (code) => {
+            try {
+              await api.delete(`/va-nominals/${deleteModal.id}`, { data: { admin_code: code } })
+              api.get('/va-nominals').then(r => setItems(r.data))
+              setDeleteModal(null)
+            } catch (err) {
+              alert(err.response?.data?.detail || 'Ошибка удаления')
+            }
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+
+// --- Номиналы ТТ ---
+function TTNominalsTab() {
+  const { isSueAdmin } = useAuth()
+  const [items, setItems] = useState([])
+  const [modal, setModal] = useState(null)
+  const [deleteModal, setDeleteModal] = useState(null)
+
+  useEffect(() => { api.get('/tt-nominals').then(r => setItems(r.data)) }, [])
+
+  const handleSave = async (data) => {
+    if (modal.item) {
+      await api.put(`/tt-nominals/${modal.item.id}`, data)
+    } else {
+      await api.post('/tt-nominals', data)
+    }
+    api.get('/tt-nominals').then(r => setItems(r.data))
+    setModal(null)
+  }
+
+  return (
+    <>
+      {isSueAdmin && (
+        <div className="flex justify-end">
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left">Номинал ТТ</th>
+              {isSueAdmin && <th className="px-4 py-3 text-right w-24">Действия</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="px-4 py-3 font-medium">{i.name}</td>
+                {isSueAdmin && (
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => setModal({ item: i })} className="px-1">✏️</button>
+                    <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500">🗑️</button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">{modal.item ? 'Редактировать' : 'Новый номинал ТТ'}</h2>
+            <NominalForm item={modal.item} onSave={handleSave} onClose={() => setModal(null)} placeholder="Например: 100/5, 200/5, 400/5" />
+          </div>
+        </div>
+      )}
+
+      {deleteModal && (
+        <DeleteWithCodeModal
+          title={`Удалить номинал "${deleteModal.name}"?`}
+          onClose={() => setDeleteModal(null)}
+          onDelete={async (code) => {
+            try {
+              await api.delete(`/tt-nominals/${deleteModal.id}`, { data: { admin_code: code } })
+              api.get('/tt-nominals').then(r => setItems(r.data))
+              setDeleteModal(null)
+            } catch (err) {
+              alert(err.response?.data?.detail || 'Ошибка удаления')
+            }
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+
+// --- Общая форма для номиналов ---
+function NominalForm({ item, onSave, onClose, placeholder }) {
+  const [name, setName] = useState(item?.name || '')
+  return (
+    <div className="space-y-3">
+      <input 
+        type="text" 
+        placeholder={placeholder} 
+        value={name} 
+        onChange={e => setName(e.target.value)} 
+        className="w-full px-3 py-2 border rounded-lg" 
+      />
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Отмена</button>
+        <button onClick={() => onSave({ name })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+      </div>
+    </div>
   )
 }
 
