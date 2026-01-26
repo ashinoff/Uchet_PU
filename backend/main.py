@@ -3138,7 +3138,7 @@ def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(ge
         year = now.strftime("%y")
         suffix = f"{month}-{year}"
     
-    tz_number = f"{prefix} {unit.short_code}/{suffix}"
+    tz_number = f"{prefix} {unit.short_code}-{suffix}"
     
     # Проверяем уникальность
     existing = db.query(PUItem).filter(PUItem.tz_number == tz_number).first()
@@ -3187,7 +3187,7 @@ def get_next_tz_number(
     
     return {
         "next_suffix": next_suffix,
-        "preview": f"{prefix} {unit.short_code}/{next_suffix}"
+        "preview": f"{prefix} {unit.short_code}-{next_suffix}"
     }
 
 @app.get("/api/requests/list")
