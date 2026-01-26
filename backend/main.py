@@ -2761,30 +2761,8 @@ def get_tz_list(tz_type: Optional[str] = None, db: Session = Depends(get_db), us
     
     return list(tz_map.values())
 
-@app.get("/api/tz/{tz_number}/items")
-def get_tz_items(tz_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Получить все ПУ по номеру ТЗ"""
-    items = db.query(PUItem).filter(PUItem.tz_number == tz_number).all()
-    return [{
-     "id": i.id,
-     "serial_number": i.serial_number,
-     "pu_type": i.pu_type,
-     "status": i.status.value,
-     "current_unit_name": i.current_unit.name if i.current_unit else None,
-     "contract_number": i.contract_number,
-     "consumer": i.consumer,
-     "address": i.address,
-     "power": i.power,
-     "faza": i.faza,
-     "voltage": i.voltage,
-     "ls_number": i.ls_number,
-     "ttr_ou_id": i.ttr_ou_id,
-     "ttr_ol_id": i.ttr_ol_id,
-     "ttr_or_id": i.ttr_or_id,
-    } for i in items]
-
-@app.get("/api/tz/{tz_number}/export")
-def export_tz_to_excel(tz_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+@app.get("/api/tz/export")
+def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Выгрузка ТЗ в Excel с материалами"""
     try:
         items = db.query(PUItem).filter(PUItem.tz_number == tz_number).all()
@@ -3058,6 +3036,30 @@ def export_tz_to_excel(tz_number: str, db: Session = Depends(get_db), user: User
         import traceback
         traceback.print_exc()
         raise HTTPException(500, f"Ошибка экспорта: {str(e)}")
+
+@app.get("/api/tz/{tz_number}/items")
+def get_tz_items(tz_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Получить все ПУ по номеру ТЗ"""
+    items = db.query(PUItem).filter(PUItem.tz_number == tz_number).all()
+    return [{
+     "id": i.id,
+     "serial_number": i.serial_number,
+     "pu_type": i.pu_type,
+     "status": i.status.value,
+     "current_unit_name": i.current_unit.name if i.current_unit else None,
+     "contract_number": i.contract_number,
+     "consumer": i.consumer,
+     "address": i.address,
+     "power": i.power,
+     "faza": i.faza,
+     "voltage": i.voltage,
+     "ls_number": i.ls_number,
+     "ttr_ou_id": i.ttr_ou_id,
+     "ttr_ol_id": i.ttr_ol_id,
+     "ttr_or_id": i.ttr_or_id,
+    } for i in items]
+
+
 
 @app.get("/api/tz/pending")
 def get_pending_for_tz(
