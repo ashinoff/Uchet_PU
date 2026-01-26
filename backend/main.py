@@ -1778,6 +1778,116 @@ def health_check(db: Session = Depends(get_db), user: User = Depends(get_current
         "checked_at": datetime.now().isoformat()
     }
 
+@app.post("/api/admin/restore")
+def restore_backup(
+    file: UploadFile = File(...),
+    admin_code: str = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Восстановить базу из JSON бэкапа"""
+    if not admin_code or admin_code != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    try:
+        content = file.file.read()
+        backup = json.loads(content.decode('utf-8'))
+    except Exception as e:
+        raise HTTPException(400, f"Ошибка чтения файла: {str(e)}")
+    
+    restored = {
+        "va_nominals": 0,
+        "tt_nominals": 0,
+        "materials": 0,
+        "ttr_res": 0,
+        "ttr_esk": 0,
+        "pu_items": 0,
+    }
+    
+    # 1. Восстанавливаем номиналы ВА
+    for item in backup.get("va_nominals", []):
+        existing = db.query(VA_Nominal).filter(VA_Nominal.id == item["id"]).first()
+        if not existing:
+            db.add(VA_Nominal(id=item["id"], name=item["name"], is_active=True))
+            restored["va_nominals"] += 1
+    
+    # 2. Восстанавливаем номиналы ТТ
+    for item in backup.get("tt_nominals", []):
+        existing = db.query(TT_Nominal).filter(TT_Nominal.id == item["id"]).first()
+        if not existing:
+            db.add(TT_Nominal(id=item["id"], name=item["name"], is_active=True))
+            restored["tt_nominals"] += 1
+    
+    # 3. Восстанавливаем материалы
+    for item in backup.get("materials", []):
+        existing = db.query(Material).filter(Material.id == item["id"]).first()
+        if not existing:
+            db.add(Material(id=item["id"], name=item["name"], unit=item["unit"], is_active=True))
+            restored["materials"] += 1
+    
+    # 4. Восстанавливаем ТТР РЭС
+    for item in backup.get("ttr_res", []):
+        existing = db.query(TTR_RES).filter(TTR_RES.id == item["id"]).first()
+        if not existing:
+            db.add(TTR_RES(
+                id=item["id"], code=item["code"], name=item["name"],
+                ttr_type=item["ttr_type"], use_tt=item.get("use_tt", False), is_active=True
+            ))
+            restored["ttr_res"] += 1
+    
+    # 5. Восстанавливаем ТТР ЭСК
+    for item in backup.get("ttr_esk", []):
+        existing = db.query(TTR_ESK).filter(TTR_ESK.id == item["id"]).first()
+        if not existing:
+            db.add(TTR_ESK(
+                id=item["id"], ttr_type=item.get("ttr_type"), work_type_name=item.get("work_type_name"),
+                faza=item.get("faza"), form_factor=item.get("form_factor"), va_type=item.get("va_type"),
+                lsr_number=item.get("lsr_number"), price_no_nds=item.get("price_no_nds"),
+                price_with_nds=item.get("price_with_nds"), is_active=True
+            ))
+            restored["ttr_esk"] += 1
+    
+    db.commit()
+    
+    # 6. Восстанавливаем ПУ
+    for item in backup.get("pu_items", []):
+        existing = db.query(PUItem).filter(PUItem.serial_number == item["serial_number"]).first()
+        if not existing:
+            pu = PUItem(
+                serial_number=item["serial_number"],
+                pu_type=item.get("pu_type"),
+                status=PUStatus(item["status"]) if item.get("status") else PUStatus.SKLAD,
+                current_unit_id=item.get("current_unit_id"),
+                contract_number=item.get("contract_number"),
+                consumer=item.get("consumer"),
+                address=item.get("address"),
+                faza=item.get("faza"),
+                voltage=item.get("voltage"),
+                power=item.get("power"),
+                form_factor=item.get("form_factor"),
+                trubostoyka=item.get("trubostoyka"),
+                va_type=item.get("va_type"),
+                has_va=item.get("has_va", False),
+                va_nominal_id=item.get("va_nominal_id"),
+                has_tt=item.get("has_tt", False),
+                tt_nominal_id=item.get("tt_nominal_id"),
+                approval_status=ApprovalStatus(item["approval_status"]) if item.get("approval_status") else None,
+                tz_number=item.get("tz_number"),
+                request_number=item.get("request_number"),
+            )
+            db.add(pu)
+            restored["pu_items"] += 1
+    
+    db.commit()
+    
+    return {
+        "status": "OK",
+        "message": "Восстановление завершено",
+        "restored": restored
+    }
+
 # ==================== API: СОГЛАСОВАНИЕ (ЭСК -> РЭС) ====================
 @app.post("/api/pu/items/{item_id}/send-approval")
 def send_for_approval(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
