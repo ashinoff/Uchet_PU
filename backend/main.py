@@ -2766,18 +2766,298 @@ def get_tz_items(tz_number: str, db: Session = Depends(get_db), user: User = Dep
     """Получить все ПУ по номеру ТЗ"""
     items = db.query(PUItem).filter(PUItem.tz_number == tz_number).all()
     return [{
-        "id": i.id,
-        "serial_number": i.serial_number,
-        "pu_type": i.pu_type,
-        "status": i.status.value,
-        "current_unit_name": i.current_unit.name if i.current_unit else None,
-        "contract_number": i.contract_number,
-        "consumer": i.consumer,
-        "address": i.address,
-        "power": i.power,
-        "faza": i.faza,
-        "voltage": i.voltage
+     "id": i.id,
+     "serial_number": i.serial_number,
+     "pu_type": i.pu_type,
+     "status": i.status.value,
+     "current_unit_name": i.current_unit.name if i.current_unit else None,
+     "contract_number": i.contract_number,
+     "consumer": i.consumer,
+     "address": i.address,
+     "power": i.power,
+     "faza": i.faza,
+     "voltage": i.voltage,
+     "ls_number": i.ls_number,
+     "ttr_ou_id": i.ttr_ou_id,
+     "ttr_ol_id": i.ttr_ol_id,
+     "ttr_or_id": i.ttr_or_id,
     } for i in items]
+
+@app.get("/api/tz/{tz_number}/export")
+def export_tz_to_excel(tz_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Выгрузка ТЗ в Excel с материалами"""
+    try:
+        items = db.query(PUItem).filter(PUItem.tz_number == tz_number).all()
+        
+        if not items:
+            raise HTTPException(404, "ТЗ не найден")
+        
+        # Создаём книгу Excel
+        wb = openpyxl.Workbook()
+        
+        # ===== ЛИСТ 1: Список ПУ =====
+        ws1 = wb.active
+        ws1.title = "Список ПУ"
+        
+        # Стили
+        header_font = Font(bold=True, color="FFFFFF", size=10)
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        
+        # Заголовки листа 1
+        headers1 = [
+            ("№", 5),
+            ("Серийный номер", 20),
+            ("Тип ПУ", 40),
+            ("ЛС", 15),
+            ("Потребитель", 25),
+            ("Адрес", 35),
+            ("Договор", 22),
+            ("Мощность", 10),
+            ("Фазность", 10),
+            ("Напряжение", 12),
+            ("ТТР ОУ", 12),
+            ("ТТР ОЛ", 12),
+            ("ТТР ОР", 12),
+            ("ВА", 10),
+            ("ТТ", 10),
+        ]
+        
+        for col, (header, width) in enumerate(headers1, 1):
+            cell = ws1.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+            ws1.column_dimensions[get_column_letter(col)].width = width
+        
+        ws1.row_dimensions[1].height = 35
+        
+        # Данные листа 1
+        for idx, item in enumerate(items, 1):
+            row = idx + 1
+            data = [
+                idx,
+                item.serial_number or "",
+                item.pu_type or "",
+                item.ls_number or "",
+                item.consumer or "",
+                item.address or "",
+                item.contract_number or "",
+                item.power or "",
+                item.faza or "",
+                item.voltage or "",
+                item.ttr_ou.code if item.ttr_ou else "",
+                item.ttr_ol.code if item.ttr_ol else "",
+                item.ttr_or.code if item.ttr_or else "",
+                item.va_nominal.name if item.va_nominal else "",
+                item.tt_nominal.name if item.tt_nominal else "",
+            ]
+            
+            for col, value in enumerate(data, 1):
+                cell = ws1.cell(row=row, column=col, value=value)
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+            
+            ws1.row_dimensions[row].height = 25
+        
+        # ===== ЛИСТ 2: Материалы по каждому ПУ =====
+        ws2 = wb.create_sheet("Материалы по ПУ")
+        
+        headers2 = [
+            ("№", 5),
+            ("Серийный номер", 20),
+            ("Тип ПУ", 30),
+            ("ТТР", 25),
+            ("Материал", 30),
+            ("Ед.", 8),
+            ("Кол-во", 10),
+        ]
+        
+        for col, (header, width) in enumerate(headers2, 1):
+            cell = ws2.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+            ws2.column_dimensions[get_column_letter(col)].width = width
+        
+        row_num = 2
+        for idx, item in enumerate(items, 1):
+            # Получаем материалы для этого ПУ
+            pu_materials = db.query(PUMaterial).filter(
+                PUMaterial.pu_item_id == item.id,
+                PUMaterial.used == True
+            ).all()
+            
+            # Если нет сохранённых материалов — берём из ТТР
+            if not pu_materials:
+                ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+                materials_dict = {}
+                for ttr_id in ttr_ids:
+                    ttr_mats = db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).all()
+                    for tm in ttr_mats:
+                        mat = db.query(Material).filter(Material.id == tm.material_id).first()
+                        if mat:
+                            if mat.id in materials_dict:
+                                materials_dict[mat.id]['quantity'] += tm.quantity
+                            else:
+                                materials_dict[mat.id] = {
+                                    'name': mat.name,
+                                    'unit': mat.unit,
+                                    'quantity': tm.quantity
+                                }
+                
+                for mat_data in materials_dict.values():
+                    ttr_codes = ", ".join([t.code for t in [item.ttr_ou, item.ttr_ol, item.ttr_or] if t])
+                    data = [
+                        idx,
+                        item.serial_number or "",
+                        item.pu_type or "",
+                        ttr_codes,
+                        mat_data['name'],
+                        mat_data['unit'],
+                        mat_data['quantity'],
+                    ]
+                    for col, value in enumerate(data, 1):
+                        cell = ws2.cell(row=row_num, column=col, value=value)
+                        cell.border = thin_border
+                    row_num += 1
+            else:
+                for pm in pu_materials:
+                    mat = db.query(Material).filter(Material.id == pm.material_id).first()
+                    if mat:
+                        ttr_codes = ", ".join([t.code for t in [item.ttr_ou, item.ttr_ol, item.ttr_or] if t])
+                        data = [
+                            idx,
+                            item.serial_number or "",
+                            item.pu_type or "",
+                            ttr_codes,
+                            mat.name,
+                            mat.unit,
+                            pm.quantity,
+                        ]
+                        for col, value in enumerate(data, 1):
+                            cell = ws2.cell(row=row_num, column=col, value=value)
+                            cell.border = thin_border
+                        row_num += 1
+        
+        # ===== ЛИСТ 3: Сводная по материалам =====
+        ws3 = wb.create_sheet("Сводная материалов")
+        
+        headers3 = [
+            ("№", 5),
+            ("Материал", 40),
+            ("Ед. изм.", 10),
+            ("Всего", 12),
+        ]
+        
+        for col, (header, width) in enumerate(headers3, 1):
+            cell = ws3.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+            ws3.column_dimensions[get_column_letter(col)].width = width
+        
+        # Собираем сводную
+        totals = {}
+        for item in items:
+            pu_materials = db.query(PUMaterial).filter(
+                PUMaterial.pu_item_id == item.id,
+                PUMaterial.used == True
+            ).all()
+            
+            if pu_materials:
+                for pm in pu_materials:
+                    mat = db.query(Material).filter(Material.id == pm.material_id).first()
+                    if mat:
+                        if mat.id not in totals:
+                            totals[mat.id] = {'name': mat.name, 'unit': mat.unit, 'quantity': 0}
+                        totals[mat.id]['quantity'] += pm.quantity
+            else:
+                # Из ТТР
+                ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+                for ttr_id in ttr_ids:
+                    ttr_mats = db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).all()
+                    for tm in ttr_mats:
+                        mat = db.query(Material).filter(Material.id == tm.material_id).first()
+                        if mat:
+                            if mat.id not in totals:
+                                totals[mat.id] = {'name': mat.name, 'unit': mat.unit, 'quantity': 0}
+                            totals[mat.id]['quantity'] += tm.quantity
+        
+        # ВА и ТТ в сводную
+        va_totals = {}
+        tt_totals = {}
+        for item in items:
+            if item.has_va and item.va_nominal:
+                name = f"ВА {item.va_nominal.name}"
+                va_totals[name] = va_totals.get(name, 0) + 1
+            if item.has_tt and item.tt_nominal:
+                name = f"ТТ {item.tt_nominal.name}"
+                tt_totals[name] = tt_totals.get(name, 0) + 1
+        
+        row_num = 2
+        for idx, (mat_id, mat_data) in enumerate(totals.items(), 1):
+            data = [idx, mat_data['name'], mat_data['unit'], mat_data['quantity']]
+            for col, value in enumerate(data, 1):
+                cell = ws3.cell(row=row_num, column=col, value=value)
+                cell.border = thin_border
+            row_num += 1
+        
+        # Добавляем ВА
+        for name, count in va_totals.items():
+            data = [row_num - 1, name, 'шт', count]
+            for col, value in enumerate(data, 1):
+                cell = ws3.cell(row=row_num, column=col, value=value)
+                cell.border = thin_border
+                if col == 2:
+                    cell.font = Font(bold=True, color="B45F06")
+            row_num += 1
+        
+        # Добавляем ТТ
+        for name, count in tt_totals.items():
+            data = [row_num - 1, name, 'шт', count]
+            for col, value in enumerate(data, 1):
+                cell = ws3.cell(row=row_num, column=col, value=value)
+                cell.border = thin_border
+                if col == 2:
+                    cell.font = Font(bold=True, color="7030A0")
+            row_num += 1
+        
+        # Итоговая строка
+        ws3.cell(row=row_num + 1, column=1, value=f"Всего ПУ: {len(items)} шт.")
+        ws3.cell(row=row_num + 1, column=1).font = Font(bold=True)
+        
+        # Сохраняем
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Безопасное имя файла
+        safe_tz = tz_number.replace("/", "_").replace("\\", "_").replace(" ", "_")
+        filename_rus = f"ТЗ_{safe_tz}.xlsx"
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"TZ_{safe_tz}.xlsx\"; filename*=UTF-8''{quote(filename_rus)}"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Export TZ error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Ошибка экспорта: {str(e)}")
 
 @app.get("/api/tz/pending")
 def get_pending_for_tz(
