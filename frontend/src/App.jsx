@@ -321,6 +321,32 @@ function HomePage({ setPage }) {
   )
 }
 
+// Компонент заголовка с сортировкой
+function SortHeader({ field, label, sortField, sortDir, onSort }) {
+  const isActive = sortField === field
+  const handleClick = () => {
+    if (isActive) {
+      onSort(field, sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      onSort(field, 'asc')
+    }
+  }
+  
+  return (
+    <th 
+      className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none"
+      onClick={handleClick}
+    >
+      <div className="flex items-center gap-1">
+        <span>{label}</span>
+        <span className="text-gray-400 text-xs">
+          {isActive ? (sortDir === 'asc' ? '▲' : '▼') : '▽'}
+        </span>
+      </div>
+    </th>
+  )
+}
+
 function StatCard({ label, value, color = 'blue' }) {
   const colors = {
     blue: 'bg-blue-50 text-blue-700',
@@ -352,6 +378,8 @@ function PUListPage({ filter = 'all' }) {
   const [deleteModal, setDeleteModal] = useState(false)
   const [cardModal, setCardModal] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [sortField, setSortField] = useState('created_at')
+  const [sortDir, setSortDir] = useState('desc')
 
   // Debounce для автопоиска
   useEffect(() => {
@@ -364,11 +392,11 @@ function PUListPage({ filter = 'all' }) {
   }, [search, contractSearch, lsSearch])
 
   useEffect(() => { api.get('/units').then(r => setUnits(r.data)) }, [])
-  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter])
+  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter, sortField, sortDir])
 
   const load = async () => {
     setLoading(true)
-    const params = { page, size: 50 }
+    const params = { page, size: 50, sort_field: sortField, sort_dir: sortDir }
     if (search) params.search = search
     if (status) params.status = status
     if (unitFilter) params.unit_id = unitFilter
@@ -581,17 +609,17 @@ function PUListPage({ filter = 'all' }) {
             <thead className="bg-gray-50">
               <tr>
                 {canMove && <th className="w-10 px-4 py-3"><input type="checkbox" onChange={e => setSelected(e.target.checked ? items.map(i => i.id) : [])} checked={selected.length === items.length && items.length > 0} /></th>}
-               <th className="px-4 py-3 text-left">Серийный номер</th>
-               <th className="px-4 py-3 text-left">Тип</th>
-               <th className="px-4 py-3 text-left">Подразделение</th>
-               <th className="px-4 py-3 text-left">Статус</th>
-               <th className="px-4 py-3 text-left">№ ТЗ</th>
-               <th className="px-4 py-3 text-left">№ Заявки</th>
-                <th className="px-4 py-3 text-left">Согласование</th>
-               <th className="px-4 py-3 text-left">Дата</th>
-               <th className="w-16"></th>
-             </tr>
-           </thead>
+                <SortHeader field="serial_number" label="Серийный номер" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <SortHeader field="pu_type" label="Тип" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <SortHeader field="current_unit_name" label="Подразделение" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <SortHeader field="status" label="Статус" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <SortHeader field="tz_number" label="№ ТЗ" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <SortHeader field="request_number" label="№ Заявки" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <SortHeader field="approval_status" label="Согласование" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <SortHeader field="created_at" label="Дата" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <th className="w-16"></th>
+              </tr>
+            </thead>
             <tbody>
               {items.map(i => (
                 <tr key={i.id} className="border-t hover:bg-gray-50">
@@ -1662,7 +1690,18 @@ function UploadPage() {
             <h3 className="text-xl font-semibold">Загружено {result.items_count} ПУ</h3>
             <p className="text-gray-500">Файл: {result.filename}</p>
             {result.skipped_duplicates > 0 && (
-            <p className="text-orange-600 mt-2">⚠️ Пропущено дубликатов: {result.skipped_duplicates}</p>
+              <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg text-left">
+                <p className="text-orange-700 font-medium">⚠️ Пропущено дубликатов: {result.skipped_duplicates}</p>
+                {result.duplicate_serials && result.duplicate_serials.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm text-orange-600">Серийные номера:</p>
+                    <div className="text-xs text-orange-500 max-h-32 overflow-y-auto mt-1">
+                      {result.duplicate_serials.join(', ')}
+                      {result.skipped_duplicates > 20 && <span> и ещё {result.skipped_duplicates - 20}...</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             <button onClick={() => setResult(null)} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Загрузить ещё</button>
           </div>
@@ -1874,9 +1913,11 @@ function TZPage() {
   const [selectedPower, setSelectedPower] = useState('')
   const [selectedItems, setSelectedItems] = useState([])
   const [loading, setLoading] = useState(false)
+  const [customSuffix, setCustomSuffix] = useState('')
+  const [previewTz, setPreviewTz] = useState('—')
   
-  // Новые состояния для шага 2
-  const [step, setStep] = useState(1) // 1 = выбор ПУ, 2 = материалы
+  // Состояния для шага 2 (материалы)
+  const [step, setStep] = useState(1)
   const [materialsData, setMaterialsData] = useState([])
   const [loadingMaterials, setLoadingMaterials] = useState(false)
 
@@ -1885,16 +1926,50 @@ function TZPage() {
     api.get('/units').then(r => setUnits(r.data.filter(u => u.unit_type === 'RES')))
   }, [])
 
+  // Загрузка ПУ при изменении фильтров
   useEffect(() => {
-    if (tab === 'create' && selectedUnit && selectedPower) {
-      loadPending()
+    if (tab === 'create' && selectedUnit) {
+      // Для Техприс нужна категория мощности
+      if (selectedStatus === 'TECHPRIS' && selectedPower) {
+        loadPending()
+      }
+      // Для Замен и ИЖЦ не нужна категория мощности
+      if (selectedStatus !== 'TECHPRIS') {
+        loadPending()
+      }
     } else if (tab === 'create') {
       setPendingItems([])
     }
   }, [tab, selectedStatus, selectedUnit, selectedPower])
 
+  // Обновление превью номера ТЗ
+  useEffect(() => {
+    if (selectedUnit) {
+      const needPower = selectedStatus === 'TECHPRIS'
+      if (needPower && !selectedPower) {
+        setPreviewTz('—')
+        return
+      }
+      
+      const params = { status: selectedStatus, unit_id: selectedUnit }
+      if (needPower) params.power_category = selectedPower
+      
+      api.get('/tz/next-number', { params }).then(r => {
+        setPreviewTz(r.data.preview)
+        if (!customSuffix) {
+          setCustomSuffix(r.data.next_suffix)
+        }
+      }).catch(() => setPreviewTz('—'))
+    } else {
+      setPreviewTz('—')
+    }
+  }, [selectedStatus, selectedUnit, selectedPower])
+
   const loadPending = () => {
-    const params = { status: selectedStatus, unit_id: selectedUnit, power_category: selectedPower }
+    const params = { status: selectedStatus, unit_id: selectedUnit }
+    if (selectedStatus === 'TECHPRIS' && selectedPower) {
+      params.power_category = selectedPower
+    }
     api.get('/tz/pending', { params }).then(r => setPendingItems(r.data))
   }
 
@@ -1925,14 +2000,24 @@ function TZPage() {
     a.click()
   }
 
+  // Получить превью номера ТЗ с учетом ручной корректировки
   const getPreviewTzNumber = () => {
-    if (!selectedUnit || !selectedPower) return '—'
+    if (!selectedUnit) return '—'
     const unit = units.find(u => u.id === parseInt(selectedUnit))
     if (!unit || !unit.short_code) return '—'
-    const now = new Date()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const year = String(now.getFullYear()).slice(-2)
-    return `${selectedPower}${unit.short_code}/${month}-${year}`
+    
+    let prefix = ''
+    if (selectedStatus === 'TECHPRIS') {
+      if (!selectedPower) return '—'
+      prefix = `ТП ${selectedPower}`
+    } else if (selectedStatus === 'ZAMENA') {
+      prefix = '522'
+    } else if (selectedStatus === 'IZHC') {
+      prefix = 'ИЖЦ'
+    }
+    
+    const suffix = customSuffix || '01-26'
+    return `${prefix} ${unit.short_code}/${suffix}`
   }
 
   // Переход к шагу 2 — загрузка материалов
@@ -1995,8 +2080,12 @@ function TZPage() {
 
   // Создать ТЗ (финальный шаг)
   const handleCreate = async () => {
-    if (!selectedUnit || !selectedPower || selectedItems.length === 0) {
-      alert('Выберите РЭС, категорию мощности и ПУ')
+    if (!selectedUnit || selectedItems.length === 0) {
+      alert('Выберите РЭС и ПУ')
+      return
+    }
+    if (selectedStatus === 'TECHPRIS' && !selectedPower) {
+      alert('Выберите категорию мощности')
       return
     }
     
@@ -2005,15 +2094,24 @@ function TZPage() {
     
     setLoading(true)
     try {
-      const r = await api.post('/tz/create', { 
+      const payload = { 
         item_ids: selectedItems, 
         unit_id: parseInt(selectedUnit),
-        power_category: parseInt(selectedPower)
-      })
+        status: selectedStatus
+      }
+      if (selectedStatus === 'TECHPRIS') {
+        payload.power_category = parseInt(selectedPower)
+      }
+      if (customSuffix) {
+        payload.custom_suffix = customSuffix
+      }
+      
+      const r = await api.post('/tz/create', payload)
       alert(`✅ Создано ТЗ: ${r.data.tz_number}`)
       setSelectedItems([])
       setStep(1)
       setMaterialsData([])
+      setCustomSuffix('')
       api.get('/tz/list').then(r => setTzList(r.data))
       loadPending()
     } catch (err) {
@@ -2038,7 +2136,19 @@ function TZPage() {
     return Object.values(totals)
   }
 
+  // Сброс при смене статуса
+  const handleStatusChange = (newStatus) => {
+    setSelectedStatus(newStatus)
+    setSelectedPower('')
+    setSelectedItems([])
+    setCustomSuffix('')
+    setPendingItems([])
+  }
+
   if (!isSueAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
+
+  const statusLabels = { TECHPRIS: 'Техприс', ZAMENA: 'Замена', IZHC: 'ИЖЦ' }
+  const needPowerCategory = selectedStatus === 'TECHPRIS'
 
   return (
     <div className="space-y-6">
@@ -2070,7 +2180,7 @@ function TZPage() {
                     <tr key={idx} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(tz.tz_number)}>
                       <td className="px-4 py-3">{expandedTz === tz.tz_number ? '▼' : '▶'}</td>
                       <td className="px-4 py-3 font-medium">{tz.tz_number}</td>
-                      <td className="px-4 py-3">{tz.status}</td>
+                      <td className="px-4 py-3">{statusLabels[tz.status] || tz.status}</td>
                       <td className="px-4 py-3">{tz.unit_name || '—'}</td>
                       <td className="px-4 py-3">{tz.count}</td>
                     </tr>
@@ -2117,42 +2227,66 @@ function TZPage() {
       {tab === 'create' && step === 1 && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border p-4 space-y-4">
+            {/* Фильтры */}
             <div className="flex flex-wrap gap-4">
-              <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="px-3 py-2 border rounded-lg">
+              <select value={selectedStatus} onChange={e => handleStatusChange(e.target.value)} className="px-3 py-2 border rounded-lg">
                 <option value="TECHPRIS">Техприс</option>
-                <option value="ZAMENA">Замена</option>
+                <option value="ZAMENA">Замена (522)</option>
                 <option value="IZHC">ИЖЦ</option>
               </select>
               <select value={selectedUnit} onChange={e => { setSelectedUnit(e.target.value); setSelectedItems([]) }} className="px-3 py-2 border rounded-lg">
                 <option value="">Выберите РЭС...</option>
                 {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
-              <select value={selectedPower} onChange={e => { setSelectedPower(e.target.value); setSelectedItems([]) }} className="px-3 py-2 border rounded-lg">
-                <option value="">Категория мощности...</option>
-                <option value="1">до 15 кВт (1)</option>
-                <option value="2">15-150 кВт (2)</option>
-                <option value="3">от 150 кВт (3)</option>
-              </select>
+              {needPowerCategory && (
+                <select value={selectedPower} onChange={e => { setSelectedPower(e.target.value); setSelectedItems([]) }} className="px-3 py-2 border rounded-lg">
+                  <option value="">Категория мощности...</option>
+                  <option value="1">до 15 кВт (1)</option>
+                  <option value="2">15-150 кВт (2)</option>
+                  <option value="3">от 150 кВт (3)</option>
+                </select>
+              )}
             </div>
             
-            <div className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
-              <div>
-                <span className="text-sm text-gray-600">Номер ТЗ: </span>
-                <span className="font-bold text-blue-700 text-lg">{getPreviewTzNumber()}</span>
+            {/* Номер ТЗ с возможностью корректировки */}
+            <div className="bg-blue-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center gap-4">
+                <div>
+                  <span className="text-sm text-gray-600">Номер ТЗ: </span>
+                  <span className="font-bold text-blue-700 text-lg">{getPreviewTzNumber()}</span>
+                </div>
               </div>
-              <button 
-                onClick={goToMaterials} 
-                disabled={loadingMaterials || selectedItems.length === 0 || !selectedUnit || !selectedPower} 
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
-              >
-                {loadingMaterials ? 'Загрузка...' : `Далее → Материалы (${selectedItems.length})`}
-              </button>
+              
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-gray-600">Окончание (можно изменить):</label>
+                <input 
+                  type="text" 
+                  value={customSuffix} 
+                  onChange={e => setCustomSuffix(e.target.value)}
+                  placeholder="01-26"
+                  className="px-3 py-1 border rounded-lg w-24 text-center"
+                />
+                <span className="text-xs text-gray-400">Формат: ММ-ГГ или свой</span>
+              </div>
+              
+              <div className="flex justify-end">
+                <button 
+                  onClick={goToMaterials} 
+                  disabled={loadingMaterials || selectedItems.length === 0 || !selectedUnit || (needPowerCategory && !selectedPower)} 
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                >
+                  {loadingMaterials ? 'Загрузка...' : `Далее → Материалы (${selectedItems.length})`}
+                </button>
+              </div>
             </div>
           </div>
 
+          {/* Таблица ПУ */}
           <div className="bg-white rounded-xl border overflow-hidden">
-            {!selectedUnit || !selectedPower ? (
-              <div className="p-8 text-center text-gray-500">Выберите РЭС и категорию мощности</div>
+            {!selectedUnit || (needPowerCategory && !selectedPower) ? (
+              <div className="p-8 text-center text-gray-500">
+                {needPowerCategory ? 'Выберите РЭС и категорию мощности' : 'Выберите РЭС'}
+              </div>
             ) : pendingItems.length === 0 ? (
               <div className="p-8 text-center text-gray-500">Нет ПУ без ТЗ для выбранных параметров</div>
             ) : (
@@ -2169,7 +2303,7 @@ function TZPage() {
                       <th className="w-10 px-4 py-3"></th>
                       <th className="px-4 py-3 text-left">Серийный номер</th>
                       <th className="px-4 py-3 text-left">Тип</th>
-                      <th className="px-4 py-3 text-left">Мощность</th>
+                      {needPowerCategory && <th className="px-4 py-3 text-left">Мощность</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -2180,7 +2314,7 @@ function TZPage() {
                         </td>
                         <td className="px-4 py-3 font-mono">{i.serial_number}</td>
                         <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{i.pu_type || '—'}</td>
-                        <td className="px-4 py-3">{i.power ? `${i.power} кВт` : '—'}</td>
+                        {needPowerCategory && <td className="px-4 py-3">{i.power ? `${i.power} кВт` : '—'}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -2211,27 +2345,26 @@ function TZPage() {
           </div>
 
           {/* Список ПУ с материалами */}
-{/* Список ПУ с материалами */}
-{materialsData.map((pu, idx) => (
-  <div key={pu.id} className="bg-white rounded-xl border overflow-hidden">
-    <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-      <div>
-        <span className="font-medium">{idx + 1}. {pu.serial_number}</span>
-        <span className="text-gray-500 text-sm ml-3">{pu.pu_type || ''}</span>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-gray-400">
-          ТТР: {[pu.ttr_ou, pu.ttr_ol, pu.ttr_or].filter(Boolean).join(', ') || '—'}
-        </span>
-        {pu.va_nominal_name && (
-          <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">⚡ ВА: {pu.va_nominal_name}</span>
-        )}
-        {pu.tt_nominal_name && (
-          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">🔌 ТТ: {pu.tt_nominal_name}</span>
-        )}
-        <button onClick={() => saveSinglePU(pu.id)} className="px-3 py-1 bg-blue-500 text-white rounded text-sm">💾 Сохранить</button>
-      </div>
-    </div>
+          {materialsData.map((pu, idx) => (
+            <div key={pu.id} className="bg-white rounded-xl border overflow-hidden">
+              <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                <div>
+                  <span className="font-medium">{idx + 1}. {pu.serial_number}</span>
+                  <span className="text-gray-500 text-sm ml-3">{pu.pu_type || ''}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">
+                    ТТР: {[pu.ttr_ou, pu.ttr_ol, pu.ttr_or].filter(Boolean).join(', ') || '—'}
+                  </span>
+                  {pu.va_nominal_name && (
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">⚡ ВА: {pu.va_nominal_name}</span>
+                  )}
+                  {pu.tt_nominal_name && (
+                    <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">🔌 ТТ: {pu.tt_nominal_name}</span>
+                  )}
+                  <button onClick={() => saveSinglePU(pu.id)} className="px-3 py-1 bg-blue-500 text-white rounded text-sm">💾 Сохранить</button>
+                </div>
+              </div>
               
               {pu.materials.length === 0 ? (
                 <div className="p-4 text-center text-gray-500 text-sm">Нет материалов (не выбраны ТТР)</div>
@@ -2277,47 +2410,44 @@ function TZPage() {
           ))}
 
           {/* Итого по материалам */}
-          {/* Итого по материалам */}
-<div className="bg-green-50 rounded-xl border border-green-200 p-4">
-  <h4 className="font-semibold text-green-800 mb-3">📦 ИТОГО материалов</h4>
-  
-  {/* ВА и ТТ */}
-  {(materialsData.some(pu => pu.va_nominal_name) || materialsData.some(pu => pu.tt_nominal_name)) && (
-    <div className="mb-4 p-3 bg-white rounded-lg border">
-      <div className="text-sm font-medium text-gray-700 mb-2">⚡ Оборудование:</div>
-      <div className="flex flex-wrap gap-2">
-        {/* Группируем ВА по номиналам */}
-        {Object.entries(
-          materialsData
-            .filter(pu => pu.va_nominal_name)
-            .reduce((acc, pu) => {
-              acc[pu.va_nominal_name] = (acc[pu.va_nominal_name] || 0) + 1
-              return acc
-            }, {})
-        ).map(([name, count]) => (
-          <span key={`va-${name}`} className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-lg text-sm">
-            ВА {name}: <b>{count} шт</b>
-          </span>
-        ))}
-        {/* Группируем ТТ по номиналам */}
-        {Object.entries(
-          materialsData
-            .filter(pu => pu.tt_nominal_name)
-            .reduce((acc, pu) => {
-              acc[pu.tt_nominal_name] = (acc[pu.tt_nominal_name] || 0) + 1
-              return acc
-            }, {})
-        ).map(([name, count]) => (
-          <span key={`tt-${name}`} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm">
-            ТТ {name}: <b>{count} шт</b>
-          </span>
-        ))}
-      </div>
-    </div>
-  )}
-  
-  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-    {getTotalMaterials().map((m, idx) => (
+          <div className="bg-green-50 rounded-xl border border-green-200 p-4">
+            <h4 className="font-semibold text-green-800 mb-3">📦 ИТОГО материалов</h4>
+            
+            {/* ВА и ТТ */}
+            {(materialsData.some(pu => pu.va_nominal_name) || materialsData.some(pu => pu.tt_nominal_name)) && (
+              <div className="mb-4 p-3 bg-white rounded-lg border">
+                <div className="text-sm font-medium text-gray-700 mb-2">⚡ Оборудование:</div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(
+                    materialsData
+                      .filter(pu => pu.va_nominal_name)
+                      .reduce((acc, pu) => {
+                        acc[pu.va_nominal_name] = (acc[pu.va_nominal_name] || 0) + 1
+                        return acc
+                      }, {})
+                  ).map(([name, count]) => (
+                    <span key={`va-${name}`} className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-lg text-sm">
+                      ВА {name}: <b>{count} шт</b>
+                    </span>
+                  ))}
+                  {Object.entries(
+                    materialsData
+                      .filter(pu => pu.tt_nominal_name)
+                      .reduce((acc, pu) => {
+                        acc[pu.tt_nominal_name] = (acc[pu.tt_nominal_name] || 0) + 1
+                        return acc
+                      }, {})
+                  ).map(([name, count]) => (
+                    <span key={`tt-${name}`} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm">
+                      ТТ {name}: <b>{count} шт</b>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {getTotalMaterials().map((m, idx) => (
                 <div key={idx} className="bg-white rounded-lg p-3 border">
                   <div className="font-medium text-sm">{m.name}</div>
                   <div className="text-lg font-bold text-green-700">{m.quantity} {m.unit}</div>
