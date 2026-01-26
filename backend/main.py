@@ -910,10 +910,12 @@ def get_items(
     search: Optional[str] = None, 
     status: Optional[str] = None, 
     unit_id: Optional[int] = None,
-    unit_type_filter: Optional[str] = None,  # all, res, esk
+    unit_type_filter: Optional[str] = None,
     contract: Optional[str] = None,
     ls: Optional[str] = None,
-    filter: Optional[str] = None,  # all, work, done
+    filter: Optional[str] = None,
+    sort_field: Optional[str] = None,
+    sort_dir: Optional[str] = 'desc',
     db: Session = Depends(get_db), 
     user: User = Depends(get_current_user)
 ):
@@ -963,7 +965,25 @@ def get_items(
         )
 
     total = q.count()
-    items = q.order_by(PUItem.created_at.desc()).offset((page-1)*size).limit(size).all()
+    
+    # Сортировка
+    sort_mapping = {
+        'serial_number': PUItem.serial_number,
+        'pu_type': PUItem.pu_type,
+        'status': PUItem.status,
+        'tz_number': PUItem.tz_number,
+        'request_number': PUItem.request_number,
+        'approval_status': PUItem.approval_status,
+        'created_at': PUItem.created_at,
+    }
+    
+    sort_column = sort_mapping.get(sort_field, PUItem.created_at)
+    if sort_dir == 'asc':
+        q = q.order_by(sort_column.asc())
+    else:
+        q = q.order_by(sort_column.desc())
+    
+    items = q.offset((page-1)*size).limit(size).all()
     
     return {
         "items": [{
@@ -1331,6 +1351,7 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
     
     count = 0
     skipped_duplicates = 0
+    duplicate_serials = []
     for _, row in df.iterrows():
         serial = str(row.get(serial_col, '')).strip()
         if not serial or serial == 'nan':
@@ -1340,6 +1361,7 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
         existing = db.query(PUItem).filter(PUItem.serial_number == serial).first()
         if existing:
             skipped_duplicates += 1
+            duplicate_serials.append(serial)
             continue
         
         pu_type = str(row.get(type_col, '')).strip() if type_col else None
@@ -1372,12 +1394,13 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
     register.items_count = count
     db.commit()
     return {
-    "id": register.id, 
-    "filename": register.filename, 
-    "items_count": count, 
-    "skipped_duplicates": skipped_duplicates,
-    "uploaded_at": register.uploaded_at
-}
+        "id": register.id, 
+        "filename": register.filename, 
+        "items_count": count, 
+        "skipped_duplicates": skipped_duplicates,
+        "duplicate_serials": duplicate_serials[:20],  # Первые 20 для показа
+        "uploaded_at": register.uploaded_at
+    }
 
 @app.post("/api/pu/move")
 def move_items(req: MoveReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -2776,13 +2799,14 @@ def get_pending_for_tz(
     if unit_id:
         q = q.filter(PUItem.current_unit_id == unit_id)
     
-    # Фильтр по категории мощности
-    if power_category == 1:
-        q = q.filter((PUItem.power == None) | (PUItem.power < 15))
-    elif power_category == 2:
-        q = q.filter(PUItem.power >= 15, PUItem.power < 150)
-    elif power_category == 3:
-        q = q.filter(PUItem.power >= 150)
+    # Фильтр по категории мощности ТОЛЬКО для Техприс
+    if status == 'TECHPRIS' and power_category:
+        if power_category == 1:
+            q = q.filter((PUItem.power == None) | (PUItem.power < 15))
+        elif power_category == 2:
+            q = q.filter(PUItem.power >= 15, PUItem.power < 150)
+        elif power_category == 3:
+            q = q.filter(PUItem.power >= 150)
     
     # Только РЭС
     res_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.RES)
@@ -2804,18 +2828,35 @@ def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(ge
     
     item_ids = data["item_ids"]
     unit_id = data["unit_id"]  # РЭС
-    power_category = data["power_category"]  # 1, 2 или 3
+    status = data["status"]  # TECHPRIS, ZAMENA, IZHC
+    power_category = data.get("power_category")  # Только для Техприс
+    custom_suffix = data.get("custom_suffix")  # Ручная корректировка окончания
     
     # Получаем букву РЭС
     unit = db.query(Unit).filter(Unit.id == unit_id).first()
     if not unit or not unit.short_code:
         raise HTTPException(400, "РЭС не найден или не указан код")
     
-    # Формируем номер: 1а/01-25
+    # Формируем префикс в зависимости от типа
+    if status == 'TECHPRIS':
+        prefix = f"ТП {power_category}"
+    elif status == 'ZAMENA':
+        prefix = "522"
+    elif status == 'IZHC':
+        prefix = "ИЖЦ"
+    else:
+        prefix = status
+    
+    # Формируем номер
     now = datetime.utcnow()
-    month = now.strftime("%m")
-    year = now.strftime("%y")
-    tz_number = f"{power_category}{unit.short_code}/{month}-{year}"
+    if custom_suffix:
+        suffix = custom_suffix
+    else:
+        month = now.strftime("%m")
+        year = now.strftime("%y")
+        suffix = f"{month}-{year}"
+    
+    tz_number = f"{prefix} {unit.short_code}/{suffix}"
     
     # Проверяем уникальность
     existing = db.query(PUItem).filter(PUItem.tz_number == tz_number).first()
@@ -2826,6 +2867,46 @@ def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(ge
     db.commit()
     
     return {"created": updated, "tz_number": tz_number}
+
+@app.get("/api/tz/next-number")
+def get_next_tz_number(
+    status: str,
+    unit_id: int,
+    power_category: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Получить следующий номер ТЗ"""
+    unit = db.query(Unit).filter(Unit.id == unit_id).first()
+    if not unit or not unit.short_code:
+        return {"next_suffix": "", "preview": "—"}
+    
+    now = datetime.utcnow()
+    month = now.strftime("%m")
+    year = now.strftime("%y")
+    
+    # Формируем префикс
+    if status == 'TECHPRIS':
+        prefix = f"ТП {power_category}"
+    elif status == 'ZAMENA':
+        prefix = "522"
+    elif status == 'IZHC':
+        prefix = "ИЖЦ"
+    else:
+        prefix = status
+    
+    # Ищем последний номер с таким префиксом
+    pattern = f"{prefix} {unit.short_code}/%"
+    last_tz = db.query(PUItem).filter(
+        PUItem.tz_number.like(pattern)
+    ).order_by(PUItem.id.desc()).first()
+    
+    next_suffix = f"{month}-{year}"
+    
+    return {
+        "next_suffix": next_suffix,
+        "preview": f"{prefix} {unit.short_code}/{next_suffix}"
+    }
 
 @app.get("/api/requests/list")
 def get_requests_list(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
