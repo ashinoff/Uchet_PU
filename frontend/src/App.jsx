@@ -2050,7 +2050,7 @@ const exportToExcel = async () => {
     }
     
     const suffix = customSuffix || '01-26'
-    return `${prefix} ${unit.short_code}/${suffix}`
+    return `${prefix} ${unit.short_code}-${suffix}`
   }
 
   // Переход к шагу 2 — загрузка материалов
