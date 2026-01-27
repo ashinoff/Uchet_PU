@@ -3017,15 +3017,15 @@ def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db
         wb.save(output)
         output.seek(0)
         
-        # Безопасное имя файла
-        safe_tz = tz_number.replace("/", "_").replace("\\", "_").replace(" ", "_")
-        filename_rus = f"ТЗ_{safe_tz}.xlsx"
-        
+       # Безопасное имя файла (ASCII для filename=, UTF-8 для filename*=)
+        safe_tz_ascii = re.sub(r'[^a-zA-Z0-9_\-]', '_', tz_number)  # Только ASCII
+        filename_rus = f"ТЗ_{tz_number.replace('/', '-')}.xlsx"
+
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f"attachment; filename=\"TZ_{safe_tz}.xlsx\"; filename*=UTF-8''{quote(filename_rus)}"
+                "Content-Disposition": f"attachment; filename=\"TZ_{safe_tz_ascii}.xlsx\"; filename*=UTF-8''{quote(filename_rus)}"
             }
         )
         
