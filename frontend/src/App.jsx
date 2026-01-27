@@ -2856,8 +2856,11 @@ const exportToExcel = async () => {
     <tr key={i.id} className="border-t hover:bg-gray-50">
       <td className="px-3 py-3">
         <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => setSelectedItems(s => s.includes(i.id) ? s.filter(x => x !== i.id) : [...s, i.id])} />
-      </td>
+        </td>
+        <td className="px-3 py-3">{i.unit_name || i.res_name || '—'}</td>
         <td className="px-3 py-3 font-mono">{i.serial_number}</td>
+        <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
+        <td className="px-3 py-3">{i.consumer || '—'}</td>
         <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
         <td className="px-3 py-3">{i.consumer || '—'}</td>
         <td className="px-3 py-3 text-center">{i.faza || '—'}</td>
