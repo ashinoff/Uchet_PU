@@ -3082,13 +3082,14 @@ def get_pending_for_tz(
         q = q.filter(PUItem.current_unit_id == unit_id)
     
     # Фильтр по категории мощности ТОЛЬКО для Техприс
+
     if status == 'TECHPRIS' and power_category:
         if power_category == 1:
-            q = q.filter((PUItem.power == None) | (PUItem.power < 15))
+            q = q.filter((PUItem.power == None) | (PUItem.power <= 15))
         elif power_category == 2:
-            q = q.filter(PUItem.power >= 15, PUItem.power < 150)
+            q = q.filter(PUItem.power > 15, PUItem.power <= 150)
         elif power_category == 3:
-            q = q.filter(PUItem.power >= 150)
+            q = q.filter(PUItem.power > 150)
     
     # Только РЭС
     res_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.RES)
