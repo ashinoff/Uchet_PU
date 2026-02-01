@@ -1096,6 +1096,12 @@ if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
 }
 
 const loadMaterials = async (overrideTtr = null) => {
+
+    if (!overrideTtr) {
+    console.log('loadMaterials: ignored call without overrideTtr')
+    return
+  }
+  
   // Если передали override — используем его, иначе берём из item
   const ttrOuId = overrideTtr ? overrideTtr.ttr_ou_id : item?.ttr_ou_id
   const ttrOlId = overrideTtr ? overrideTtr.ttr_ol_id : item?.ttr_ol_id  
