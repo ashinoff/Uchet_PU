@@ -385,7 +385,7 @@ function PUListPage({ filter = 'all' }) {
   useEffect(() => {
     const timer = setTimeout(() => {
       setPage(1)
-      load()
+      
     }, 500) // 500мс задержка
   
     return () => clearTimeout(timer)
