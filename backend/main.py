@@ -2680,7 +2680,6 @@ def save_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = 
     
     # Добавляем новые
         for m in materials:
-            if m.get("used", True):
                 pm = PUMaterial(
                     pu_item_id=item_id,
                     material_id=m["material_id"],
