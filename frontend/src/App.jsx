@@ -1476,16 +1476,29 @@ const updateMaterialQty = (materialId, qty) => {
           <span className="text-sm font-medium">ВА (автомат)</span>
         </label>
         {item?.has_va && (
-          <select 
-            value={item?.va_nominal_id || ''} 
-            onChange={e => setItem(prev => ({ ...prev, va_nominal_id: parseInt(e.target.value) || null }))}
-            className="w-full px-3 py-2 border rounded-lg text-sm"
-          >
-            <option value="">Выберите номинал ВА...</option>
-            {vaNominals.map(v => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
-          </select>
+          <div className="space-y-2">
+            <select 
+              value={item?.va_nominal_id || ''} 
+              onChange={e => setItem(prev => ({ ...prev, va_nominal_id: parseInt(e.target.value) || null }))}
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+            >
+              <option value="">Выберите номинал ВА...</option>
+              {vaNominals.map(v => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Кол-во:</label>
+              <select
+                value={item?.va_quantity || 1}
+                onChange={e => setItem(prev => ({ ...prev, va_quantity: parseInt(e.target.value) }))}
+                className="px-3 py-1 border rounded-lg text-sm w-20"
+              >
+                <option value={1}>1 шт</option>
+                <option value={2}>2 шт</option>
+              </select>
+            </div>
+          </div>
         )}
       </div>
       
@@ -2062,7 +2075,13 @@ const exportToExcel = async () => {
     setLoadingMaterials(true)
     try {
       const r = await api.post('/pu/items/materials-bulk', { item_ids: selectedItems })
-      setMaterialsData(r.data)
+    // Добавляем флаги для управления ВА/ТТ
+    const dataWithFlags = r.data.map(pu => ({
+      ...pu,
+      va_used: pu.has_va,  // по умолчанию используем если есть
+      tt_used: pu.has_tt   // по умолчанию используем если есть
+    }))
+setMaterialsData(dataWithFlags)
       setStep(2)
     } catch (err) {
       alert('Ошибка загрузки материалов: ' + (err.response?.data?.detail || err.message))
@@ -2362,26 +2381,27 @@ const exportToExcel = async () => {
         </div>
       )}
 
-      {tab === 'create' && step === 2 && (
-        <div className="space-y-4">
-          {/* Шапка */}
-          <div className="bg-white rounded-xl border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Шаг 2: Корректировка материалов</h3>
-                <p className="text-sm text-gray-500">ТЗ: {getPreviewTzNumber()} • Выбрано ПУ: {materialsData.length}</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setStep(1)} className="px-4 py-2 bg-gray-100 rounded-lg">← Назад</button>
-                <button onClick={saveAllMaterials} className="px-4 py-2 bg-green-600 text-white rounded-lg">💾 Сохранить все</button>
-                <button onClick={handleCreate} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-                  {loading ? 'Создание...' : '✅ Создать ТЗ'}
-                </button>
-              </div>
-            </div>
-          </div>
+{tab === 'create' && step === 2 && (
+  <div className="flex flex-col h-[calc(100vh-200px)]">
+    {/* Шапка */}
+    <div className="bg-white rounded-xl border p-4 mb-4 flex-shrink-0">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold">Шаг 2: Корректировка материалов</h3>
+          <p className="text-sm text-gray-500">ТЗ: {getPreviewTzNumber()} • Выбрано ПУ: {materialsData.length}</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setStep(1)} className="px-4 py-2 bg-gray-100 rounded-lg">← Назад</button>
+          <button onClick={saveAllMaterials} className="px-4 py-2 bg-green-600 text-white rounded-lg">💾 Сохранить все</button>
+          <button onClick={handleCreate} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+            {loading ? 'Создание...' : '✅ Создать ТЗ'}
+          </button>
+        </div>
+      </div>
+    </div>
 
           {/* Список ПУ с материалами */}
+    <div className="flex-1 overflow-y-auto space-y-4 pb-4">
           {materialsData.map((pu, idx) => (
             <div key={pu.id} className="bg-white rounded-xl border overflow-hidden">
               <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
@@ -2394,11 +2414,33 @@ const exportToExcel = async () => {
                     ТТР: {[pu.ttr_ou, pu.ttr_ol, pu.ttr_or].filter(Boolean).join(', ') || '—'}
                   </span>
                   {pu.va_nominal_name && (
-                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">⚡ ВА: {pu.va_nominal_name}</span>
-                  )}
-                  {pu.tt_nominal_name && (
-                    <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">🔌 ТТ: {pu.tt_nominal_name}</span>
-                  )}
+  <label className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs cursor-pointer">
+    <input 
+      type="checkbox" 
+      checked={pu.va_used !== false} 
+      onChange={() => {
+        setMaterialsData(prev => prev.map(p => 
+          p.id === pu.id ? { ...p, va_used: !p.va_used } : p
+        ))
+      }}
+    />
+    ⚡ ВА: {pu.va_nominal_name} {pu.va_quantity > 1 ? `(${pu.va_quantity} шт)` : ''}
+  </label>
+)}
+{pu.tt_nominal_name && (
+  <label className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs cursor-pointer">
+    <input 
+      type="checkbox" 
+      checked={pu.tt_used !== false} 
+      onChange={() => {
+        setMaterialsData(prev => prev.map(p => 
+          p.id === pu.id ? { ...p, tt_used: !p.tt_used } : p
+        ))
+      }}
+    />
+    🔌 ТТ: {pu.tt_nominal_name}
+  </label>
+)}
                   <button onClick={() => saveSinglePU(pu.id)} className="px-3 py-1 bg-blue-500 text-white rounded text-sm">💾 Сохранить</button>
                 </div>
               </div>
@@ -2445,9 +2487,9 @@ const exportToExcel = async () => {
               )}
             </div>
           ))}
-
+      </div>
           {/* Итого по материалам */}
-          <div className="bg-green-50 rounded-xl border border-green-200 p-4">
+          <div className="flex-shrink-0 bg-green-50 rounded-xl border border-green-200 p-4 mt-4 sticky bottom-0 shadow-lg">
             <h4 className="font-semibold text-green-800 mb-3">📦 ИТОГО материалов</h4>
             
             {/* ВА и ТТ */}
@@ -2457,9 +2499,10 @@ const exportToExcel = async () => {
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(
                     materialsData
-                      .filter(pu => pu.va_nominal_name)
+                      .filter(pu => pu.va_nominal_name && pu.va_used !== false)
                       .reduce((acc, pu) => {
-                        acc[pu.va_nominal_name] = (acc[pu.va_nominal_name] || 0) + 1
+                        const qty = pu.va_quantity || 1
+                        acc[pu.va_nominal_name] = (acc[pu.va_nominal_name] || 0) + qty
                         return acc
                       }, {})
                   ).map(([name, count]) => (
@@ -2469,11 +2512,11 @@ const exportToExcel = async () => {
                   ))}
                   {Object.entries(
                     materialsData
-                      .filter(pu => pu.tt_nominal_name)
+                      .filter(pu => pu.tt_nominal_name && pu.tt_used !== false)
                       .reduce((acc, pu) => {
-                        acc[pu.tt_nominal_name] = (acc[pu.tt_nominal_name] || 0) + 1
-                        return acc
-                      }, {})
+                      acc[pu.tt_nominal_name] = (acc[pu.tt_nominal_name] || 0) + 1
+                      return acc
+                    }, {})
                   ).map(([name, count]) => (
                     <span key={`tt-${name}`} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm">
                       ТТ {name}: <b>{count} шт</b>
