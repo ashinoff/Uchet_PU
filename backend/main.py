@@ -2670,15 +2670,15 @@ def save_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = 
     for item_data in items_data:
         item_id = item_data.get("item_id")
         materials = item_data.get("materials", [])
-        
+    
         item = db.query(PUItem).filter(PUItem.id == item_id).first()
         if not item:
             continue
-        
+    
         # Удаляем старые записи
         db.query(PUMaterial).filter(PUMaterial.pu_item_id == item_id).delete()
-        
-        # Добавляем новые
+    
+    # Добавляем новые
         for m in materials:
             if m.get("used", True):
                 pm = PUMaterial(
@@ -2688,7 +2688,19 @@ def save_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = 
                     used=m.get("used", True)
                 )
                 db.add(pm)
-        
+    
+    # Сохраняем ВА и ТТ
+        va_used = item_data.get("va_used")
+        va_quantity = item_data.get("va_quantity")
+        tt_used = item_data.get("tt_used")
+    
+        if va_used is not None:
+            item.has_va = va_used
+        if va_quantity is not None:
+            item.va_quantity = va_quantity
+        if tt_used is not None:
+            item.has_tt = tt_used
+    
         item.materials_used = True
         saved += 1
     
