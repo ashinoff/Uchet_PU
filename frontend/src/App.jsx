@@ -1081,7 +1081,12 @@ if (field === 'smr_executor' && value === 'РСК') {
 
 // Загружаем материалы при выборе ТТР
 if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
-  loadMaterials()
+  // Передаём актуальные значения из newItem, а не из старого item
+  loadMaterials({
+    ttr_ou_id: newItem.ttr_ou_id,
+    ttr_ol_id: newItem.ttr_ol_id,
+    ttr_or_id: newItem.ttr_or_id
+  })
 }
 
   // Загружаем материалы при выборе ТТР
@@ -1090,10 +1095,11 @@ if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
   }
 }
 
-const loadMaterials = async () => {
-  const ttrOuId = item?.ttr_ou_id
-  const ttrOlId = item?.ttr_ol_id  
-  const ttrOrId = item?.ttr_or_id
+const loadMaterials = async (overrideTtr = null) => {
+  // Если передали override — используем его, иначе берём из item
+  const ttrOuId = overrideTtr ? overrideTtr.ttr_ou_id : item?.ttr_ou_id
+  const ttrOlId = overrideTtr ? overrideTtr.ttr_ol_id : item?.ttr_ol_id  
+  const ttrOrId = overrideTtr ? overrideTtr.ttr_or_id : item?.ttr_or_id
   
   if (!ttrOuId && !ttrOlId && !ttrOrId) {
     setMaterials([])
