@@ -1096,6 +1096,7 @@ const loadMaterials = async (overrideTtr = null) => {
   const ttrOrId = overrideTtr ? overrideTtr.ttr_or_id : item?.ttr_or_id
 
   console.log('loadMaterials called:', { overrideTtr, ttrOuId, ttrOlId, ttrOrId })
+  console.trace('Call stack:')
   
   if (!ttrOuId && !ttrOlId && !ttrOrId) {
     setMaterials([])
