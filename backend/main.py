@@ -6,7 +6,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Que
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum as SQLEnum, Float, Date, or_
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
 from sqlalchemy.sql import func
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
@@ -922,7 +922,7 @@ def get_items(
     user: User = Depends(get_current_user)
 ):
     visible = get_visible_units(user, db)
-    q = db.query(PUItem)
+    q = db.query(PUItem).options(joinedload(PUItem.current_unit))
     
     if is_lab_user(user):
         regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
@@ -1018,7 +1018,7 @@ def export_pu_items(
     """Выгрузка реестра ПУ в Excel"""
     try:
         visible = get_visible_units(user, db)
-        q = db.query(PUItem)
+        q = db.query(PUItem).options(joinedload(PUItem.current_unit))
         
         # Те же фильтры что и в get_items
         if is_lab_user(user):
@@ -2020,7 +2020,7 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         else:
             items = []
     else:
-        items = db.query(PUItem).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
+        items = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
     
     def get_res_name(esk_unit):
         if not esk_unit or not esk_unit.code:
@@ -2743,7 +2743,7 @@ def delete_pu_type(type_id: int, data: dict = None, db: Session = Depends(get_db
 @app.get("/api/tz/list")
 def get_tz_list(tz_type: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Список ТЗ"""
-    q = db.query(PUItem).filter(PUItem.tz_number != None, PUItem.tz_number != "")
+    q = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.tz_number != None, PUItem.tz_number != "")
     if tz_type:
         q = q.filter(PUItem.status == tz_type)
     
@@ -3043,7 +3043,7 @@ def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db
 @app.get("/api/tz/{tz_number}/items")
 def get_tz_items(tz_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Получить все ПУ по номеру ТЗ"""
-    items = db.query(PUItem).filter(PUItem.tz_number == tz_number).all()
+    items = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.tz_number == tz_number).all()
     return [{
      "id": i.id,
      "serial_number": i.serial_number,
@@ -3076,9 +3076,9 @@ def get_pending_for_tz(
     if not is_sue_admin(user):
         raise HTTPException(403, "Только СУЭ может формировать ТЗ")
     
-    q = db.query(PUItem).filter(
-        PUItem.status == status,
-        (PUItem.tz_number == None) | (PUItem.tz_number == "")
+    q = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
+    PUItem.status == status,
+    (PUItem.tz_number == None) | (PUItem.tz_number == "")
     )
     
     if unit_id:
@@ -3197,7 +3197,7 @@ def get_next_tz_number(
 @app.get("/api/requests/list")
 def get_requests_list(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Список заявок ЭСК"""
-    q = db.query(PUItem).filter(PUItem.request_number != None, PUItem.request_number != "")
+    q = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.request_number != None, PUItem.request_number != "")
     
     # ЭСК видит только свои заявки
     if is_esk_user(user) or is_esk_admin(user):
@@ -3223,7 +3223,7 @@ def get_requests_list(db: Session = Depends(get_db), user: User = Depends(get_cu
 @app.get("/api/requests/{request_number}/items")
 def get_request_items(request_number: str, request_contract: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Получить все ПУ по номеру заявки с расширенными данными"""
-    q = db.query(PUItem).filter(PUItem.request_number == request_number)
+    q = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.request_number == request_number)
     if request_contract:
         q = q.filter(PUItem.request_contract == request_contract)
     
@@ -3270,9 +3270,9 @@ def get_pending_for_request(unit_id: Optional[int] = None, db: Session = Depends
     if not is_esk_admin(user) and not is_esk_user(user):
         raise HTTPException(403, "Только ЭСК может формировать заявки")
     
-    q = db.query(PUItem).filter(
-        PUItem.approval_status == ApprovalStatus.APPROVED,
-        (PUItem.request_number == None) | (PUItem.request_number == "")
+    q = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
+    PUItem.approval_status == ApprovalStatus.APPROVED,
+    (PUItem.request_number == None) | (PUItem.request_number == "")
     )
     
     visible = get_visible_units(user, db)
@@ -3314,7 +3314,7 @@ def export_request_to_excel(
 ):
     """Выгрузка заявки в Excel"""
     try:
-        q = db.query(PUItem).filter(PUItem.request_number == request_number)
+        q = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.request_number == request_number)
         if request_contract:
             q = q.filter(PUItem.request_contract == request_contract)
         
