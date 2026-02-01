@@ -827,14 +827,14 @@ useEffect(() => {
 
 // Загружаем материалы при открытии карточки (если ТТР уже выбраны)
 useEffect(() => {
-  if (item && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
+  if (item && !loading && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
     loadMaterials({
       ttr_ou_id: item.ttr_ou_id,
       ttr_ol_id: item.ttr_ol_id,
       ttr_or_id: item.ttr_or_id
     })
   }
-}, [itemId])
+}, [item?.id, loading])
 
   // Автоформат договора с дефисами
   const formatContract = (value) => {
