@@ -814,13 +814,13 @@ useEffect(() => {
   api.get('/tt-nominals').then(r => setTtNominals(r.data))
 }, [itemId])
 
-useEffect(() => {
-  if (item && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
-    loadMaterials()
-  } else {
-    setMaterials([])
-  }
-}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id, itemId])
+//useEffect(() => {
+ // if (item && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
+ //   loadMaterials()
+//  } else {
+ //   setMaterials([])
+//  }
+//}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id, itemId])
 
   // Автоформат договора с дефисами
   const formatContract = (value) => {
