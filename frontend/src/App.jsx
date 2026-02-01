@@ -814,17 +814,14 @@ useEffect(() => {
   api.get('/tt-nominals').then(r => setTtNominals(r.data))
 }, [itemId])
 
-// Очищаем материалы когда ВСЕ ТТР сброшены
+// Очищаем материалы когда ВСЕ ТТР сброшены (с задержкой чтобы перекрыть левый вызов)
 useEffect(() => {
-  console.log('TTR changed:', { 
-    ttr_ou_id: item?.ttr_ou_id, 
-    ttr_ol_id: item?.ttr_ol_id, 
-    ttr_or_id: item?.ttr_or_id 
-  })
-  
   if (item && !item.ttr_ou_id && !item.ttr_ol_id && !item.ttr_or_id) {
-    console.log('All TTR are null - clearing materials')
-    setMaterials([])
+    const timer = setTimeout(() => {
+      console.log('Force clearing materials')
+      setMaterials([])
+    }, 200)
+    return () => clearTimeout(timer)
   }
 }, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id])
 
