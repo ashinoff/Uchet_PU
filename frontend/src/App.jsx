@@ -825,6 +825,17 @@ useEffect(() => {
   }
 }, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id])
 
+// Загружаем материалы при открытии карточки (если ТТР уже выбраны)
+useEffect(() => {
+  if (item && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
+    loadMaterials({
+      ttr_ou_id: item.ttr_ou_id,
+      ttr_ol_id: item.ttr_ol_id,
+      ttr_or_id: item.ttr_or_id
+    })
+  }
+}, [itemId])
+
   // Автоформат договора с дефисами
   const formatContract = (value) => {
     const digits = value.replace(/\D/g, '')
