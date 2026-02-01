@@ -814,13 +814,19 @@ useEffect(() => {
   api.get('/tt-nominals').then(r => setTtNominals(r.data))
 }, [itemId])
 
-//useEffect(() => {
- // if (item && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
- //   loadMaterials()
-//  } else {
- //   setMaterials([])
-//  }
-//}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id, itemId])
+// Очищаем материалы когда ВСЕ ТТР сброшены
+useEffect(() => {
+  console.log('TTR changed:', { 
+    ttr_ou_id: item?.ttr_ou_id, 
+    ttr_ol_id: item?.ttr_ol_id, 
+    ttr_or_id: item?.ttr_or_id 
+  })
+  
+  if (item && !item.ttr_ou_id && !item.ttr_ol_id && !item.ttr_or_id) {
+    console.log('All TTR are null - clearing materials')
+    setMaterials([])
+  }
+}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id])
 
   // Автоформат договора с дефисами
   const formatContract = (value) => {
