@@ -1089,12 +1089,6 @@ if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
   })
 }
 
-  // Загружаем материалы при выборе ТТР
-  if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
-    setTimeout(() => loadMaterials(), 100)
-  }
-}
-
 const loadMaterials = async (overrideTtr = null) => {
   // Если передали override — используем его, иначе берём из item
   const ttrOuId = overrideTtr ? overrideTtr.ttr_ou_id : item?.ttr_ou_id
