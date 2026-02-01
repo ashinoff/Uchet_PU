@@ -1068,7 +1068,21 @@ if (field === 'trubostoyka' && isEsk) {
   }
   
   setItem(newItem)
-  if (errors[field]) setErrors({ ...errors, [field]: null })
+if (errors[field]) setErrors({ ...errors, [field]: null })
+
+// Если сменили СМР на ЭСК — исключаем все материалы
+if (field === 'smr_executor' && value === 'ЭСК') {
+  setMaterials(prev => prev.map(m => ({ ...m, used: false })))
+}
+// Если сменили СМР на РСК — включаем все материалы обратно
+if (field === 'smr_executor' && value === 'РСК') {
+  setMaterials(prev => prev.map(m => ({ ...m, used: true })))
+}
+
+// Загружаем материалы при выборе ТТР
+if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
+  loadMaterials()
+}
 
   // Загружаем материалы при выборе ТТР
   if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
@@ -1097,21 +1111,35 @@ const loadMaterials = async () => {
     const r = await api.get(`/pu/items/${itemId}/materials?${params.toString()}`)
     
     // Если есть факт - используем его, иначе дефолты
-    if (r.data.facts && r.data.facts.length > 0) {
-      setMaterials(r.data.facts)
-    } else if (r.data.defaults && r.data.defaults.length > 0) {
-      // Преобразуем дефолты в формат с галочкой
-      setMaterials(r.data.defaults.map(d => ({
-        material_id: d.material_id,
-        material_name: d.material_name,
-        unit: d.unit,
-        quantity: d.quantity,
-        default_qty: d.quantity,
-        used: true
-      })))
-    } else {
-      setMaterials([])
-    }
+// Берём defaults как базу и накладываем facts если есть
+const defaults = r.data.defaults || []
+const facts = r.data.facts || []
+
+// Создаём map из facts для быстрого поиска
+const factsMap = {}
+facts.forEach(f => {
+  factsMap[f.material_id] = f
+})
+
+// Объединяем: берём все defaults, но если есть fact — используем его quantity/used
+const merged = defaults.map(d => {
+  const fact = factsMap[d.material_id]
+  return {
+    material_id: d.material_id,
+    material_name: d.material_name,
+    unit: d.unit,
+    quantity: fact ? fact.quantity : d.quantity,
+    default_qty: d.quantity,
+    used: fact ? fact.used : true
+  }
+})
+
+// Если СМР выполнил ЭСК — исключаем все материалы
+if (item?.smr_executor === 'ЭСК') {
+  setMaterials(merged.map(m => ({ ...m, used: false })))
+} else {
+  setMaterials(merged)
+}
   } catch (err) {
     console.error('Ошибка загрузки материалов:', err)
   }
@@ -2119,16 +2147,22 @@ setMaterialsData(dataWithFlags)
   }
 
   // Сохранить все материалы
-  const saveAllMaterials = async () => {
-    try {
-      await api.post('/pu/items/materials-bulk/save', {
-        items: materialsData.map(pu => ({ item_id: pu.id, materials: pu.materials }))
-      })
-      alert('✅ Все материалы сохранены')
-    } catch (err) {
-      alert('Ошибка: ' + (err.response?.data?.detail || err.message))
-    }
+const saveAllMaterials = async () => {
+  try {
+    await api.post('/pu/items/materials-bulk/save', {
+      items: materialsData.map(pu => ({ 
+        item_id: pu.id, 
+        materials: pu.materials,
+        va_used: pu.va_used,
+        va_quantity: pu.va_quantity || 1,
+        tt_used: pu.tt_used
+      }))
+    })
+    alert('✅ Все материалы сохранены')
+  } catch (err) {
+    alert('Ошибка: ' + (err.response?.data?.detail || err.message))
   }
+}
 
   // Создать ТЗ (финальный шаг)
   const handleCreate = async () => {
