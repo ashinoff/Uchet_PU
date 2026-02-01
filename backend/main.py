@@ -190,6 +190,7 @@ class PUItem(Base):
     # ВА и ТТ
     has_va = Column(Boolean, default=False)
     va_nominal_id = Column(Integer, ForeignKey("va_nominals.id"))
+    va_quantity = Column(Integer, default=1)
     has_tt = Column(Boolean, default=False)
     tt_nominal_id = Column(Integer, ForeignKey("tt_nominals.id"))
     
@@ -497,6 +498,7 @@ class PUCardUpdate(BaseModel):
     work_type_name: Optional[str] = None
     has_va: Optional[bool] = None
     va_nominal_id: Optional[int] = None
+    va_quantity: Optional[int] = None
     has_tt: Optional[bool] = None
     tt_nominal_id: Optional[int] = None
 
@@ -2647,6 +2649,7 @@ def get_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = D
             "ttr_or": item.ttr_or.code if item.ttr_or else None,
             "has_va": item.has_va,
             "va_nominal_name": item.va_nominal.name if item.va_nominal else None,
+            "va_quantity": item.va_quantity or 1,
             "has_tt": item.has_tt,
             "tt_nominal_name": item.tt_nominal.name if item.tt_nominal else None,
             "materials": materials
