@@ -1091,7 +1091,7 @@ if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
     ttr_or_id: newItem.ttr_or_id
   })
 }
-
+}
 const loadMaterials = async (overrideTtr = null) => {
 
     if (!overrideTtr) {
