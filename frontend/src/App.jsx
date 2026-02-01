@@ -1100,6 +1100,8 @@ const loadMaterials = async (overrideTtr = null) => {
   const ttrOuId = overrideTtr ? overrideTtr.ttr_ou_id : item?.ttr_ou_id
   const ttrOlId = overrideTtr ? overrideTtr.ttr_ol_id : item?.ttr_ol_id  
   const ttrOrId = overrideTtr ? overrideTtr.ttr_or_id : item?.ttr_or_id
+
+  console.log('loadMaterials called:', { overrideTtr, ttrOuId, ttrOlId, ttrOrId })
   
   if (!ttrOuId && !ttrOlId && !ttrOrId) {
     setMaterials([])
