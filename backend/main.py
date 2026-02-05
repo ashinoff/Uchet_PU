@@ -1438,6 +1438,9 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
                 naz_map = {'ижц': 'IZHC', 'техприс': 'TECHPRIS', 'замена': 'ZAMENA'}
                 naznachenie_val = naz_map.get(naz_raw, naz_raw.upper())
 
+        # Автоопределение фазности, форм-фактора, напряжения по типу ПУ
+        detected = detect_pu_type_params(pu_type, db) if pu_type else {}
+
         # По умолчанию статус СКЛАД
         item = PUItem(
             register_id=register.id,
@@ -1446,7 +1449,10 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
             target_unit_id=target_unit.id if target_unit else None,
             current_unit_id=target_unit.id if target_unit else None,
             status=PUStatus.SKLAD,
-            naznachenie=naznachenie_val
+            naznachenie=naznachenie_val,
+            faza=detected.get('faza'),
+            form_factor=detected.get('form_factor'),
+            voltage=detected.get('voltage')
         )
         db.add(item)
         count += 1
@@ -1461,6 +1467,38 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
         "duplicate_serials": duplicate_serials[:20],  # Первые 20 для показа
         "uploaded_at": register.uploaded_at
     }
+
+@app.post("/api/pu/auto-fill-faza")
+def auto_fill_faza(admin_code: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Массовое автозаполнение фазности по справочнику типов ПУ"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ")
+    if admin_code != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    items = db.query(PUItem).filter(
+        PUItem.faza == None,
+        PUItem.pu_type != None
+    ).all()
+    
+    updated = 0
+    for item in items:
+        detected = detect_pu_type_params(item.pu_type, db)
+        changed = False
+        if detected.get('faza'):
+            item.faza = detected['faza']
+            changed = True
+        if detected.get('form_factor') and not item.form_factor:
+            item.form_factor = detected['form_factor']
+            changed = True
+        if detected.get('voltage') and not item.voltage:
+            item.voltage = detected['voltage']
+            changed = True
+        if changed:
+            updated += 1
+    
+    db.commit()
+    return {"updated": updated, "total_checked": len(items)}
 
 @app.post("/api/pu/import-naznachenie")
 async def import_naznachenie(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
