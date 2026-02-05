@@ -4401,19 +4401,26 @@ function BulkUpdateTab() {
   const [result, setResult] = useState(null)
   const [mode, setMode] = useState('types') // types или move
 
-  const handleUpload = async () => {
-    if (!file || !adminCode) {
-      alert('Выберите файл и введите код администратора')
+ const handleUpload = async () => {
+    if (mode !== 'autofaza' && !file) {
+      alert('Выберите файл')
+      return
+    }
+    if (!adminCode) {
+      alert('Введите код администратора')
       return
     }
 
     setLoading(true)
     const formData = new FormData()
-    formData.append('file', file)
+    if (file) formData.append('file', file)
     formData.append('admin_code', adminCode)
 
     try {
-      const endpoint = mode === 'types' ? '/pu/update-types-bulk' : mode === 'naznachenie' ? '/pu/import-naznachenie' : mode === 'autofaza' ? '/pu/auto-fill-faza' : '/pu/move-bulk'
+      const endpoint = mode === 'types' ? '/pu/update-types-bulk' 
+        : mode === 'naznachenie' ? '/pu/import-naznachenie' 
+        : mode === 'autofaza' ? '/pu/auto-fill-faza' 
+        : '/pu/move-bulk'
       const r = await api.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
