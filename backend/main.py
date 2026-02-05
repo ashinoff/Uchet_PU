@@ -27,6 +27,7 @@ from fastapi.responses import StreamingResponse
 from urllib.parse import quote
 
 
+
 # ==================== КОНФИГ ====================
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://user:pass@localhost/pu_system"
@@ -855,7 +856,7 @@ def get_analysis(
                         fazas = faza_split if ff == 'split' else faza_classic
                         ff_data = {}
                         for fz in fazas:
-                            qq = q.filter(PUItem.naznachenie == naz, PUItem.form_factor == ff, PUItem.faza == fz)
+                            qq = q.filter(PUItem.status == naz, PUItem.form_factor == ff, PUItem.faza == fz)
                             if section_filter:
                                 qq = section_filter(qq)
                             ff_data[fz] = qq.count()
@@ -1459,6 +1460,51 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
         "skipped_duplicates": skipped_duplicates,
         "duplicate_serials": duplicate_serials[:20],  # Первые 20 для показа
         "uploaded_at": register.uploaded_at
+    }
+
+@app.post("/api/pu/import-naznachenie")
+async def import_naznachenie(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Массовая загрузка назначения ПУ из Excel (колонка 1 — номер ПУ, колонка 2 — назначение)"""
+    if not is_sue_admin(user) and not is_lab_user(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    contents = await file.read()
+    df = pd.read_excel(io.BytesIO(contents), header=None)
+    
+    updated = 0
+    not_found = []
+    errors = []
+    naz_map = {'ижц': 'IZHC', 'техприс': 'TECHPRIS', 'замена': 'ZAMENA', 
+               'izhc': 'IZHC', 'techpris': 'TECHPRIS', 'zamena': 'ZAMENA'}
+    
+    for idx, row in df.iterrows():
+        serial = str(row.iloc[0]).strip()
+        if not serial or serial == 'nan':
+            continue
+        
+        naz_raw = str(row.iloc[1]).strip().lower() if len(row) > 1 and pd.notna(row.iloc[1]) else ''
+        if not naz_raw or naz_raw == 'nan':
+            continue
+        
+        naz_value = naz_map.get(naz_raw)
+        if not naz_value:
+            errors.append(f"{serial}: неизвестное назначение '{row.iloc[1]}'")
+            continue
+        
+        item = db.query(PUItem).filter(PUItem.serial_number == serial).first()
+        if not item:
+            not_found.append(serial)
+            continue
+        
+        item.naznachenie = naz_value
+        updated += 1
+    
+    db.commit()
+    return {
+        "updated": updated,
+        "not_found_count": len(not_found),
+        "not_found": not_found[:20],
+        "errors": errors[:20]
     }
 
 @app.post("/api/pu/move")
