@@ -1548,6 +1548,55 @@ async def import_naznachenie(file: UploadFile = File(...), db: Session = Depends
         "errors": errors[:20]
     }
 
+@app.post("/api/pu/import-formfactor")
+async def import_formfactor(file: UploadFile = File(...), admin_code: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Массовая загрузка форм-фактора ПУ (сплит/классика)"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ")
+    if admin_code != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    contents = await file.read()
+    df = pd.read_excel(io.BytesIO(contents), header=None)
+    
+    updated = 0
+    not_found_pu = []
+    errors = []
+    total_rows = 0
+    ff_map = {'сплит': 'split', 'классика': 'classic', 
+              'split': 'split', 'classic': 'classic'}
+    
+    for idx, row in df.iterrows():
+        serial = str(row.iloc[0]).strip()
+        if not serial or serial == 'nan':
+            continue
+        total_rows += 1
+        
+        ff_raw = str(row.iloc[1]).strip().lower() if len(row) > 1 and pd.notna(row.iloc[1]) else ''
+        if not ff_raw or ff_raw == 'nan':
+            continue
+        
+        ff_value = ff_map.get(ff_raw)
+        if not ff_value:
+            errors.append(f"{serial}: неизвестный форм-фактор '{row.iloc[1]}'")
+            continue
+        
+        item = db.query(PUItem).filter(PUItem.serial_number == serial).first()
+        if not item:
+            not_found_pu.append(serial)
+            continue
+        
+        item.form_factor = ff_value
+        updated += 1
+    
+    db.commit()
+    return {
+        "updated": updated,
+        "total_rows": total_rows,
+        "not_found_pu": not_found_pu[:20],
+        "errors": errors[:20]
+    }
+
 @app.post("/api/pu/move")
 def move_items(req: MoveReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Перемещение ПУ"""
