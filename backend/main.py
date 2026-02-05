@@ -137,6 +137,7 @@ class PUItem(Base):
     
     # Статус и тип работы
     status = Column(SQLEnum(PUStatus), default=PUStatus.SKLAD)
+    naznachenie = Column(String(20))  # Назначение из лаборатории: IZHC, TECHPRIS, ZAMENA
     
     # Поля карточки РЭС
     tz_number = Column(String(50))  # Номер ТЗ
@@ -798,11 +799,10 @@ def get_analysis(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Анализ остатков по подразделениям"""
+    """Анализ остатков по подразделениям с разбивкой по назначению/форм-фактору/фазности"""
     try:
         from datetime import datetime
         
-        # Парсим даты
         start_date = None
         end_date = None
         if date_from:
@@ -810,10 +810,14 @@ def get_analysis(
         if date_to:
             end_date = datetime.strptime(date_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
         
+        # Категории для разбивки
+        naznachenie_list = ['IZHC', 'TECHPRIS', 'ZAMENA']
+        form_factors = ['split', 'classic']
+        faza_split = ['1ф', '3ф']
+        faza_classic = ['1ф', '3ф', '3фтт']
+        
         def get_unit_stats(unit_id):
             q = db.query(PUItem).filter(PUItem.current_unit_id == unit_id)
-            
-            # Фильтр по периоду (дата загрузки)
             if start_date:
                 q = q.filter(PUItem.created_at >= start_date)
             if end_date:
@@ -822,8 +826,6 @@ def get_analysis(
             total = q.count()
             sklad = q.filter(PUItem.status == PUStatus.SKLAD).count()
             installed = q.filter(PUItem.status != PUStatus.SKLAD).count()
-            
-            # Актированные — есть ТЗ или Заявка
             actioned = q.filter(
                 or_(
                     (PUItem.tz_number != None) & (PUItem.tz_number != ""),
@@ -831,63 +833,104 @@ def get_analysis(
                 )
             ).count()
             
+            # Детальная разбивка
+            breakdown = {}
+            
+            # Секции: всего, установлено, актировано, склад
+            for section_key, section_filter in [
+                ('total', None),
+                ('installed', lambda qq: qq.filter(PUItem.status != PUStatus.SKLAD)),
+                ('actioned', lambda qq: qq.filter(
+                    or_(
+                        (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+                        (PUItem.request_number != None) & (PUItem.request_number != "")
+                    )
+                )),
+                ('sklad', lambda qq: qq.filter(PUItem.status == PUStatus.SKLAD)),
+            ]:
+                section = {}
+                for naz in naznachenie_list:
+                    naz_data = {}
+                    for ff in form_factors:
+                        fazas = faza_split if ff == 'split' else faza_classic
+                        ff_data = {}
+                        for fz in fazas:
+                            qq = q.filter(PUItem.naznachenie == naz, PUItem.form_factor == ff, PUItem.faza == fz)
+                            if section_filter:
+                                qq = section_filter(qq)
+                            ff_data[fz] = qq.count()
+                        naz_data[ff] = ff_data
+                    section[naz] = naz_data
+                breakdown[section_key] = section
+            
             return {
                 "total": total,
                 "installed": installed,
                 "actioned": actioned,
-                "sklad": sklad
+                "sklad": sklad,
+                "breakdown": breakdown
             }
         
         result = {"res": [], "esk": []}
         
-        # Для производственников — только своё подразделение
         if is_res_user(user) or is_esk_user(user):
             if user.unit_id:
                 unit = db.query(Unit).filter(Unit.id == user.unit_id).first()
                 if unit:
                     stats = get_unit_stats(unit.id)
-                    item = {
-                        "id": unit.id,
-                        "name": unit.name,
-                        **stats
-                    }
+                    item = {"id": unit.id, "name": unit.name, **stats}
                     if unit.unit_type == UnitType.RES:
                         result["res"].append(item)
                     else:
                         result["esk"].append(item)
             return result
         
-        # Для админов — все подразделения
         res_units = db.query(Unit).filter(Unit.unit_type == UnitType.RES).order_by(Unit.name).all()
         esk_units = db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).order_by(Unit.name).all()
         
-        # Итого по РЭС
-        res_total = {"total": 0, "installed": 0, "actioned": 0, "sklad": 0}
+        def empty_breakdown():
+            bd = {}
+            for sk in ['total', 'installed', 'actioned', 'sklad']:
+                section = {}
+                for naz in naznachenie_list:
+                    naz_data = {}
+                    for ff in form_factors:
+                        fazas = faza_split if ff == 'split' else faza_classic
+                        naz_data[ff] = {fz: 0 for fz in fazas}
+                    section[naz] = naz_data
+                bd[sk] = section
+            return bd
+        
+        def sum_breakdowns(total_bd, add_bd):
+            for sk in total_bd:
+                for naz in total_bd[sk]:
+                    for ff in total_bd[sk][naz]:
+                        for fz in total_bd[sk][naz][ff]:
+                            total_bd[sk][naz][ff][fz] += add_bd.get(sk, {}).get(naz, {}).get(ff, {}).get(fz, 0)
+        
+        res_total = {"total": 0, "installed": 0, "actioned": 0, "sklad": 0, "breakdown": empty_breakdown()}
         for unit in res_units:
             stats = get_unit_stats(unit.id)
-            result["res"].append({
-                "id": unit.id,
-                "name": unit.name,
-                **stats
-            })
+            result["res"].append({"id": unit.id, "name": unit.name, **stats})
             res_total["total"] += stats["total"]
             res_total["installed"] += stats["installed"]
             res_total["actioned"] += stats["actioned"]
             res_total["sklad"] += stats["sklad"]
+            sum_breakdowns(res_total["breakdown"], stats["breakdown"])
         
-        # Итого по ЭСК
-        esk_total = {"total": 0, "installed": 0, "actioned": 0, "sklad": 0}
+        esk_total = {"total": 0, "installed": 0, "actioned": 0, "sklad": 0, "breakdown": empty_breakdown()}
         for unit in esk_units:
             stats = get_unit_stats(unit.id)
-            result["esk"].append({
-                "id": unit.id,
-                "name": unit.name,
-                **stats
-            })
+            result["esk"].append({"id": unit.id, "name": unit.name, **stats})
             esk_total["total"] += stats["total"]
             esk_total["installed"] += stats["installed"]
             esk_total["actioned"] += stats["actioned"]
             esk_total["sklad"] += stats["sklad"]
+            sum_breakdowns(esk_total["breakdown"], stats["breakdown"])
+        
+        grand_bd = empty_breakdown()
+        sum_breakdowns(grand_bd, res_total["breakdown"])
+        sum_breakdowns(grand_bd, esk_total["breakdown"])
         
         result["res_total"] = res_total
         result["esk_total"] = esk_total
@@ -895,7 +938,8 @@ def get_analysis(
             "total": res_total["total"] + esk_total["total"],
             "installed": res_total["installed"] + esk_total["installed"],
             "actioned": res_total["actioned"] + esk_total["actioned"],
-            "sklad": res_total["sklad"] + esk_total["sklad"]
+            "sklad": res_total["sklad"] + esk_total["sklad"],
+            "breakdown": grand_bd
         }
         
         return result
@@ -988,20 +1032,21 @@ def get_items(
     items = q.offset((page-1)*size).limit(size).all()
     
     return {
-        "items": [{
-            "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
-            "status": i.status.value, "current_unit_id": i.current_unit_id,
-            "current_unit_name": i.current_unit.name if i.current_unit else None,
-            "current_unit_type": i.current_unit.unit_type.value if i.current_unit else None,
-            "tz_number": i.tz_number, "request_number": i.request_number,
-            "contract_number": i.contract_number,
-            "ls_number": i.ls_number, "consumer": i.consumer,
-            "smr_date": i.smr_date.isoformat() if i.smr_date else None,
-            "approval_status": i.approval_status.value if i.approval_status else None,
-            "uploaded_at": i.register.uploaded_at if i.register else None
-        } for i in items],
-        "total": total, "page": page, "size": size, "pages": (total + size - 1) // size
-    }
+    "items": [{
+        "id": i.id, "serial_number": i.serial_number, "pu_type": i.pu_type,
+        "status": i.status.value, "naznachenie": i.naznachenie,
+        "current_unit_id": i.current_unit_id,
+        "current_unit_name": i.current_unit.name if i.current_unit else None,
+        "current_unit_type": i.current_unit.unit_type.value if i.current_unit else None,
+        "tz_number": i.tz_number, "request_number": i.request_number,
+        "contract_number": i.contract_number,
+        "ls_number": i.ls_number, "consumer": i.consumer,
+        "smr_date": i.smr_date.isoformat() if i.smr_date else None,
+        "approval_status": i.approval_status.value if i.approval_status else None,
+        "uploaded_at": i.register.uploaded_at if i.register else None
+    } for i in items],
+    "total": total, "page": page, "size": size, "pages": (total + size - 1) // size
+}
 
 @app.get("/api/pu/export")
 def export_pu_items(
@@ -1196,6 +1241,7 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "serial_number": item.serial_number,
         "pu_type": item.pu_type,
         "status": item.status.value,
+        "naznachenie": item.naznachenie,
         "current_unit_id": item.current_unit_id,
         "current_unit_name": item.current_unit.name if item.current_unit else None,
         "current_unit_type": item.current_unit.unit_type.value if item.current_unit else None,
@@ -1331,7 +1377,7 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
     db.commit()
     
     # Поиск колонок
-    serial_col = type_col = unit_col = None
+    serial_col = type_col = unit_col = naznachenie_col = None
     for col in df.columns:
         col_lower = str(col).lower()
         if 'заводской' in col_lower or ('номер' in col_lower and 'пу' in col_lower):
@@ -1340,6 +1386,8 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
             type_col = col
         elif 'подразделение' in col_lower:
             unit_col = col
+        elif 'назначение' in col_lower:
+            naznachenie_col = col
     
     if not serial_col:
         raise HTTPException(400, "Не найдена колонка 'Заводской номер ПУ'")
@@ -1381,6 +1429,14 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
                             target_unit = u
                             break
         
+        # Определяем назначение
+        naznachenie_val = None
+        if naznachenie_col:
+            naz_raw = str(row.get(naznachenie_col, '')).strip().lower()
+            if naz_raw and naz_raw != 'nan':
+                naz_map = {'ижц': 'IZHC', 'техприс': 'TECHPRIS', 'замена': 'ZAMENA'}
+                naznachenie_val = naz_map.get(naz_raw, naz_raw.upper())
+
         # По умолчанию статус СКЛАД
         item = PUItem(
             register_id=register.id,
@@ -1388,7 +1444,8 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
             serial_number=serial,
             target_unit_id=target_unit.id if target_unit else None,
             current_unit_id=target_unit.id if target_unit else None,
-            status=PUStatus.SKLAD
+            status=PUStatus.SKLAD,
+            naznachenie=naznachenie_val
         )
         db.add(item)
         count += 1
