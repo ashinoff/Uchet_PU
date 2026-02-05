@@ -4726,7 +4726,7 @@ function AnalysisPage() {
   const sectionLabels = { total: 'Всего ПУ', installed: 'Установлено', actioned: 'Актировано', sklad: 'Остаток склад' }
   const sectionColors = { total: 'blue', installed: 'green', actioned: 'indigo', sklad: 'gray' }
 
-  const renderBreakdownTable = (units, totals, title, bgColor) => {
+const renderBreakdownTable = (units, totals, title, bgColor) => {
     if (!units || units.length === 0) return null
 
     return (
@@ -4752,15 +4752,21 @@ function AnalysisPage() {
                 <th colSpan={3} className="px-2 py-1 text-center text-yellow-700">Классика</th>
               </tr>
               <tr className="bg-gray-50 border-b text-[10px]">
-                {['IZHC','TECHPRIS','ZAMENA'].map(naz => (
-                  </Fragment>
-                    <th className="px-1 py-1 text-center border-r">1Ф</th>
-                    <th className="px-1 py-1 text-center border-r">3Ф</th>
-                    <th className="px-1 py-1 text-center border-r">1ф</th>
-                    <th className="px-1 py-1 text-center border-r">3ф</th>
-                    <th className={`px-1 py-1 text-center ${naz !== 'ZAMENA' ? 'border-r' : ''}`}>3фтт</th>
-                  </React.Fragment>
-                ))}
+                <th className="px-1 py-1 text-center border-r">1Ф</th>
+                <th className="px-1 py-1 text-center border-r">3Ф</th>
+                <th className="px-1 py-1 text-center border-r">1ф</th>
+                <th className="px-1 py-1 text-center border-r">3ф</th>
+                <th className="px-1 py-1 text-center border-r">3фтт</th>
+                <th className="px-1 py-1 text-center border-r">1Ф</th>
+                <th className="px-1 py-1 text-center border-r">3Ф</th>
+                <th className="px-1 py-1 text-center border-r">1ф</th>
+                <th className="px-1 py-1 text-center border-r">3ф</th>
+                <th className="px-1 py-1 text-center border-r">3фтт</th>
+                <th className="px-1 py-1 text-center border-r">1Ф</th>
+                <th className="px-1 py-1 text-center border-r">3Ф</th>
+                <th className="px-1 py-1 text-center border-r">1ф</th>
+                <th className="px-1 py-1 text-center border-r">3ф</th>
+                <th className="px-1 py-1 text-center">3фтт</th>
               </tr>
             </thead>
             <tbody>
@@ -4769,43 +4775,47 @@ function AnalysisPage() {
                 return (
                   <tr key={unit.id} className="border-t hover:bg-gray-50">
                     <td className="px-3 py-2 font-medium border-r sticky left-0 bg-white">{unit.name}</td>
-                    {['IZHC','TECHPRIS','ZAMENA'].map(naz => {
-                      const s = bd[naz]?.split || {}
-                      const c = bd[naz]?.classic || {}
-                      return (
-                        </Fragment>
-                          <td className="px-1 py-2 text-center border-r">{s['1ф'] || 0}</td>
-                          <td className="px-1 py-2 text-center border-r">{s['3ф'] || 0}</td>
-                          <td className="px-1 py-2 text-center border-r">{c['1ф'] || 0}</td>
-                          <td className="px-1 py-2 text-center border-r">{c['3ф'] || 0}</td>
-                          <td className={`px-1 py-2 text-center ${naz !== 'ZAMENA' ? 'border-r' : ''}`}>{c['3фтт'] || 0}</td>
-                        </React.Fragment>
-                      )
-                    })}
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.split?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.split?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['3фтт'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.split?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.split?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['3фтт'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.split?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.split?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.classic?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.classic?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center">{bd.ZAMENA?.classic?.['3фтт'] || 0}</td>
                   </tr>
                 )
               })}
-              {isAdmin && totals && (
-                <tr className="border-t bg-gray-100 font-bold">
-                  <td className="px-3 py-2 border-r sticky left-0 bg-gray-100">ИТОГО</td>
-                  {(() => {
-                    const bd = totals.breakdown?.[activeSection] || {}
-                    return ['IZHC','TECHPRIS','ZAMENA'].map(naz => {
-                      const s = bd[naz]?.split || {}
-                      const c = bd[naz]?.classic || {}
-                      return (
-                        </Fragment>
-                          <td className="px-1 py-2 text-center border-r">{s['1ф'] || 0}</td>
-                          <td className="px-1 py-2 text-center border-r">{s['3ф'] || 0}</td>
-                          <td className="px-1 py-2 text-center border-r">{c['1ф'] || 0}</td>
-                          <td className="px-1 py-2 text-center border-r">{c['3ф'] || 0}</td>
-                          <td className={`px-1 py-2 text-center ${naz !== 'ZAMENA' ? 'border-r' : ''}`}>{c['3фтт'] || 0}</td>
-                        </React.Fragment>
-                      )
-                    })
-                  })()}
-                </tr>
-              )}
+              {isAdmin && totals && (() => {
+                const bd = totals.breakdown?.[activeSection] || {}
+                return (
+                  <tr className="border-t bg-gray-100 font-bold">
+                    <td className="px-3 py-2 border-r sticky left-0 bg-gray-100">ИТОГО</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.split?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.split?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['3фтт'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.split?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.split?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['3фтт'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.split?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.split?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.classic?.['1ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.classic?.['3ф'] || 0}</td>
+                    <td className="px-1 py-2 text-center">{bd.ZAMENA?.classic?.['3фтт'] || 0}</td>
+                  </tr>
+                )
+              })()}
             </tbody>
           </table>
         </div>
