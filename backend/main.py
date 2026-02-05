@@ -1804,6 +1804,29 @@ async def update_types_bulk(
         traceback.print_exc()
         raise HTTPException(500, f"Ошибка: {str(e)}")
 
+@app.post("/api/pu/auto-fill-formfactor")
+def auto_fill_formfactor(admin_code: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Массовое автозаполнение форм-фактора по справочнику типов ПУ"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ")
+    if admin_code != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+    
+    items = db.query(PUItem).filter(
+        PUItem.form_factor == None,
+        PUItem.pu_type != None
+    ).all()
+    
+    updated = 0
+    for item in items:
+        detected = detect_pu_type_params(item.pu_type, db)
+        if detected.get('form_factor'):
+            item.form_factor = detected['form_factor']
+            updated += 1
+    
+    db.commit()
+    return {"updated": updated, "total_checked": len(items)}
+
 @app.post("/api/pu/delete")
 def delete_items(req: DeleteReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Удаление ПУ - только СУЭ с кодом"""
