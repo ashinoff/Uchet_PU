@@ -1172,12 +1172,14 @@ def export_pu_items(
         
         for idx, item in enumerate(items, 1):
             row = idx + 1
+            naznachenie_labels = {'IZHC': 'ИЖЦ', 'TECHPRIS': 'Техприс', 'ZAMENA': 'Замена'}
             data = [
                 idx,
                 item.serial_number or "",
                 item.pu_type or "",
                 item.current_unit.name if item.current_unit else "",
                 status_labels.get(item.status.value, item.status.value) if item.status else "",
+                naznachenie_labels.get(item.naznachenie, item.naznachenie or ""),
                 item.faza or "",
                 item.voltage or "",
                 item.power or "",
