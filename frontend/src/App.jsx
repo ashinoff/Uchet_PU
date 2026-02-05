@@ -4555,18 +4555,20 @@ function BulkUpdateTab() {
             </button>
           </div>
         </div>
-      ) : (
+     ) : (
         <div className="bg-white rounded-xl border p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Файл Excel (.xlsx)</label>
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={e => setFile(e.target.files[0])}
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-            {file && <p className="mt-2 text-sm text-green-600">✓ {file.name}</p>}
-          </div>
+          {mode !== 'autofaza' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Файл Excel (.xlsx)</label>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={e => setFile(e.target.files[0])}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+              {file && <p className="mt-2 text-sm text-green-600">✓ {file.name}</p>}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Код администратора</label>
