@@ -4413,7 +4413,7 @@ function BulkUpdateTab() {
     formData.append('admin_code', adminCode)
 
     try {
-      const endpoint = mode === 'types' ? '/pu/update-types-bulk' : '/pu/move-bulk'
+      const endpoint = mode === 'types' ? '/pu/update-types-bulk' : mode === 'naznachenie' ? '/pu/import-naznachenie' : '/pu/move-bulk'
       const r = await api.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
@@ -4455,6 +4455,11 @@ function BulkUpdateTab() {
           <ul className="text-blue-700 text-sm space-y-1">
             <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
             <li>• <b>Колонка B:</b> Новый тип ПУ</li>
+          </ul>
+        ) : mode === 'naznachenie' ? (
+          <ul className="text-blue-700 text-sm space-y-1">
+            <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
+            <li>• <b>Колонка B:</b> Назначение (ИЖЦ, Техприс, Замена)</li>
           </ul>
         ) : (
           <ul className="text-blue-700 text-sm space-y-1">
@@ -4540,7 +4545,7 @@ function BulkUpdateTab() {
             disabled={loading || !file || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : '📦 Переместить ПУ'}
+            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : '📦 Переместить ПУ'}
           </button>
         </div>
       )}
