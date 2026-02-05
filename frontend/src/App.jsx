@@ -393,7 +393,7 @@ function PUListPage({ filter = 'all' }) {
   }, [search, contractSearch, lsSearch])
 
   useEffect(() => { api.get('/units').then(r => setUnits(r.data)) }, [])
-  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter, sortField, sortDir])
+  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter, sortField, sortDir, search, contractSearch, lsSearch])
 
   const load = async () => {
     setLoading(true)
@@ -4413,7 +4413,7 @@ function BulkUpdateTab() {
     formData.append('admin_code', adminCode)
 
     try {
-      const endpoint = mode === 'types' ? '/pu/update-types-bulk' : mode === 'naznachenie' ? '/pu/import-naznachenie' : '/pu/move-bulk'
+      const endpoint = mode === 'types' ? '/pu/update-types-bulk' : mode === 'naznachenie' ? '/pu/import-naznachenie' : mode === 'autofaza' ? '/pu/auto-fill-faza' : '/pu/move-bulk'
       const r = await api.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
@@ -4433,7 +4433,7 @@ function BulkUpdateTab() {
   return (
     <div className="space-y-6">
       {/* Выбор режима */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button 
           onClick={() => { setMode('types'); resetForm() }} 
           className={`px-4 py-2 rounded-lg ${mode === 'types' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
@@ -4445,6 +4445,18 @@ function BulkUpdateTab() {
           className={`px-4 py-2 rounded-lg ${mode === 'move' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
         >
           📦 Массовое перемещение
+        </button>
+        <button 
+          onClick={() => { setMode('naznachenie'); resetForm() }} 
+          className={`px-4 py-2 rounded-lg ${mode === 'naznachenie' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+        >
+          🏷️ Загрузка назначений
+        </button>
+        <button 
+          onClick={() => { setMode('autofaza'); resetForm() }} 
+          className={`px-4 py-2 rounded-lg ${mode === 'autofaza' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+        >
+          ⚡ Автозаполнение фазы
         </button>
       </div>
 
@@ -4460,6 +4472,12 @@ function BulkUpdateTab() {
           <ul className="text-blue-700 text-sm space-y-1">
             <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
             <li>• <b>Колонка B:</b> Назначение (ИЖЦ, Техприс, Замена)</li>
+          </ul>
+        ) : mode === 'autofaza' ? (
+          <ul className="text-blue-700 text-sm space-y-1">
+            <li>• Файл <b>не требуется</b></li>
+            <li>• Автоматически заполнит фазность, форм-фактор и напряжение</li>
+            <li>• Для всех ПУ где фаза пустая — по справочнику типов</li>
           </ul>
         ) : (
           <ul className="text-blue-700 text-sm space-y-1">
@@ -4545,7 +4563,7 @@ function BulkUpdateTab() {
             disabled={loading || !file || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : '📦 Переместить ПУ'}
+            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : mode === 'autofaza' ? '⚡ Заполнить фазность' : '📦 Переместить ПУ'}
           </button>
         </div>
       )}
@@ -4589,7 +4607,7 @@ function MoveBulkPage() {
 
     setLoading(true)
     const formData = new FormData()
-    formData.append('file', file)
+    if (file) formData.append('file', file)
     formData.append('admin_code', adminCode)
 
     try {
@@ -4688,7 +4706,7 @@ function MoveBulkPage() {
 
           <button
             onClick={handleUpload}
-            disabled={loading || !file || !adminCode}
+            disabled={loading || (mode !== 'autofaza' && !file) || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? '⏳ Обработка...' : '📦 Переместить ПУ'}
