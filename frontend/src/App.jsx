@@ -4567,7 +4567,7 @@ function BulkUpdateTab() {
 
           <button
             onClick={handleUpload}
-            disabled={loading || !file || !adminCode}
+            disabled={loading || (mode !== 'autofaza' && !file) || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : mode === 'autofaza' ? '⚡ Заполнить фазность' : '📦 Переместить ПУ'}
