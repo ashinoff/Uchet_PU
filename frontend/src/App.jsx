@@ -1,4 +1,5 @@
-  import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect, createContext, useContext } from 'react'
+import { Fragment } from 'react'
 import api from './api'
 
 // ==================== КОНТЕКСТ АВТОРИЗАЦИИ ====================
@@ -4752,7 +4753,7 @@ function AnalysisPage() {
               </tr>
               <tr className="bg-gray-50 border-b text-[10px]">
                 {['IZHC','TECHPRIS','ZAMENA'].map(naz => (
-                  <React.Fragment key={naz}>
+                  </Fragment>
                     <th className="px-1 py-1 text-center border-r">1Ф</th>
                     <th className="px-1 py-1 text-center border-r">3Ф</th>
                     <th className="px-1 py-1 text-center border-r">1ф</th>
@@ -4772,7 +4773,7 @@ function AnalysisPage() {
                       const s = bd[naz]?.split || {}
                       const c = bd[naz]?.classic || {}
                       return (
-                        <React.Fragment key={naz}>
+                        </Fragment>
                           <td className="px-1 py-2 text-center border-r">{s['1ф'] || 0}</td>
                           <td className="px-1 py-2 text-center border-r">{s['3ф'] || 0}</td>
                           <td className="px-1 py-2 text-center border-r">{c['1ф'] || 0}</td>
@@ -4793,7 +4794,7 @@ function AnalysisPage() {
                       const s = bd[naz]?.split || {}
                       const c = bd[naz]?.classic || {}
                       return (
-                        <React.Fragment key={naz}>
+                        </Fragment>
                           <td className="px-1 py-2 text-center border-r">{s['1ф'] || 0}</td>
                           <td className="px-1 py-2 text-center border-r">{s['3ф'] || 0}</td>
                           <td className="px-1 py-2 text-center border-r">{c['1ф'] || 0}</td>
