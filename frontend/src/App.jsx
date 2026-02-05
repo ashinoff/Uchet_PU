@@ -4422,7 +4422,7 @@ function BulkUpdateTab() {
       const endpoint = mode === 'types' ? '/pu/update-types-bulk' 
         : mode === 'naznachenie' ? '/pu/import-naznachenie' 
         : mode === 'autofaza' ? '/pu/auto-fill-faza' 
-        : mode === 'formfactor' ? '/pu/import-formfactor'
+        : mode === 'formfactor' ? '/pu/auto-fill-formfactor'
         : '/pu/move-bulk'
       const r = await api.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -4557,7 +4557,7 @@ function BulkUpdateTab() {
         </div>
      ) : (
         <div className="bg-white rounded-xl border p-6 space-y-4">
-          {mode !== 'autofaza' && (
+          {mode !== 'autofaza' && mode !== 'formfactor' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Файл Excel (.xlsx)</label>
               <input
@@ -4729,7 +4729,7 @@ function MoveBulkPage() {
 
           <button
             onClick={handleUpload}
-            disabled={loading || (mode !== 'autofaza' && !file) || !adminCode}
+            disabled={loading || (mode !== 'autofaza' && mode !== 'formfactor' && !file) || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? '⏳ Обработка...' : '📦 Переместить ПУ'}
