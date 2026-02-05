@@ -4422,6 +4422,7 @@ function BulkUpdateTab() {
       const endpoint = mode === 'types' ? '/pu/update-types-bulk' 
         : mode === 'naznachenie' ? '/pu/import-naznachenie' 
         : mode === 'autofaza' ? '/pu/auto-fill-faza' 
+        : mode === 'formfactor' ? '/pu/import-formfactor'
         : '/pu/move-bulk'
       const r = await api.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -4488,7 +4489,12 @@ function BulkUpdateTab() {
             <li>• Автоматически заполнит фазность, форм-фактор и напряжение</li>
             <li>• Для всех ПУ где фаза пустая — по справочнику типов</li>
           </ul>
-        ) : (
+        ) : mode === 'formfactor' ? (
+            <ul className="text-blue-700 text-sm space-y-1">
+              <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
+              <li>• <b>Колонка B:</b> Форм-фактор (Сплит или Классика)</li>
+            </ul>
+         ) : (
           <ul className="text-blue-700 text-sm space-y-1">
             <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
             <li>• <b>Колонка B:</b> Название подразделения ЭСК</li>
@@ -4572,7 +4578,7 @@ function BulkUpdateTab() {
             disabled={loading || (mode !== 'autofaza' && !file) || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : mode === 'autofaza' ? '⚡ Заполнить фазность' : '📦 Переместить ПУ'}
+            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : mode === 'autofaza' ? '⚡ Заполнить фазность' : mode === 'formfactor' ? '📐 Загрузить форм-фактор' : '📦 Переместить ПУ'}
           </button>
         </div>
       )}
