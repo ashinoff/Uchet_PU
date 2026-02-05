@@ -4468,6 +4468,12 @@ function BulkUpdateTab() {
         >
           ⚡ Автозаполнение фазы
         </button>
+        <button 
+          onClick={() => { setMode('formfactor'); resetForm() }} 
+          className={`px-4 py-2 rounded-lg ${mode === 'formfactor' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+        >
+          📐 Загрузка форм-фактора
+        </button>
       </div>
 
       {/* Инструкция */}
