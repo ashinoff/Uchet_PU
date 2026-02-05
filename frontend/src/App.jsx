@@ -4583,7 +4583,7 @@ function BulkUpdateTab() {
 
           <button
             onClick={handleUpload}
-            disabled={loading || (mode !== 'autofaza' && !file) || !adminCode}
+            disabled={loading || (mode !== 'autofaza' && mode !== 'formfactor' && !file) || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : mode === 'autofaza' ? '⚡ Заполнить фазность' : mode === 'formfactor' ? '📐 Загрузить форм-фактор' : '📦 Переместить ПУ'}
