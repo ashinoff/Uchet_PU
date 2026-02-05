@@ -614,6 +614,7 @@ function PUListPage({ filter = 'all' }) {
                 <SortHeader field="pu_type" label="Тип" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
                 <SortHeader field="current_unit_name" label="Подразделение" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
                 <SortHeader field="status" label="Статус" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
+                <th className="px-4 py-3 text-left">Назначение</th>
                 <SortHeader field="tz_number" label="№ ТЗ" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
                 <SortHeader field="request_number" label="№ Заявки" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
                 <SortHeader field="approval_status" label="Согласование" sortField={sortField} sortDir={sortDir} onSort={(f, d) => { setSortField(f); setSortDir(d); setPage(1) }} />
@@ -629,6 +630,7 @@ function PUListPage({ filter = 'all' }) {
                   <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
                   <td className="px-4 py-3">{i.current_unit_name || '—'}</td>
                   <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${statusColors[i.status] || 'bg-gray-100'}`}>{statusLabels[i.status] || i.status}</span></td>
+                  <td className="px-4 py-3">{i.naznachenie === 'IZHC' ? 'ИЖЦ' : i.naznachenie === 'TECHPRIS' ? 'Техприс' : i.naznachenie === 'ZAMENA' ? 'Замена' : '—'}</td>
                   <td className="px-4 py-3">{i.tz_number || '—'}</td>
                   <td className="px-4 py-3">{i.request_number || '—'}</td>
                   <td className="px-4 py-3">
