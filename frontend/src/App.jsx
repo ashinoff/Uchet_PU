@@ -1236,19 +1236,31 @@ const updateMaterialQty = (materialId, qty) => {
             <input type="text" value={item.pu_type || ''} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className={`grid ${isEsk ? 'grid-cols-3' : 'grid-cols-4'} gap-4`}>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Статус *</label>
               <select value={item.status || ''} onChange={e => update('status', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
                 {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
+            {!isEsk && (
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Назначение</label>
+                <input type="text" value={
+                  item.naznachenie === 'IZHC' ? 'ИЖЦ' : 
+                  item.naznachenie === 'TECHPRIS' ? 'Техприс' : 
+                  item.naznachenie === 'ZAMENA' ? 'Замена' : 
+                  item.naznachenie || '—'
+                } disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50" />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Фазность</label>
               <select value={item.faza || ''} onChange={e => update('faza', e.target.value)} disabled={!canEdit || item.status === 'SKLAD'} className="w-full px-3 py-2 border rounded-lg">
                 <option value="">—</option>
                 <option value="1ф">1 фаза</option>
                 <option value="3ф">3 фазы</option>
+                <option value="3фтт">3 фазы ТТ</option>
               </select>
             </div>
             <div>
@@ -4686,6 +4698,7 @@ function AnalysisPage() {
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [activeSection, setActiveSection] = useState('total')
 
   useEffect(() => { load() }, [])
 
@@ -4703,17 +4716,101 @@ function AnalysisPage() {
     setLoading(false)
   }
 
-  const handleFilter = () => {
-    load()
-  }
-
-  const clearFilter = () => {
-    setDateFrom('')
-    setDateTo('')
-    setTimeout(load, 100)
-  }
+  const handleFilter = () => { load() }
+  const clearFilter = () => { setDateFrom(''); setDateTo(''); setTimeout(load, 100) }
 
   const isAdmin = isSueAdmin || isEskAdmin
+
+  const nazLabels = { IZHC: 'ИЖЦ', TECHPRIS: 'Техприс', ZAMENA: 'Замены' }
+  const sectionLabels = { total: 'Всего ПУ', installed: 'Установлено', actioned: 'Актировано', sklad: 'Остаток склад' }
+  const sectionColors = { total: 'blue', installed: 'green', actioned: 'indigo', sklad: 'gray' }
+
+  const renderBreakdownTable = (units, totals, title, bgColor) => {
+    if (!units || units.length === 0) return null
+
+    return (
+      <div className="bg-white rounded-xl border overflow-hidden">
+        <div className={`${bgColor} px-4 py-3 border-b`}>
+          <h2 className="font-semibold">{title}</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-100 border-b">
+                <th rowSpan={3} className="px-3 py-2 text-left border-r sticky left-0 bg-gray-100 min-w-[150px]">Подразделение</th>
+                <th colSpan={5} className="px-2 py-1 text-center border-r bg-purple-50">ИЖЦ</th>
+                <th colSpan={5} className="px-2 py-1 text-center border-r bg-green-50">Техприс</th>
+                <th colSpan={5} className="px-2 py-1 text-center bg-yellow-50">Замены</th>
+              </tr>
+              <tr className="bg-gray-50 border-b">
+                <th colSpan={2} className="px-2 py-1 text-center border-r text-purple-700">Сплит</th>
+                <th colSpan={3} className="px-2 py-1 text-center border-r text-purple-700">Классика</th>
+                <th colSpan={2} className="px-2 py-1 text-center border-r text-green-700">Сплит</th>
+                <th colSpan={3} className="px-2 py-1 text-center border-r text-green-700">Классика</th>
+                <th colSpan={2} className="px-2 py-1 text-center border-r text-yellow-700">Сплит</th>
+                <th colSpan={3} className="px-2 py-1 text-center text-yellow-700">Классика</th>
+              </tr>
+              <tr className="bg-gray-50 border-b text-[10px]">
+                {['IZHC','TECHPRIS','ZAMENA'].map(naz => (
+                  <React.Fragment key={naz}>
+                    <th className="px-1 py-1 text-center border-r">1Ф</th>
+                    <th className="px-1 py-1 text-center border-r">3Ф</th>
+                    <th className="px-1 py-1 text-center border-r">1ф</th>
+                    <th className="px-1 py-1 text-center border-r">3ф</th>
+                    <th className={`px-1 py-1 text-center ${naz !== 'ZAMENA' ? 'border-r' : ''}`}>3фтт</th>
+                  </React.Fragment>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {units.map(unit => {
+                const bd = unit.breakdown?.[activeSection] || {}
+                return (
+                  <tr key={unit.id} className="border-t hover:bg-gray-50">
+                    <td className="px-3 py-2 font-medium border-r sticky left-0 bg-white">{unit.name}</td>
+                    {['IZHC','TECHPRIS','ZAMENA'].map(naz => {
+                      const s = bd[naz]?.split || {}
+                      const c = bd[naz]?.classic || {}
+                      return (
+                        <React.Fragment key={naz}>
+                          <td className="px-1 py-2 text-center border-r">{s['1ф'] || 0}</td>
+                          <td className="px-1 py-2 text-center border-r">{s['3ф'] || 0}</td>
+                          <td className="px-1 py-2 text-center border-r">{c['1ф'] || 0}</td>
+                          <td className="px-1 py-2 text-center border-r">{c['3ф'] || 0}</td>
+                          <td className={`px-1 py-2 text-center ${naz !== 'ZAMENA' ? 'border-r' : ''}`}>{c['3фтт'] || 0}</td>
+                        </React.Fragment>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+              {isAdmin && totals && (
+                <tr className="border-t bg-gray-100 font-bold">
+                  <td className="px-3 py-2 border-r sticky left-0 bg-gray-100">ИТОГО</td>
+                  {(() => {
+                    const bd = totals.breakdown?.[activeSection] || {}
+                    return ['IZHC','TECHPRIS','ZAMENA'].map(naz => {
+                      const s = bd[naz]?.split || {}
+                      const c = bd[naz]?.classic || {}
+                      return (
+                        <React.Fragment key={naz}>
+                          <td className="px-1 py-2 text-center border-r">{s['1ф'] || 0}</td>
+                          <td className="px-1 py-2 text-center border-r">{s['3ф'] || 0}</td>
+                          <td className="px-1 py-2 text-center border-r">{c['1ф'] || 0}</td>
+                          <td className="px-1 py-2 text-center border-r">{c['3ф'] || 0}</td>
+                          <td className={`px-1 py-2 text-center ${naz !== 'ZAMENA' ? 'border-r' : ''}`}>{c['3фтт'] || 0}</td>
+                        </React.Fragment>
+                      )
+                    })
+                  })()}
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -4727,21 +4824,11 @@ function AnalysisPage() {
         <div className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-1">Период с</label>
-            <input 
-              type="date" 
-              value={dateFrom} 
-              onChange={e => setDateFrom(e.target.value)} 
-              className="px-3 py-2 border rounded-lg"
-            />
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-2 border rounded-lg" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-1">по</label>
-            <input 
-              type="date" 
-              value={dateTo} 
-              onChange={e => setDateTo(e.target.value)} 
-              className="px-3 py-2 border rounded-lg"
-            />
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-3 py-2 border rounded-lg" />
           </div>
           <button onClick={handleFilter} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Применить</button>
           {(dateFrom || dateTo) && (
@@ -4754,7 +4841,7 @@ function AnalysisPage() {
         <div className="py-12"><RossetiLoader /></div>
       ) : data && (
         <div className="space-y-6">
-          {/* Общий итог для админов */}
+          {/* Общий итог */}
           {isAdmin && data.grand_total && (
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
               <h2 className="text-lg font-semibold mb-4">🏢 ВСЕГО ФЭС</h2>
@@ -4779,87 +4866,29 @@ function AnalysisPage() {
             </div>
           )}
 
-          {/* Блок РЭС */}
-          {data.res && data.res.length > 0 && (
-            <div className="bg-white rounded-xl border overflow-hidden">
-              <div className="bg-green-50 px-4 py-3 border-b">
-                <h2 className="font-semibold text-green-800">🏢 РЭС (РСК)</h2>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Подразделение</th>
-                    <th className="px-4 py-3 text-right">Всего ПУ</th>
-                    <th className="px-4 py-3 text-right">Установлено</th>
-                    <th className="px-4 py-3 text-right">Актировано</th>
-                    <th className="px-4 py-3 text-right">Остаток склад</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.res.map(unit => (
-                    <tr key={unit.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">{unit.name}</td>
-                      <td className="px-4 py-3 text-right">{unit.total}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{unit.installed}</td>
-                      <td className="px-4 py-3 text-right text-blue-600">{unit.actioned}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{unit.sklad}</td>
-                    </tr>
-                  ))}
-                  {isAdmin && data.res_total && (
-                    <tr className="border-t bg-green-50 font-semibold">
-                      <td className="px-4 py-3">ИТОГО РЭС</td>
-                      <td className="px-4 py-3 text-right">{data.res_total.total}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{data.res_total.installed}</td>
-                      <td className="px-4 py-3 text-right text-blue-600">{data.res_total.actioned}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{data.res_total.sklad}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          {/* Переключатель секций */}
+          <div className="bg-white rounded-xl border p-4">
+            <div className="flex gap-2">
+              {Object.entries(sectionLabels).map(([key, label]) => (
+                <button 
+                  key={key}
+                  onClick={() => setActiveSection(key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    activeSection === key 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
 
-          {/* Блок ЭСК */}
-          {data.esk && data.esk.length > 0 && (
-            <div className="bg-white rounded-xl border overflow-hidden">
-              <div className="bg-orange-50 px-4 py-3 border-b">
-                <h2 className="font-semibold text-orange-800">⚡ ЭСК</h2>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Подразделение</th>
-                    <th className="px-4 py-3 text-right">Всего ПУ</th>
-                    <th className="px-4 py-3 text-right">Установлено</th>
-                    <th className="px-4 py-3 text-right">Актировано</th>
-                    <th className="px-4 py-3 text-right">Остаток склад</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.esk.map(unit => (
-                    <tr key={unit.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">{unit.name}</td>
-                      <td className="px-4 py-3 text-right">{unit.total}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{unit.installed}</td>
-                      <td className="px-4 py-3 text-right text-blue-600">{unit.actioned}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{unit.sklad}</td>
-                    </tr>
-                  ))}
-                  {isAdmin && data.esk_total && (
-                    <tr className="border-t bg-orange-50 font-semibold">
-                      <td className="px-4 py-3">ИТОГО ЭСК</td>
-                      <td className="px-4 py-3 text-right">{data.esk_total.total}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{data.esk_total.installed}</td>
-                      <td className="px-4 py-3 text-right text-blue-600">{data.esk_total.actioned}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{data.esk_total.sklad}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Таблицы с разбивкой */}
+          {renderBreakdownTable(data.res, data.res_total, '🏢 РЭС (РСК)', 'bg-green-50')}
+          {renderBreakdownTable(data.esk, data.esk_total, '⚡ ЭСК', 'bg-orange-50')}
 
-          {/* Если нет данных */}
           {(!data.res || data.res.length === 0) && (!data.esk || data.esk.length === 0) && (
             <div className="bg-white rounded-xl border p-8 text-center text-gray-500">
               Нет данных для отображения
