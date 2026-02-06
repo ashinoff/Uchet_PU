@@ -4404,7 +4404,7 @@ function BulkUpdateTab() {
   const [mode, setMode] = useState('types') // types или move
 
  const handleUpload = async () => {
-    if (mode !== 'autofaza' && !file) {
+    if (mode !== 'autofaza' && mode !== 'formfactor' && !file) {
       alert('Выберите файл')
       return
     }
@@ -4472,7 +4472,7 @@ function BulkUpdateTab() {
           onClick={() => { setMode('formfactor'); resetForm() }} 
           className={`px-4 py-2 rounded-lg ${mode === 'formfactor' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
         >
-          📐 Загрузка форм-фактора
+          📐 Автозаполнение форм-фактора
         </button>
       </div>
 
@@ -4496,10 +4496,11 @@ function BulkUpdateTab() {
             <li>• Для всех ПУ где фаза пустая — по справочнику типов</li>
           </ul>
         ) : mode === 'formfactor' ? (
-            <ul className="text-blue-700 text-sm space-y-1">
-              <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
-              <li>• <b>Колонка B:</b> Форм-фактор (Сплит или Классика)</li>
-            </ul>
+          <ul className="text-blue-700 text-sm space-y-1">
+            <li>• Файл <b>не требуется</b></li>
+            <li>• Автоматически заполнит форм-фактор по справочнику типов ПУ</li>
+            <li>• Только для ПУ где форм-фактор ещё не указан</li>
+          </ul>
          ) : (
           <ul className="text-blue-700 text-sm space-y-1">
             <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
@@ -4515,7 +4516,10 @@ function BulkUpdateTab() {
             <h3 className="text-xl font-semibold text-green-600">
               {mode === 'types' ? 'Обновлено' : 'Перемещено'}: {result.updated || result.moved} ПУ
             </h3>
-            <p className="text-gray-500">Всего строк в файле: {result.total_rows}</p>
+            <p className="text-gray-500">
+              {result.total_rows ? `Всего строк в файле: ${result.total_rows}` : 
+               result.total_checked !== undefined ? `Проверено ПУ: ${result.total_checked}` : ''}
+</          p>
           </div>
 
           {(result.not_found_pu?.length > 0 || result.not_found?.length > 0) && (
@@ -4586,7 +4590,7 @@ function BulkUpdateTab() {
             disabled={loading || (mode !== 'autofaza' && mode !== 'formfactor' && !file) || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : mode === 'autofaza' ? '⚡ Заполнить фазность' : mode === 'formfactor' ? '📐 Загрузить форм-фактор' : '📦 Переместить ПУ'}
+            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : mode === 'autofaza' ? '⚡ Заполнить фазность' : mode === 'formfactor' ? '📐 Заполнить форм-фактор' : '📦 Переместить ПУ'}
           </button>
         </div>
       )}
