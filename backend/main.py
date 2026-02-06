@@ -1368,6 +1368,58 @@ def detect_type(pu_type: str, db: Session = Depends(get_db)):
     result = detect_pu_type_params(pu_type, db)
     return result
 
+@app.get("/api/pu/debug-detect/{serial}")
+def debug_detect(serial: str, db: Session = Depends(get_db)):
+    """Отладка: почему ПУ не находится по паттерну"""
+    item = db.query(PUItem).filter(PUItem.serial_number == serial).first()
+    if not item:
+        return {"error": f"ПУ {serial} не найден"}
+    
+    pu_norm = normalize_pu_string(item.pu_type)
+    
+    patterns = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
+    
+    matches = []
+    for p in patterns:
+        if not p.pattern:
+            continue
+        p_norm = normalize_pu_string(p.pattern)
+        
+        # Проверяем разные типы совпадений
+        exact_in = p_norm in pu_norm
+        starts = pu_norm.startswith(p_norm)
+        
+        # Токены
+        pu_tokens = set(pu_norm.split())
+        p_tokens = set(p_norm.split())
+        common = p_tokens & pu_tokens
+        score = len(common) / len(p_tokens) if p_tokens else 0
+        
+        matches.append({
+            "pattern_raw": p.pattern,
+            "pattern_norm": p_norm,
+            "exact_in": exact_in,
+            "starts_with": starts,
+            "token_score": round(score, 2),
+            "common_tokens": list(common),
+            "faza": p.faza,
+            "form_factor": p.form_factor,
+        })
+    
+    # Сортируем по score
+    matches.sort(key=lambda x: x["token_score"], reverse=True)
+    
+    return {
+        "serial": serial,
+        "pu_type_raw": item.pu_type,
+        "pu_type_norm": pu_norm,
+        "current_faza": item.faza,
+        "current_ff": item.form_factor,
+        "detected": detect_pu_type_params(item.pu_type, db),
+        "top_matches": matches[:5]
+    }
+
+
 @app.get("/api/pu/items/{item_id}")
 def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Полная карточка ПУ"""
