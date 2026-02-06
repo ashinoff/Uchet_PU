@@ -838,17 +838,13 @@ def get_analysis(
             breakdown = {}
             
             # Секции: всего, установлено, актировано, склад
-            for section_key, section_filter in [
-                ('total', None),
-                ('installed', lambda qq: qq.filter(PUItem.status != PUStatus.SKLAD)),
-                ('actioned', lambda qq: qq.filter(
-                    or_(
-                        (PUItem.tz_number != None) & (PUItem.tz_number != ""),
-                        (PUItem.request_number != None) & (PUItem.request_number != "")
-                    )
-                )),
-                ('sklad', lambda qq: qq.filter(PUItem.status == PUStatus.SKLAD)),
-            ]:
+            # ЛОГИКА:
+            # total: склад → по назначению, не-склад → по статусу
+            # installed: только по статусу (статус != СКЛАД)
+            # actioned: только по статусу + фильтр актирования
+            # sklad: только по назначению при статус = СКЛАД
+            
+            for section_key in ['total', 'installed', 'actioned', 'sklad']:
                 section = {}
                 for naz in naznachenie_list:
                     naz_data = {}
@@ -856,10 +852,52 @@ def get_analysis(
                         fazas = faza_split if ff == 'split' else faza_classic
                         ff_data = {}
                         for fz in fazas:
-                            qq = q.filter(PUItem.status == naz, PUItem.form_factor == ff, PUItem.faza == fz)
-                            if section_filter:
-                                qq = section_filter(qq)
-                            ff_data[fz] = qq.count()
+                            if section_key == 'total':
+                                # Склад → по назначению, не-склад → по статусу
+                                count_sklad = q.filter(
+                                    PUItem.status == PUStatus.SKLAD,
+                                    PUItem.naznachenie == naz,
+                                    PUItem.form_factor == ff,
+                                    PUItem.faza == fz
+                                ).count()
+                                count_installed = q.filter(
+                                    PUItem.status != PUStatus.SKLAD,
+                                    PUItem.status == naz,
+                                    PUItem.form_factor == ff,
+                                    PUItem.faza == fz
+                                ).count()
+                                ff_data[fz] = count_sklad + count_installed
+                                
+                            elif section_key == 'installed':
+                                # Только по статусу (факт установки)
+                                ff_data[fz] = q.filter(
+                                    PUItem.status == naz,
+                                    PUItem.status != PUStatus.SKLAD,
+                                    PUItem.form_factor == ff,
+                                    PUItem.faza == fz
+                                ).count()
+                                
+                            elif section_key == 'actioned':
+                                # Только по статусу + актировано
+                                ff_data[fz] = q.filter(
+                                    PUItem.status == naz,
+                                    PUItem.form_factor == ff,
+                                    PUItem.faza == fz,
+                                    or_(
+                                        (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+                                        (PUItem.request_number != None) & (PUItem.request_number != "")
+                                    )
+                                ).count()
+                                
+                            elif section_key == 'sklad':
+                                # Только по назначению при статус = СКЛАД
+                                ff_data[fz] = q.filter(
+                                    PUItem.status == PUStatus.SKLAD,
+                                    PUItem.naznachenie == naz,
+                                    PUItem.form_factor == ff,
+                                    PUItem.faza == fz
+                                ).count()
+                                
                         naz_data[ff] = ff_data
                     section[naz] = naz_data
                 breakdown[section_key] = section
@@ -1143,6 +1181,7 @@ def export_pu_items(
             ("Потребитель", 25),
             ("Адрес", 35),
             ("ЛС", 15),
+            ("Трубостойка", 12),
             ("№ ТЗ", 15),
             ("№ Заявки", 12),
             ("Согласование", 15),
@@ -1187,6 +1226,7 @@ def export_pu_items(
                 item.consumer or "",
                 item.address or "",
                 item.ls_number or "",
+                "Да" if item.trubostoyka else "Нет", 
                 item.tz_number or "",
                 item.request_number or "",
                 approval_labels.get(item.approval_status.value if item.approval_status else 'NONE', '—'),
@@ -1485,6 +1525,7 @@ def auto_fill_faza(admin_code: str = Form(...), db: Session = Depends(get_db), u
     ).all()
     
     updated = 0
+    not_found_patterns = []
     for item in items:
         detected = detect_pu_type_params(item.pu_type, db)
         changed = False
@@ -1499,9 +1540,15 @@ def auto_fill_faza(admin_code: str = Form(...), db: Session = Depends(get_db), u
             changed = True
         if changed:
             updated += 1
+        else:
+            not_found_patterns.append(f"{item.serial_number} ({item.pu_type[:50]})")
     
     db.commit()
-    return {"updated": updated, "total_checked": len(items)}
+    return {
+        "updated": updated, 
+        "total_checked": len(items),
+        "not_found_pu": not_found_patterns[:30]
+    }
 
 @app.post("/api/pu/import-naznachenie")
 async def import_naznachenie(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1818,14 +1865,21 @@ def auto_fill_formfactor(admin_code: str = Form(...), db: Session = Depends(get_
     ).all()
     
     updated = 0
+    not_found_patterns = []  # ПУ без совпадения по паттерну
     for item in items:
         detected = detect_pu_type_params(item.pu_type, db)
         if detected.get('form_factor'):
             item.form_factor = detected['form_factor']
             updated += 1
+        else:
+            not_found_patterns.append(f"{item.serial_number} ({item.pu_type[:50]})")
     
     db.commit()
-    return {"updated": updated, "total_checked": len(items)}
+    return {
+        "updated": updated, 
+        "total_checked": len(items),
+        "not_found_pu": not_found_patterns[:30]
+    }
 
 @app.post("/api/pu/delete")
 def delete_items(req: DeleteReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
