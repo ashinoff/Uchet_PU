@@ -367,6 +367,101 @@ def is_esk_user(user: User) -> bool:
     return user.role.code == RoleCode.ESK_USER
 
 # ==================== АВТООПРЕДЕЛЕНИЕ ТИПА ПУ ====================
+
+def normalize_pu_string(s: str) -> str:
+    """Нормализация строки ПУ: убираем невидимые символы, 
+    приводим кириллицу к латинице, убираем лишние пробелы/знаки"""
+    import unicodedata
+    if not s:
+        return ""
+    
+    # Убираем управляющие символы и нормализуем unicode
+    s = unicodedata.normalize('NFKC', s)
+    
+    # Приводим к верхнему регистру
+    s = s.upper()
+    
+    # Замена кириллических букв-двойников на латинские
+    cyr_to_lat = {
+        'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M',
+        'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
+        'У': 'Y', 'Х': 'X',
+    }
+    s = ''.join(cyr_to_lat.get(c, c) for c in s)
+    
+    # Убираем все кроме букв, цифр, точек и дефисов
+    import re
+    s = re.sub(r'[^\w\.\-]', ' ', s)  # заменяем спецсимволы на пробел
+    s = re.sub(r'\s+', ' ', s).strip()  # схлопываем пробелы
+    
+    return s
+
+
+def detect_pu_type_params(pu_type: str, db: Session) -> dict:
+    """
+    Определяет фазность, напряжение и форм-фактор по паттерну из справочника.
+    Многоуровневый поиск: точное → нормализованное → токенное совпадение.
+    """
+    if not pu_type:
+        return {}
+    
+    pu_norm = normalize_pu_string(pu_type)
+    
+    # Получаем все паттерны из справочника
+    patterns = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
+    
+    # Подготавливаем паттерны с нормализацией
+    prepared = []
+    for p in patterns:
+        if not p.pattern:
+            continue
+        p_norm = normalize_pu_string(p.pattern)
+        if p_norm:
+            prepared.append((p, p_norm))
+    
+    # Сортируем по длине нормализованного паттерна (длинные = точнее)
+    prepared.sort(key=lambda x: len(x[1]), reverse=True)
+    
+    def extract_result(p):
+        result = {}
+        if p.faza:
+            result['faza'] = p.faza
+        if p.voltage:
+            result['voltage'] = p.voltage
+        if p.form_factor:
+            result['form_factor'] = p.form_factor
+        return result
+    
+    # 1) Точное вхождение нормализованной строки
+    for p, p_norm in prepared:
+        if p_norm in pu_norm or pu_norm.startswith(p_norm):
+            return extract_result(p)
+    
+    # 2) Токенное совпадение — разбиваем на слова и ищем максимальное пересечение
+    pu_tokens = set(pu_norm.split())
+    
+    best_match = None
+    best_score = 0
+    
+    for p, p_norm in prepared:
+        p_tokens = set(p_norm.split())
+        if not p_tokens:
+            continue
+        
+        # Сколько токенов паттерна есть в названии ПУ
+        matched = len(p_tokens & pu_tokens)
+        score = matched / len(p_tokens)  # доля совпавших токенов
+        
+        # Минимум 70% токенов должны совпасть и хотя бы 2 токена
+        if score >= 0.7 and matched >= 2 and score > best_score:
+            best_score = score
+            best_match = p
+    
+    if best_match:
+        return extract_result(best_match)
+    
+    return {}
+    
 def detect_pu_type_params(pu_type: str, db: Session) -> dict:
     """
     Определяет фазность и напряжение по паттерну из справочника.
