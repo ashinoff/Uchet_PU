@@ -462,38 +462,6 @@ def detect_pu_type_params(pu_type: str, db: Session) -> dict:
     
     return {}
     
-def detect_pu_type_params(pu_type: str, db: Session) -> dict:
-    """
-    Определяет фазность и напряжение по паттерну из справочника.
-    Например: "НАРТИС-И100-W113-2-A1R1-230-5-80A..." -> ищем паттерн "НАРТИС-И100-W113"
-    """
-    if not pu_type:
-        return {}
-    
-    pu_type_upper = pu_type.upper().strip()
-    
-    # Получаем все паттерны из справочника
-    patterns = db.query(PUTypeReference).filter(PUTypeReference.is_active == True).all()
-    
-    # Ищем подходящий паттерн (от более длинного к короткому для точности)
-    patterns_sorted = sorted(patterns, key=lambda p: len(p.pattern) if p.pattern else 0, reverse=True)
-    
-    for p in patterns_sorted:
-        if not p.pattern:
-            continue
-        pattern_upper = p.pattern.upper().strip()
-        if pu_type_upper.startswith(pattern_upper) or pattern_upper in pu_type_upper:
-            result = {}
-            if p.faza:
-                result['faza'] = p.faza
-            if p.voltage:
-                result['voltage'] = p.voltage
-            if p.form_factor:
-                result['form_factor'] = p.form_factor
-            return result
-    
-    return {}
-
 def get_visible_units(user: User, db: Session) -> List[int]:
     """Какие подразделения видит пользователь"""
     if is_sue_admin(user):
