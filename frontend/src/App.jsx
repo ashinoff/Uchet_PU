@@ -1771,6 +1771,22 @@ function UploadPage() {
 
   useEffect(() => { api.get('/pu/registers').then(r => setRegisters(r.data)) }, [])
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/pu/upload-template', { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', 'Шаблон_Загрузки_ПУ.xlsx')
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Ошибка при скачивании шаблона')
+    }
+  }
+
   const handleUpload = async () => {
     if (!file) return
     setLoading(true)
@@ -1827,6 +1843,7 @@ function UploadPage() {
               {file && <button onClick={handleUpload} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">{loading ? 'Загрузка...' : 'Загрузить'}</button>}
             </div>
             <p className="mt-4 text-sm text-gray-400">Ожидаемые колонки: Заводской номер ПУ, Тип прибора учета, Подразделение</p>
+            <button onClick={handleDownloadTemplate} className="mt-3 px-4 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors">📥 Скачать шаблон Excel</button>
           </div>
         )}
       </div>
