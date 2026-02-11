@@ -1509,6 +1509,75 @@ def get_registers(db: Session = Depends(get_db), user: User = Depends(get_curren
     regs = q.order_by(PURegister.uploaded_at.desc()).all()
     return [{"id": r.id, "filename": r.filename, "items_count": r.items_count, "uploaded_at": r.uploaded_at} for r in regs]
 
+@app.get("/api/pu/upload-template")
+def download_upload_template():
+    """Скачать шаблон Excel для загрузки реестра ПУ"""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Реестр ПУ"
+
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    example_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    note_font = Font(italic=True, color="808080", size=9)
+
+    headers = [
+        ("Заводской номер ПУ", 25),
+        ("Тип прибора учета", 45),
+        ("Подразделение", 25),
+        ("Назначение", 18),
+    ]
+
+    for col, (header, width) in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    ws.row_dimensions[1].height = 30
+
+    examples = [
+        ("12345678", "Меркурий 234 ARTM-01 PB.G 5(100)А", "Восточный РЭС", "ИЖЦ"),
+        ("87654321", "Нева МТ 314 1.0 AR E4BS26 5(100)А", "Западный РЭС", "Техприс"),
+        ("11223344", "Меркурий 201.8TLO 5(80)А", "Южный РЭС", "Замена"),
+    ]
+
+    for row_idx, example in enumerate(examples, 2):
+        for col_idx, value in enumerate(example, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = example_fill
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical="center")
+        ws.row_dimensions[row_idx].height = 22
+
+    note_row = len(examples) + 3
+    ws.cell(row=note_row, column=1, value="Примечания:").font = Font(bold=True, size=9)
+    ws.cell(row=note_row + 1, column=1, value="• Колонка «Заводской номер ПУ» — обязательна").font = note_font
+    ws.cell(row=note_row + 2, column=1, value="• Назначение: ИЖЦ, Техприс или Замена").font = note_font
+    ws.cell(row=note_row + 3, column=1, value="• Жёлтые строки — примеры, удалите их перед загрузкой").font = note_font
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename_ascii = "Shablon_Zagruzki_PU.xlsx"
+    filename_rus = "Шаблон_Загрузки_ПУ.xlsx"
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename_ascii}"; filename*=UTF-8\'\'{quote(filename_rus)}'
+        }
+    )
+
 @app.post("/api/pu/upload")
 async def upload_register(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Загрузка реестра ПУ - только Лаборатория"""
