@@ -3619,6 +3619,31 @@ def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(ge
     
     return {"created": updated, "tz_number": tz_number}
 
+@app.post("/api/tz/remove-items")
+def remove_items_from_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Удалить (исключить) ПУ из ТЗ — только СУЭ"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может удалять ПУ из ТЗ")
+    
+    item_ids = data.get("item_ids", [])
+    tz_number = data.get("tz_number", "")
+    
+    if not item_ids:
+        raise HTTPException(400, "Не выбраны ПУ для удаления из ТЗ")
+    
+    # Обновляем только ПУ, которые принадлежат указанному ТЗ
+    updated = db.query(PUItem).filter(
+        PUItem.id.in_(item_ids),
+        PUItem.tz_number == tz_number
+    ).update({"tz_number": None}, synchronize_session=False)
+    
+    db.commit()
+    
+    # Проверяем, остались ли ещё ПУ в этом ТЗ
+    remaining = db.query(PUItem).filter(PUItem.tz_number == tz_number).count()
+    
+    return {"removed": updated, "remaining": remaining, "tz_number": tz_number}
+
 @app.get("/api/tz/next-number")
 def get_next_tz_number(
     status: str,
