@@ -2033,6 +2033,8 @@ function TZPage() {
   const [tzList, setTzList] = useState([])
   const [expandedTz, setExpandedTz] = useState(null)
   const [tzItems, setTzItems] = useState([])
+  const [selectedTzItems, setSelectedTzItems] = useState([])
+  const [removingFromTz, setRemovingFromTz] = useState(false)
   const [pendingItems, setPendingItems] = useState([])
   const [units, setUnits] = useState([])
   const [selectedStatus, setSelectedStatus] = useState('TECHPRIS')
@@ -2104,8 +2106,10 @@ function TZPage() {
     if (expandedTz === tzNumber) {
       setExpandedTz(null)
       setTzItems([])
+      setSelectedTzItems([])
     } else {
       setExpandedTz(tzNumber)
+      setSelectedTzItems([])
       const r = await api.get(`/tz/${encodeURIComponent(tzNumber)}/items`)
       setTzItems(r.data)
     }
@@ -2126,6 +2130,37 @@ const exportToExcel = async () => {
       window.URL.revokeObjectURL(url)
     } catch (err) {
       alert('Ошибка выгрузки: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  const removeFromTz = async () => {
+    if (!expandedTz || selectedTzItems.length === 0) return
+    if (!confirm(`Удалить ${selectedTzItems.length} ПУ из ТЗ ${expandedTz}?`)) return
+    
+    setRemovingFromTz(true)
+    try {
+      const r = await api.post('/tz/remove-items', { 
+        item_ids: selectedTzItems, 
+        tz_number: expandedTz 
+      })
+      alert(`✅ Удалено из ТЗ: ${r.data.removed} шт.${r.data.remaining === 0 ? '\nТЗ полностью очищено.' : ` Осталось в ТЗ: ${r.data.remaining} шт.`}`)
+      
+      // Обновляем список ТЗ и элементы
+      setSelectedTzItems([])
+      const tzListR = await api.get('/tz/list')
+      setTzList(tzListR.data)
+      
+      if (r.data.remaining > 0) {
+        const itemsR = await api.get(`/tz/${encodeURIComponent(expandedTz)}/items`)
+        setTzItems(itemsR.data)
+      } else {
+        setExpandedTz(null)
+        setTzItems([])
+      }
+    } catch (err) {
+      alert('Ошибка: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setRemovingFromTz(false)
     }
   }
 
@@ -2330,11 +2365,29 @@ const saveAllMaterials = async () => {
                         <td colSpan={5} className="bg-gray-50 p-4">
                           <div className="flex justify-between items-center mb-3">
                             <span className="font-medium">ПУ в ТЗ {tz.tz_number}</span>
-                            <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                            <div className="flex gap-2">
+                              {selectedTzItems.length > 0 && (
+                                <button 
+                                  onClick={removeFromTz} 
+                                  disabled={removingFromTz}
+                                  className="px-3 py-1 bg-red-600 text-white rounded-lg text-sm disabled:opacity-50"
+                                >
+                                  {removingFromTz ? '⏳ Удаление...' : `🗑️ Удалить из ТЗ (${selectedTzItems.length})`}
+                                </button>
+                              )}
+                              <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                            </div>
                           </div>
                           <table className="w-full text-sm bg-white rounded-lg overflow-hidden">
                             <thead className="bg-gray-100">
                               <tr>
+                                <th className="w-10 px-3 py-2">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={tzItems.length > 0 && selectedTzItems.length === tzItems.length}
+                                    onChange={() => setSelectedTzItems(selectedTzItems.length === tzItems.length ? [] : tzItems.map(i => i.id))}
+                                  />
+                                </th>
                                 <th className="px-3 py-2 text-left">№</th>
                                 <th className="px-3 py-2 text-left">Серийный номер</th>
                                 <th className="px-3 py-2 text-left">Тип</th>
@@ -2346,7 +2399,14 @@ const saveAllMaterials = async () => {
                             </thead>
                             <tbody>
                               {tzItems.map((item, i) => (
-                                <tr key={item.id} className="border-t">
+                                <tr key={item.id} className={`border-t ${selectedTzItems.includes(item.id) ? 'bg-red-50' : ''}`}>
+                                  <td className="px-3 py-2">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={selectedTzItems.includes(item.id)}
+                                      onChange={() => setSelectedTzItems(s => s.includes(item.id) ? s.filter(x => x !== item.id) : [...s, item.id])}
+                                    />
+                                  </td>
                                   <td className="px-3 py-2">{i + 1}</td>
                                   <td className="px-3 py-2 font-mono">{item.serial_number}</td>
                                   <td className="px-3 py-2 max-w-xs truncate" title={item.pu_type}>{item.pu_type || '—'}</td>
