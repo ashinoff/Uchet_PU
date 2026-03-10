@@ -3986,10 +3986,10 @@ def export_request_to_excel(
         output.seek(0)
         
         # Безопасное имя файла (ASCII + URL-encoded для UTF-8)
-        safe_request_number = request_number.replace("/", "-").replace("\\", "-")
-        safe_contract = (request_contract or "").replace("/", "-").replace("\\", "-")
-        filename_ascii = f"Zayavka_{safe_request_number}_{safe_contract}.xlsx"
-        filename_utf8 = f"Заявка_{safe_request_number}_{safe_contract}.xlsx"
+        safe_request_number = re.sub(r'[^\x00-\x7F]', '', request_number.replace("/", "-").replace("\\", "-")).strip("_- ")
+        safe_contract = re.sub(r'[^\x00-\x7F]', '', (request_contract or "").replace("/", "-").replace("\\", "-")).strip("_- ")
+        filename_ascii = f"Zayavka_{safe_request_number}_{safe_contract}.xlsx".replace(" ", "_")
+        filename_utf8 = f"Заявка_{request_number}_{request_contract or ''}.xlsx"
         
         headers = {
             "Content-Disposition": f"attachment; filename=\"{filename_ascii}\"; filename*=UTF-8''{quote(filename_utf8)}"
