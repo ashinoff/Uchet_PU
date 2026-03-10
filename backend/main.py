@@ -3949,17 +3949,17 @@ def export_request_to_excel(
         
         ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=19)
 
-            ws.cell(row=total_row, column=20, value=total_no_nds)
-            ws.cell(row=total_row, column=20).font = Font(bold=True)
-            ws.cell(row=total_row, column=20).number_format = '#,##0.00'
-            ws.cell(row=total_row, column=20).border = thin_border
-            ws.cell(row=total_row, column=20).alignment = money_alignment
+        ws.cell(row=total_row, column=20, value=total_no_nds)
+        ws.cell(row=total_row, column=20).font = Font(bold=True)
+        ws.cell(row=total_row, column=20).number_format = '#,##0.00'
+        ws.cell(row=total_row, column=20).border = thin_border
+        ws.cell(row=total_row, column=20).alignment = money_alignment
 
-            ws.cell(row=total_row, column=21, value=total_with_nds)
-            ws.cell(row=total_row, column=21).font = Font(bold=True)
-            ws.cell(row=total_row, column=21).number_format = '#,##0.00'
-            ws.cell(row=total_row, column=21).border = thin_border
-            ws.cell(row=total_row, column=21).alignment = money_alignment
+        ws.cell(row=total_row, column=21, value=total_with_nds)
+        ws.cell(row=total_row, column=21).font = Font(bold=True)
+        ws.cell(row=total_row, column=21).number_format = '#,##0.00'
+        ws.cell(row=total_row, column=21).border = thin_border
+        ws.cell(row=total_row, column=21).alignment = money_alignment
         
         # Количество ПУ
         ws.cell(row=total_row + 1, column=1, value=f"Всего ПУ: {len(items)} шт.")
