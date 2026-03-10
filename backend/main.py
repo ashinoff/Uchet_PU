@@ -3872,13 +3872,17 @@ def export_request_to_excel(
         # Высота заголовка
         ws.row_dimensions[1].height = 40
         
-        # Функция получения РЭС по ЭСК
+        # Предзагружаем все РЭС единым запросом (вместо 130 отдельных)
+        res_units = {u.code: u.name for u in db.query(Unit).filter(Unit.unit_type == UnitType.RES).all()}
+        
         def get_res_name(esk_unit):
             if not esk_unit or not esk_unit.code:
                 return "—"
             res_code = esk_unit.code.replace("ESK_", "RES_")
-            res_unit = db.query(Unit).filter(Unit.code == res_code).first()
-            return res_unit.name if res_unit else "—"
+            return res_units.get(res_code, "—")
+        
+        total_no_nds = 0
+        total_with_nds = 0
         
         # Записываем данные
         total_no_nds = 0
@@ -3899,6 +3903,17 @@ def export_request_to_excel(
             total_no_nds += item_total_no
             total_with_nds += item_total_with
             
+            contract_date_str = ""
+            plan_date_str = ""
+            try:
+                contract_date_str = item.contract_date.strftime("%d.%m.%Y") if item.contract_date else ""
+            except Exception:
+                pass
+            try:
+                plan_date_str = item.plan_date.strftime("%d.%m.%Y") if item.plan_date else ""
+            except Exception:
+                pass
+
             data = [
                 idx,
                 "Сочинский ПЭС",
@@ -3906,9 +3921,9 @@ def export_request_to_excel(
                 item.consumer or "",
                 item.address or "",
                 item.contract_number or "",
-                item.contract_date.strftime("%d.%m.%Y") if item.contract_date else "",
-                item.plan_date.strftime("%d.%m.%Y") if item.plan_date else "",
-                item.power or "",
+                contract_date_str,
+                plan_date_str,
+                item.power if item.power is not None else "",
                 item.pu_type or "",
                 item.faza or "",
                 item.work_type_name or "",
