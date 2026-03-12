@@ -2712,6 +2712,7 @@ function RequestsPage() {
   const [bulkLoading, setBulkLoading] = useState(false)
 
   const canCreateRequest = isEskAdmin || isEskUser
+  const canManageRequest = isSueAdmin
 
   useEffect(() => {
     loadRequests()
@@ -2936,7 +2937,7 @@ const exportToExcel = async () => {
                             <div className="flex justify-between items-center mb-3">
                               <span className="font-medium">ПУ в заявке {req.display_name}</span>
                               <div className="flex gap-2">
-                                {canCreateRequest && checkedReqItems.length > 0 && (
+                                {canManageRequest && checkedReqItems.length > 0 && (
                                   <>
                                     <button
                                       onClick={handleBulkRecalculate}
@@ -2961,7 +2962,7 @@ const exportToExcel = async () => {
                               <table className="w-full text-xs bg-white rounded-lg overflow-hidden">
                                 <thead className="bg-gray-100">
                                   <tr>
-                                    {canCreateRequest && (
+                                    {canManageRequest && (
                                       <th className="px-2 py-2">
                                         <input type="checkbox"
                                           checked={checkedReqItems.length === reqItems.length && reqItems.length > 0}
@@ -2981,13 +2982,13 @@ const exportToExcel = async () => {
                                     <th className="px-2 py-2 text-left">Фаза</th>
                                     <th className="px-2 py-2 text-left">Вид работ</th>
                                     <th className="px-2 py-2 text-left">Стоим. с НДС</th>
-                                    {canCreateRequest && <th className="px-2 py-2"></th>}
+                                    {canManageRequest && <th className="px-2 py-2"></th>}
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {reqItems.map((item) => (
                                     <tr key={item.id} className={`border-t ${checkedReqItems.includes(item.id) ? 'bg-blue-50' : ''}`}>
-                                      {canCreateRequest && (
+                                      {canManageRequest && (
                                         <td className="px-2 py-2">
                                           <input type="checkbox"
                                             checked={checkedReqItems.includes(item.id)}
@@ -3009,7 +3010,7 @@ const exportToExcel = async () => {
                                       <td className="px-2 py-2">{item.faza || '—'}</td>
                                       <td className="px-2 py-2">{item.work_type_name || '—'}</td>
                                       <td className="px-2 py-2 font-medium">{item.price_with_nds?.toLocaleString() || '—'} ₽</td>
-                                      {canCreateRequest && (
+                                      {canManageRequest && (
                                         <td className="px-2 py-2">
                                           <button onClick={() => handleRemoveFromRequest(item.id)} className="text-red-500 hover:text-red-700" title="Удалить из заявки">🗑️</button>
                                         </td>
