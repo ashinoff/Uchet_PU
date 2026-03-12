@@ -4102,6 +4102,117 @@ def modify_request(data: dict, db: Session = Depends(get_db), user: User = Depen
     return {"ok": True, "modified": len(item_ids)}
 
 
+@app.post("/api/requests/{request_number}/recalculate")
+def recalculate_request_prices(request_number: str, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Пересчитать стоимость выбранных ПУ в заявке по актуальным ценам ТТР ЭСК"""
+    if not is_esk_admin(user) and not is_esk_user(user):
+        raise HTTPException(403, "Только ЭСК может пересчитывать стоимости")
+
+    item_ids = data.get("item_ids", [])
+    if not item_ids:
+        raise HTTPException(400, "Не выбраны ПУ для пересчёта")
+
+    updated = 0
+    errors = []
+
+    for item_id in item_ids:
+        item = db.query(PUItem).filter(
+            PUItem.id == item_id,
+            PUItem.request_number == request_number
+        ).first()
+        if not item:
+            errors.append(f"ПУ #{item_id} не найден в заявке")
+            continue
+
+        # --- Пересчёт трубостойки ---
+        if item.trubostoyka:
+            ttr_truba = db.query(TTR_ESK).filter(
+                TTR_ESK.ttr_type == "TRUBOSTOYKA",
+                TTR_ESK.is_active == True
+            ).first()
+            if ttr_truba:
+                item.lsr_truba = ttr_truba.lsr_number
+                item.price_truba_no_nds = ttr_truba.price_no_nds or 0
+                item.price_truba_with_nds = ttr_truba.price_with_nds or 0
+            else:
+                item.lsr_truba = None
+                item.price_truba_no_nds = 0
+                item.price_truba_with_nds = 0
+        else:
+            item.lsr_truba = None
+            item.price_truba_no_nds = 0
+            item.price_truba_with_nds = 0
+
+        # --- Пересчёт ВА (основной ЛСР) ---
+        if item.faza and item.form_factor and item.va_type:
+            q = db.query(TTR_ESK).filter(
+                TTR_ESK.ttr_type == "PU",
+                TTR_ESK.faza == item.faza,
+                TTR_ESK.form_factor == item.form_factor,
+                TTR_ESK.va_type == item.va_type,
+                TTR_ESK.is_active == True
+            )
+            ttr_va = None
+            if item.pu_type:
+                pu_upper = item.pu_type.upper()
+                for t in q.all():
+                    if t.pu_pattern and t.pu_pattern.upper() in pu_upper:
+                        ttr_va = t
+                        break
+            if not ttr_va:
+                ttr_va = q.first()
+
+            if ttr_va:
+                item.lsr_va = ttr_va.lsr_number
+                item.price_va_no_nds = ttr_va.price_no_nds or 0
+                item.price_va_with_nds = ttr_va.price_with_nds or 0
+                item.lsr_number = ttr_va.lsr_number
+                item.price_no_nds = ttr_va.price_no_nds or 0
+                item.price_with_nds = ttr_va.price_with_nds or 0
+                item.ttr_esk_id = ttr_va.id
+                item.work_type_name = ttr_va.work_type_name
+            else:
+                errors.append(f"ПУ #{item_id}: не найден ТТР ЭСК для faza={item.faza}, form_factor={item.form_factor}, va_type={item.va_type}")
+        else:
+            errors.append(f"ПУ #{item_id}: недостаточно данных для подбора ТТР (faza/form_factor/va_type)")
+
+        updated += 1
+
+    db.commit()
+    return {"ok": True, "updated": updated, "errors": errors}
+
+
+@app.post("/api/requests/{request_number}/remove-items")
+def remove_items_from_request(request_number: str, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Удалить выбранные ПУ из заявки. Если заявка пустая — она автоматически исчезает."""
+    if not is_esk_admin(user) and not is_esk_user(user):
+        raise HTTPException(403, "Только ЭСК может изменять заявки")
+    if data.get("admin_code") != settings.ADMIN_CODE:
+        raise HTTPException(403, "Неверный код администратора")
+
+    item_ids = data.get("item_ids", [])
+    if not item_ids:
+        raise HTTPException(400, "Не выбраны ПУ для удаления")
+
+    removed = 0
+    for item_id in item_ids:
+        item = db.query(PUItem).filter(
+            PUItem.id == item_id,
+            PUItem.request_number == request_number
+        ).first()
+        if item:
+            item.request_number = None
+            item.request_contract = None
+            removed += 1
+
+    db.commit()
+
+    # Проверяем остались ли ПУ в заявке
+    remaining = db.query(PUItem).filter(PUItem.request_number == request_number).count()
+
+    return {"ok": True, "removed": removed, "request_deleted": remaining == 0, "remaining": remaining}
+
+
 @app.get("/api/memo/generate")
 def generate_memo(
     tz_number: Optional[str] = None,
