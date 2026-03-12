@@ -2708,6 +2708,8 @@ function RequestsPage() {
   const [lastRequest, setLastRequest] = useState(null)
   const [requestNumber, setRequestNumber] = useState('')
   const [requestContract, setRequestContract] = useState('')
+  const [checkedReqItems, setCheckedReqItems] = useState([])
+  const [bulkLoading, setBulkLoading] = useState(false)
 
   const canCreateRequest = isEskAdmin || isEskUser
 
@@ -2746,8 +2748,10 @@ function RequestsPage() {
     if (expandedReq === key) {
       setExpandedReq(null)
       setReqItems([])
+      setCheckedReqItems([])
     } else {
       setExpandedReq(key)
+      setCheckedReqItems([])
       const params = { request_contract: req.request_contract }
       const r = await api.get(`/requests/${encodeURIComponent(req.request_number)}/items`, { params })
       setReqItems(r.data)
@@ -2809,24 +2813,85 @@ const exportToExcel = async () => {
     setLoading(false)
   }
 
+  const reloadCurrentRequest = async (req) => {
+    const params = { request_contract: req.request_contract }
+    const r = await api.get(`/requests/${encodeURIComponent(req.request_number)}/items`, { params })
+    setReqItems(r.data)
+    setCheckedReqItems([])
+    loadRequests()
+  }
+
   const handleRemoveFromRequest = async (itemId) => {
     const code = prompt('Введите код администратора:')
     if (!code) return
-    
+    const req = requestsList.find(r => `${r.request_number}|${r.request_contract || ''}` === expandedReq)
+    if (!req) return
     try {
-      await api.post('/requests/modify', {
-        action: 'remove',
+      const res = await api.post(`/requests/${encodeURIComponent(req.request_number)}/remove-items`, {
         item_ids: [itemId],
         admin_code: code
       })
-      alert('✅ ПУ удалён из заявки')
-      // Обновляем список
-      const req = requestsList.find(r => `${r.request_number}|${r.request_contract || ''}` === expandedReq)
-      if (req) toggleExpand(req)
-      loadRequests()
+      if (res.data.request_deleted) {
+        alert('✅ ПУ удалён. Заявка стала пустой и удалена.')
+        setExpandedReq(null)
+        setReqItems([])
+        setCheckedReqItems([])
+        loadRequests()
+      } else {
+        alert('✅ ПУ удалён из заявки')
+        reloadCurrentRequest(req)
+      }
     } catch (err) {
       alert(err.response?.data?.detail || 'Ошибка')
     }
+  }
+
+  const handleBulkRemove = async () => {
+    if (checkedReqItems.length === 0) return alert('Выберите ПУ')
+    const code = prompt('Введите код администратора:')
+    if (!code) return
+    const req = requestsList.find(r => `${r.request_number}|${r.request_contract || ''}` === expandedReq)
+    if (!req) return
+    setBulkLoading(true)
+    try {
+      const res = await api.post(`/requests/${encodeURIComponent(req.request_number)}/remove-items`, {
+        item_ids: checkedReqItems,
+        admin_code: code
+      })
+      if (res.data.request_deleted) {
+        alert(`✅ Удалено ${res.data.removed} ПУ. Заявка стала пустой и удалена.`)
+        setExpandedReq(null)
+        setReqItems([])
+        setCheckedReqItems([])
+        loadRequests()
+      } else {
+        alert(`✅ Удалено ${res.data.removed} ПУ из заявки. Осталось: ${res.data.remaining}`)
+        reloadCurrentRequest(req)
+      }
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка')
+    }
+    setBulkLoading(false)
+  }
+
+  const handleBulkRecalculate = async () => {
+    if (checkedReqItems.length === 0) return alert('Выберите ПУ для пересчёта')
+    const req = requestsList.find(r => `${r.request_number}|${r.request_contract || ''}` === expandedReq)
+    if (!req) return
+    if (!window.confirm(`Пересчитать стоимость по текущим ценам ТТР ЭСК для ${checkedReqItems.length} ПУ?`)) return
+    setBulkLoading(true)
+    try {
+      const res = await api.post(`/requests/${encodeURIComponent(req.request_number)}/recalculate`, {
+        item_ids: checkedReqItems
+      })
+      let msg = `✅ Пересчитано: ${res.data.updated} ПУ`
+      if (res.data.errors?.length > 0) msg += `\n⚠️ Ошибки:\n${res.data.errors.join('\n')}`
+      alert(msg)
+      reloadCurrentRequest(req)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Ошибка')
+    }
+    setBulkLoading(false)
   }
 
   return (
@@ -2870,12 +2935,40 @@ const exportToExcel = async () => {
                           <td colSpan={4} className="bg-gray-50 p-4">
                             <div className="flex justify-between items-center mb-3">
                               <span className="font-medium">ПУ в заявке {req.display_name}</span>
-                              <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                              <div className="flex gap-2">
+                                {canCreateRequest && checkedReqItems.length > 0 && (
+                                  <>
+                                    <button
+                                      onClick={handleBulkRecalculate}
+                                      disabled={bulkLoading}
+                                      className="px-3 py-1 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"
+                                    >
+                                      🔄 Пересчитать ({checkedReqItems.length})
+                                    </button>
+                                    <button
+                                      onClick={handleBulkRemove}
+                                      disabled={bulkLoading}
+                                      className="px-3 py-1 bg-red-600 text-white rounded-lg text-sm disabled:opacity-50"
+                                    >
+                                      🗑️ Удалить ({checkedReqItems.length})
+                                    </button>
+                                  </>
+                                )}
+                                <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                              </div>
                             </div>
                             <div className="overflow-x-auto">
                               <table className="w-full text-xs bg-white rounded-lg overflow-hidden">
                                 <thead className="bg-gray-100">
                                   <tr>
+                                    {canCreateRequest && (
+                                      <th className="px-2 py-2">
+                                        <input type="checkbox"
+                                          checked={checkedReqItems.length === reqItems.length && reqItems.length > 0}
+                                          onChange={e => setCheckedReqItems(e.target.checked ? reqItems.map(i => i.id) : [])}
+                                        />
+                                      </th>
+                                    )}
                                     <th className="px-2 py-2 text-left">№</th>
                                     <th className="px-2 py-2 text-left">Филиал</th>
                                     <th className="px-2 py-2 text-left">РЭС</th>
@@ -2893,7 +2986,17 @@ const exportToExcel = async () => {
                                 </thead>
                                 <tbody>
                                   {reqItems.map((item) => (
-                                    <tr key={item.id} className="border-t">
+                                    <tr key={item.id} className={`border-t ${checkedReqItems.includes(item.id) ? 'bg-blue-50' : ''}`}>
+                                      {canCreateRequest && (
+                                        <td className="px-2 py-2">
+                                          <input type="checkbox"
+                                            checked={checkedReqItems.includes(item.id)}
+                                            onChange={e => setCheckedReqItems(prev =>
+                                              e.target.checked ? [...prev, item.id] : prev.filter(id => id !== item.id)
+                                            )}
+                                          />
+                                        </td>
+                                      )}
                                       <td className="px-2 py-2">{item.row_num}</td>
                                       <td className="px-2 py-2">{item.filial}</td>
                                       <td className="px-2 py-2">{item.res_name}</td>
