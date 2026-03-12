@@ -4105,8 +4105,8 @@ def modify_request(data: dict, db: Session = Depends(get_db), user: User = Depen
 @app.post("/api/requests/{request_number}/recalculate")
 def recalculate_request_prices(request_number: str, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Пересчитать стоимость выбранных ПУ в заявке по актуальным ценам ТТР ЭСК"""
-    if not is_esk_admin(user) and not is_esk_user(user):
-        raise HTTPException(403, "Только ЭСК может пересчитывать стоимости")
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может пересчитывать стоимости")
 
     item_ids = data.get("item_ids", [])
     if not item_ids:
@@ -4185,8 +4185,8 @@ def recalculate_request_prices(request_number: str, data: dict, db: Session = De
 @app.post("/api/requests/{request_number}/remove-items")
 def remove_items_from_request(request_number: str, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Удалить выбранные ПУ из заявки. Если заявка пустая — она автоматически исчезает."""
-    if not is_esk_admin(user) and not is_esk_user(user):
-        raise HTTPException(403, "Только ЭСК может изменять заявки")
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может изменять заявки")
     if data.get("admin_code") != settings.ADMIN_CODE:
         raise HTTPException(403, "Неверный код администратора")
 
