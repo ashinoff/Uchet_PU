@@ -3850,13 +3850,10 @@ def export_request_to_excel(
             ("Фазность", 10),
             ("Вид работ", 25),
             ("ЛСР ПУ/ВА", 12),
-            ("Без НДС", 12),
             ("С НДС", 12),
             ("Трубост.", 10),
             ("ЛСР Труб.", 12),
-            ("Без НДС", 12),
             ("С НДС", 12),
-            ("ИТОГО без НДС", 14),
             ("ИТОГО с НДС", 14),
         ]
         
@@ -3928,13 +3925,10 @@ def export_request_to_excel(
                 item.faza or "",
                 item.work_type_name or "",
                 item.lsr_va or "",
-                price_va_no,
                 price_va_with,
                 "Да" if item.trubostoyka else "Нет",
                 item.lsr_truba or "",
-                price_truba_no if item.trubostoyka else "",
                 price_truba_with if item.trubostoyka else "",
-                item_total_no,
                 item_total_with,
             ]
             
@@ -3945,9 +3939,9 @@ def export_request_to_excel(
                 # Выравнивание
                 if col == 1:  # №
                     cell.alignment = center_alignment
-                elif col in [7, 8, 9, 11, 16]:  # Даты, мощность, фазность, трубостойка
+                elif col in [7, 8, 9, 11, 15]:  # Даты, мощность, фазность, трубостойка
                     cell.alignment = center_alignment
-                elif col in [15, 16, 19, 20, 21, 22]:  # Деньги 
+                elif col in [14, 17, 18]:  # Деньги 
                     cell.alignment = money_alignment
                     if isinstance(value, (int, float)) and value > 0:
                         cell.number_format = '#,##0.00'
@@ -3962,19 +3956,13 @@ def export_request_to_excel(
         ws.cell(row=total_row, column=1).font = Font(bold=True)
         ws.cell(row=total_row, column=1).alignment = Alignment(horizontal="right")
         
-        ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=19)
+        ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=17)
 
-        ws.cell(row=total_row, column=20, value=total_no_nds)
-        ws.cell(row=total_row, column=20).font = Font(bold=True)
-        ws.cell(row=total_row, column=20).number_format = '#,##0.00'
-        ws.cell(row=total_row, column=20).border = thin_border
-        ws.cell(row=total_row, column=20).alignment = money_alignment
-
-        ws.cell(row=total_row, column=21, value=total_with_nds)
-        ws.cell(row=total_row, column=21).font = Font(bold=True)
-        ws.cell(row=total_row, column=21).number_format = '#,##0.00'
-        ws.cell(row=total_row, column=21).border = thin_border
-        ws.cell(row=total_row, column=21).alignment = money_alignment
+        ws.cell(row=total_row, column=18, value=total_with_nds)
+        ws.cell(row=total_row, column=18).font = Font(bold=True)
+        ws.cell(row=total_row, column=18).number_format = '#,##0.00'
+        ws.cell(row=total_row, column=18).border = thin_border
+        ws.cell(row=total_row, column=18).alignment = money_alignment
         
         # Количество ПУ
         ws.cell(row=total_row + 1, column=1, value=f"Всего ПУ: {len(items)} шт.")
