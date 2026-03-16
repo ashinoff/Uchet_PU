@@ -861,6 +861,10 @@ useEffect(() => {
       if ((item.status === 'ZAMENA' || item.status === 'IZHC') && !item.ls_number) {
         errs.ls_number = 'Обязательно'
       }
+      // Если ВА установлен — ТТР распред. щита обязателен
+      if (item.has_va && !item.ttr_or_id) {
+        errs.ttr_or_id = 'Обязательно при ВА'
+      }
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -1381,11 +1385,14 @@ const updateMaterialQty = (materialId, qty) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">ТТР распред. щита</label>
-                  <select value={item.ttr_or_id || ''} onChange={e => update('ttr_or_id', parseInt(e.target.value) || null)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+                  <label className={`block text-sm font-medium mb-1 ${errors.ttr_or_id ? 'text-red-600' : 'text-gray-600'}`}>
+                    ТТР распред. щита {item.has_va ? <span className="text-red-500">*</span> : ''}
+                  </label>
+                  <select value={item.ttr_or_id || ''} onChange={e => update('ttr_or_id', parseInt(e.target.value) || null)} disabled={!canEdit} className={`w-full px-3 py-2 border rounded-lg ${errors.ttr_or_id ? 'border-red-500 bg-red-50' : ''}`}>
                     <option value="">—</option>
                     {ttrRes.filter(t => t.ttr_type === 'OR').map(t => <option key={t.id} value={t.id}>{t.code}</option>)}
                   </select>
+                  {errors.ttr_or_id && <p className="text-red-500 text-xs mt-1">⚠️ {errors.ttr_or_id}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
