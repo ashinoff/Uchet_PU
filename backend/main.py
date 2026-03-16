@@ -3149,6 +3149,9 @@ def save_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = 
     
         if va_used is not None:
             item.has_va = va_used
+            if not va_used:
+                item.ttr_or_id = None
+                item.va_nominal_id = None
         if va_quantity is not None:
             item.va_quantity = va_quantity
         if tt_used is not None:
