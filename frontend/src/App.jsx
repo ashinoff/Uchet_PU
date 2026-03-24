@@ -798,12 +798,12 @@ useEffect(() => {
           const allTtrData = [...ouRes.data, ...olRes.data, ...orRes.data, ...ttItems]
           setTtrRes(allTtrData)
           
-          // Авто-привязка У-27: если ЗАМЕНА и есть ТТР с use_tt, ставим ttr_tt_id автоматически
+          // Авто-привязка У-27: если ЗАМЕНА и выбран У-25, ставим ttr_tt_id автоматически
           if (itemData.status === 'ZAMENA' && !itemData.ttr_tt_id) {
-            const hasUseTt = allTtrData.some(t => 
-              (t.id === itemData.ttr_ou_id || t.id === itemData.ttr_ol_id || t.id === itemData.ttr_or_id) && t.use_tt
+            const hasU25 = allTtrData.some(t => 
+              (t.id === itemData.ttr_ou_id || t.id === itemData.ttr_ol_id || t.id === itemData.ttr_or_id) && t.code && t.code.toUpperCase().includes('У-25')
             )
-            if (hasUseTt) {
+            if (hasU25) {
               const ttTtr = allTtrData.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
               if (ttTtr) {
                 itemData.ttr_tt_id = ttTtr.id
@@ -1029,6 +1029,16 @@ const update = async (field, value) => {
   
   let newItem = { ...item, [field]: value }
   
+  // Сброс ТТР орг. учета при смене статуса (фильтр меняется: Установка/Замена)
+  if (field === 'status' && value !== item.status && ['TECHPRIS', 'ZAMENA', 'IZHC'].includes(value)) {
+    const prevGroup = (item.status === 'ZAMENA' || item.status === 'IZHC') ? 'zamena' : 'techpris'
+    const newGroup = (value === 'ZAMENA' || value === 'IZHC') ? 'zamena' : 'techpris'
+    if (prevGroup !== newGroup && item.ttr_ou_id) {
+      newItem.ttr_ou_id = null
+      newItem.ttr_tt_id = null
+    }
+  }
+
   // Автозаполнение при смене статуса со Склада
   if (field === 'status' && value !== 'SKLAD' && item.status === 'SKLAD') {
     if (!item.faza || !item.voltage || !item.form_factor) {
@@ -1119,18 +1129,18 @@ if (field === 'smr_executor' && value === 'РСК') {
   setMaterials(prev => prev.map(m => ({ ...m, used: true })))
 }
 
-// Загружаем материалы при выборе ТТР + автопривязка У-27
+// Загружаем материалы при выборе ТТР + автопривязка У-27 (жёстко только при У-25)
 if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
-  // Проверяем есть ли среди выбранных ТТР хоть один с use_tt
-  const hasUseTt = ttrRes.some(t => 
-    (t.id === newItem.ttr_ou_id || t.id === newItem.ttr_ol_id || t.id === newItem.ttr_or_id) && t.use_tt
+  // Проверяем есть ли среди выбранных ТТР именно У-25
+  const hasU25 = ttrRes.some(t => 
+    (t.id === newItem.ttr_ou_id || t.id === newItem.ttr_ol_id || t.id === newItem.ttr_or_id) && t.code && t.code.toUpperCase().includes('У-25')
   )
-  if (hasUseTt && newItem.status === 'ZAMENA') {
-    // Автоматически ставим первый ТТР типа TT (У-27)
+  if (hasU25 && newItem.status === 'ZAMENA') {
+    // Автоматически ставим У-27
     const ttTtr = ttrRes.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
     if (ttTtr) newItem.ttr_tt_id = ttTtr.id
   } else {
-    // Снимаем У-27 если ТТ больше не нужен
+    // Снимаем У-27 если У-25 не выбран
     newItem.ttr_tt_id = null
   }
   setItem(newItem)
@@ -1415,7 +1425,14 @@ const updateMaterialQty = (materialId, qty) => {
                   <label className="block text-sm font-medium text-gray-600 mb-1">ТТР орг. учета</label>
                   <select value={item.ttr_ou_id || ''} onChange={e => update('ttr_ou_id', parseInt(e.target.value) || null)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
                     <option value="">—</option>
-                    {ttrRes.filter(t => t.ttr_type === 'OU').map(t => <option key={t.id} value={t.id}>{t.code}</option>)}
+                    {ttrRes.filter(t => {
+                      if (t.ttr_type !== 'OU') return false
+                      // Фильтр по статусу: Техприс → Установка, Замена/ИЖЦ → Замена
+                      const nameUp = (t.name || '').toLowerCase()
+                      if (item.status === 'TECHPRIS') return nameUp.startsWith('установка')
+                      if (item.status === 'ZAMENA' || item.status === 'IZHC') return nameUp.startsWith('замена')
+                      return true
+                    }).map(t => <option key={t.id} value={t.id}>{t.code}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1436,9 +1453,9 @@ const updateMaterialQty = (materialId, qty) => {
                   {errors.ttr_or_id && <p className="text-red-500 text-xs mt-1">⚠️ {errors.ttr_or_id}</p>}
                 </div>
               </div>
-              {/* ТТР для ТТ (У-27) — автоматически при выборе ТТР с use_tt */}
+              {/* ТТР для ТТ (У-27) — автоматически только при выборе У-25 */}
               {item.status === 'ZAMENA' && ttrRes.some(t => 
-                (t.id === item?.ttr_ou_id || t.id === item?.ttr_ol_id || t.id === item?.ttr_or_id) && t.use_tt
+                (t.id === item?.ttr_ou_id || t.id === item?.ttr_ol_id || t.id === item?.ttr_or_id) && t.code && t.code.toUpperCase().includes('У-25')
               ) && (() => {
                 const ttTtr = ttrRes.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
                 return (
