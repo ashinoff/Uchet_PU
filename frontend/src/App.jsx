@@ -793,7 +793,22 @@ useEffect(() => {
             api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OR' } }),
             api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'TT' } }).catch(() => ({ data: [] }))
           ])
-          setTtrRes([...ouRes.data, ...olRes.data, ...orRes.data, ...ttRes.data])
+          const allTtrData = [...ouRes.data, ...olRes.data, ...orRes.data, ...ttRes.data]
+          setTtrRes(allTtrData)
+          
+          // Авто-привязка У-27: если ЗАМЕНА и есть ТТР с use_tt, ставим ttr_tt_id автоматически
+          if (itemData.status === 'ZAMENA' && !itemData.ttr_tt_id) {
+            const hasUseTt = allTtrData.some(t => 
+              (t.id === itemData.ttr_ou_id || t.id === itemData.ttr_ol_id || t.id === itemData.ttr_or_id) && t.use_tt
+            )
+            if (hasUseTt) {
+              const ttTtr = allTtrData.find(t => t.ttr_type === 'TT')
+              if (ttTtr) {
+                itemData.ttr_tt_id = ttTtr.id
+                setItem(prev => prev ? { ...prev, ttr_tt_id: ttTtr.id } : prev)
+              }
+            }
+          }
         } catch (err) {
           // Если ошибка — загружаем все ТТР
           const allTtr = await api.get('/ttr/res')
@@ -1102,9 +1117,28 @@ if (field === 'smr_executor' && value === 'РСК') {
   setMaterials(prev => prev.map(m => ({ ...m, used: true })))
 }
 
-// Загружаем материалы при выборе ТТР
-if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id', 'ttr_tt_id'].includes(field)) {
-  // Передаём актуальные значения из newItem, а не из старого item
+// Загружаем материалы при выборе ТТР + автопривязка У-27
+if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
+  // Проверяем есть ли среди выбранных ТТР хоть один с use_tt
+  const hasUseTt = ttrRes.some(t => 
+    (t.id === newItem.ttr_ou_id || t.id === newItem.ttr_ol_id || t.id === newItem.ttr_or_id) && t.use_tt
+  )
+  if (hasUseTt && newItem.status === 'ZAMENA') {
+    // Автоматически ставим первый ТТР типа TT (У-27)
+    const ttTtr = ttrRes.find(t => t.ttr_type === 'TT')
+    if (ttTtr) newItem.ttr_tt_id = ttTtr.id
+  } else {
+    // Снимаем У-27 если ТТ больше не нужен
+    newItem.ttr_tt_id = null
+  }
+  setItem(newItem)
+  loadMaterials({
+    ttr_ou_id: newItem.ttr_ou_id,
+    ttr_ol_id: newItem.ttr_ol_id,
+    ttr_or_id: newItem.ttr_or_id,
+    ttr_tt_id: newItem.ttr_tt_id
+  })
+} else if (field === 'ttr_tt_id') {
   loadMaterials({
     ttr_ou_id: newItem.ttr_ou_id,
     ttr_ol_id: newItem.ttr_ol_id,
@@ -1400,24 +1434,21 @@ const updateMaterialQty = (materialId, qty) => {
                   {errors.ttr_or_id && <p className="text-red-500 text-xs mt-1">⚠️ {errors.ttr_or_id}</p>}
                 </div>
               </div>
-              {/* ТТР для ТТ (У-27) — появляется при выборе ТТР с use_tt=true (например У-25) */}
+              {/* ТТР для ТТ (У-27) — автоматически при выборе ТТР с use_tt */}
               {item.status === 'ZAMENA' && ttrRes.some(t => 
                 (t.id === item?.ttr_ou_id || t.id === item?.ttr_ol_id || t.id === item?.ttr_or_id) && t.use_tt
-              ) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
-                  <label className="block text-sm font-medium text-amber-700 mb-1">⚡ ТТР для ТТ (У-27)</label>
-                  <select 
-                    value={item.ttr_tt_id || ''} 
-                    onChange={e => update('ttr_tt_id', parseInt(e.target.value) || null)} 
-                    disabled={!canEdit} 
-                    className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white"
-                  >
-                    <option value="">— Выберите ТТР для ТТ —</option>
-                    {ttrRes.filter(t => t.ttr_type === 'TT').map(t => <option key={t.id} value={t.id}>{t.code} — {t.name}</option>)}
-                  </select>
-                  <p className="text-xs text-amber-600 mt-1">Обязательно для ПУ с трансформаторами тока</p>
-                </div>
-              )}
+              ) && (() => {
+                const ttTtr = ttrRes.find(t => t.ttr_type === 'TT')
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
+                    <label className="block text-sm font-medium text-amber-700 mb-1">⚡ ТТР для ТТ</label>
+                    <div className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-amber-100 font-medium text-amber-900">
+                      {ttTtr ? `${ttTtr.code} — ${ttTtr.name}` : 'У-27 (не найден в справочнике)'}
+                    </div>
+                    <p className="text-xs text-amber-600 mt-1">Назначен автоматически для ПУ с трансформаторами тока</p>
+                  </div>
+                )
+              })()}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">СМР выполнил</label>
