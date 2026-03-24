@@ -2878,6 +2878,14 @@ function RequestsPage() {
   const [checkedReqItems, setCheckedReqItems] = useState([])
   const [bulkLoading, setBulkLoading] = useState(false)
 
+  // Добавление ПУ в заявку
+  const [showReqAddSearch, setShowReqAddSearch] = useState(false)
+  const [reqAddSearchQuery, setReqAddSearchQuery] = useState('')
+  const [reqAddSearchResults, setReqAddSearchResults] = useState([])
+  const [reqAddSearching, setReqAddSearching] = useState(false)
+  const [selectedReqAddItems, setSelectedReqAddItems] = useState([])
+  const [addingToReq, setAddingToReq] = useState(false)
+
   const canCreateRequest = isEskAdmin || isEskUser
   const canManageRequest = isSueAdmin
 
@@ -2920,6 +2928,10 @@ function RequestsPage() {
     } else {
       setExpandedReq(key)
       setCheckedReqItems([])
+      setShowReqAddSearch(false)
+      setReqAddSearchQuery('')
+      setReqAddSearchResults([])
+      setSelectedReqAddItems([])
       const params = { request_contract: req.request_contract }
       const r = await api.get(`/requests/${encodeURIComponent(req.request_number)}/items`, { params })
       setReqItems(r.data)
@@ -3062,6 +3074,61 @@ const exportToExcel = async () => {
     setBulkLoading(false)
   }
 
+  // Поиск ПУ для добавления в заявку
+  const searchForReqAdd = async (query) => {
+    setReqAddSearchQuery(query)
+    if (!query || query.length < 2 || !expandedReq) {
+      setReqAddSearchResults([])
+      return
+    }
+    const req = requestsList.find(r => `${r.request_number}|${r.request_contract || ''}` === expandedReq)
+    if (!req) return
+    
+    setReqAddSearching(true)
+    try {
+      const params = { request_number: req.request_number, q: query }
+      if (req.request_contract) params.request_contract = req.request_contract
+      const r = await api.get('/requests/search-available', { params })
+      setReqAddSearchResults(r.data)
+    } catch (err) {
+      console.error(err)
+      setReqAddSearchResults([])
+    } finally {
+      setReqAddSearching(false)
+    }
+  }
+
+  // Добавить выбранные ПУ в заявку
+  const addToRequest = async () => {
+    if (!expandedReq || selectedReqAddItems.length === 0) return
+    const req = requestsList.find(r => `${r.request_number}|${r.request_contract || ''}` === expandedReq)
+    if (!req) return
+    if (!confirm(`Добавить ${selectedReqAddItems.length} ПУ в заявку ${req.display_name}?`)) return
+    
+    setAddingToReq(true)
+    try {
+      const r = await api.post(`/requests/${encodeURIComponent(req.request_number)}/add-items`, { 
+        item_ids: selectedReqAddItems, 
+        request_contract: req.request_contract 
+      })
+      alert(`✅ Добавлено в заявку: ${r.data.added} шт. Всего: ${r.data.total} шт.`)
+      
+      setSelectedReqAddItems([])
+      setReqAddSearchQuery('')
+      setReqAddSearchResults([])
+      setShowReqAddSearch(false)
+      
+      loadRequests()
+      const params = { request_contract: req.request_contract }
+      const itemsR = await api.get(`/requests/${encodeURIComponent(req.request_number)}/items`, { params })
+      setReqItems(itemsR.data)
+    } catch (err) {
+      alert('Ошибка: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setAddingToReq(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Заявки ЭСК</h1>
@@ -3121,6 +3188,14 @@ const exportToExcel = async () => {
                                       🗑️ Удалить ({checkedReqItems.length})
                                     </button>
                                   </>
+                                )}
+                                {canManageRequest && (
+                                  <button 
+                                    onClick={() => { setShowReqAddSearch(!showReqAddSearch); setReqAddSearchQuery(''); setReqAddSearchResults([]); setSelectedReqAddItems([]) }}
+                                    className={`px-3 py-1 ${showReqAddSearch ? 'bg-gray-500' : 'bg-blue-600'} text-white rounded-lg text-sm`}
+                                  >
+                                    {showReqAddSearch ? '✕ Закрыть поиск' : '➕ Добавить ПУ'}
+                                  </button>
                                 )}
                                 <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
                               </div>
@@ -3187,6 +3262,77 @@ const exportToExcel = async () => {
                                 </tbody>
                               </table>
                             </div>
+                            
+                            {/* Панель добавления ПУ в заявку */}
+                            {showReqAddSearch && canManageRequest && (
+                              <div className="mt-4 border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
+                                <h4 className="font-medium text-blue-800 mb-3">🔍 Поиск ПУ для добавления в заявку</h4>
+                                <div className="flex gap-2 mb-3">
+                                  <input 
+                                    type="text"
+                                    value={reqAddSearchQuery}
+                                    onChange={e => searchForReqAdd(e.target.value)}
+                                    placeholder="Серийный номер, договор или потребитель (мин. 2 символа)..."
+                                    className="flex-1 px-3 py-2 border rounded-lg"
+                                    autoFocus
+                                  />
+                                  {selectedReqAddItems.length > 0 && (
+                                    <button 
+                                      onClick={addToRequest}
+                                      disabled={addingToReq}
+                                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                                    >
+                                      {addingToReq ? '⏳ Добавление...' : `➕ Добавить (${selectedReqAddItems.length})`}
+                                    </button>
+                                  )}
+                                </div>
+                                
+                                {reqAddSearching && <div className="text-center py-3 text-gray-500">Поиск...</div>}
+                                
+                                {!reqAddSearching && reqAddSearchQuery.length >= 2 && reqAddSearchResults.length === 0 && (
+                                  <div className="text-center py-3 text-gray-500">Ничего не найдено. ПУ должен быть согласован, без заявки и из того же ЭСК.</div>
+                                )}
+                                
+                                {reqAddSearchResults.length > 0 && (
+                                  <table className="w-full text-xs bg-white rounded-lg overflow-hidden border">
+                                    <thead className="bg-blue-100">
+                                      <tr>
+                                        <th className="w-8 px-2 py-2">
+                                          <input 
+                                            type="checkbox"
+                                            checked={reqAddSearchResults.length > 0 && selectedReqAddItems.length === reqAddSearchResults.length}
+                                            onChange={() => setSelectedReqAddItems(selectedReqAddItems.length === reqAddSearchResults.length ? [] : reqAddSearchResults.map(i => i.id))}
+                                          />
+                                        </th>
+                                        <th className="px-2 py-2 text-left">Серийный номер</th>
+                                        <th className="px-2 py-2 text-left">Потребитель</th>
+                                        <th className="px-2 py-2 text-left">Договор</th>
+                                        <th className="px-2 py-2 text-left">Мощн.</th>
+                                        <th className="px-2 py-2 text-left">Вид работ</th>
+                                        <th className="px-2 py-2 text-left">Стоим. с НДС</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {reqAddSearchResults.map(item => (
+                                        <tr key={item.id} className={`border-t hover:bg-blue-50 cursor-pointer ${selectedReqAddItems.includes(item.id) ? 'bg-blue-100' : ''}`}
+                                          onClick={() => setSelectedReqAddItems(s => s.includes(item.id) ? s.filter(x => x !== item.id) : [...s, item.id])}
+                                        >
+                                          <td className="px-2 py-2">
+                                            <input type="checkbox" checked={selectedReqAddItems.includes(item.id)} onChange={() => {}} />
+                                          </td>
+                                          <td className="px-2 py-2 font-mono">{item.serial_number}</td>
+                                          <td className="px-2 py-2">{item.consumer || '—'}</td>
+                                          <td className="px-2 py-2">{item.contract_number || '—'}</td>
+                                          <td className="px-2 py-2">{item.power || '—'}</td>
+                                          <td className="px-2 py-2">{item.work_type_name || '—'}</td>
+                                          <td className="px-2 py-2 font-medium">{item.price_with_nds?.toLocaleString() || '—'} ₽</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                )}
+                              </div>
+                            )}
                           </td>
                         </tr>
                       )}
