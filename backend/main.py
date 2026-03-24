@@ -218,6 +218,7 @@ class PUItem(Base):
     ttr_ou = relationship("TTR_RES", foreign_keys=[ttr_ou_id])
     ttr_ol = relationship("TTR_RES", foreign_keys=[ttr_ol_id])
     ttr_or = relationship("TTR_RES", foreign_keys=[ttr_or_id])
+    ttr_tt = relationship("TTR_RES", foreign_keys=[ttr_tt_id])
     ttr_esk = relationship("TTR_ESK", foreign_keys=[ttr_esk_id])
     va_nominal = relationship("VA_Nominal", foreign_keys=[va_nominal_id])
     tt_nominal = relationship("TT_Nominal", foreign_keys=[tt_nominal_id])
@@ -3063,7 +3064,7 @@ def get_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = D
         if not item:
             continue
         
-        ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+        ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id, item.ttr_tt_id] if t]
         
         # Материалы по умолчанию из ТТР
         defaults = {}
@@ -3109,6 +3110,7 @@ def get_materials_bulk(data: dict, db: Session = Depends(get_db), user: User = D
             "ttr_ou": item.ttr_ou.code if item.ttr_ou else None,
             "ttr_ol": item.ttr_ol.code if item.ttr_ol else None,
             "ttr_or": item.ttr_or.code if item.ttr_or else None,
+            "ttr_tt": item.ttr_tt.code if item.ttr_tt else None,
             "has_va": item.has_va,
             "va_nominal_name": item.va_nominal.name if item.va_nominal else None,
             "va_quantity": item.va_quantity or 1,
@@ -3280,6 +3282,7 @@ def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db
             ("ТТР ОУ", 12),
             ("ТТР ОЛ", 12),
             ("ТТР ОР", 12),
+            ("ТТР ТТ", 12),
             ("ВА", 10),
             ("ТТ", 10),
         ]
@@ -3311,6 +3314,7 @@ def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db
                 item.ttr_ou.code if item.ttr_ou else "",
                 item.ttr_ol.code if item.ttr_ol else "",
                 item.ttr_or.code if item.ttr_or else "",
+                item.ttr_tt.code if item.ttr_tt else "",
                 item.va_nominal.name if item.va_nominal else "",
                 item.tt_nominal.name if item.tt_nominal else "",
             ]
@@ -3353,7 +3357,7 @@ def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db
             
             # Если нет сохранённых материалов — берём из ТТР
             if not pu_materials:
-                ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+                ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id, item.ttr_tt_id] if t]
                 materials_dict = {}
                 for ttr_id in ttr_ids:
                     ttr_mats = db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).all()
@@ -3370,7 +3374,7 @@ def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db
                                 }
                 
                 for mat_data in materials_dict.values():
-                    ttr_codes = ", ".join([t.code for t in [item.ttr_ou, item.ttr_ol, item.ttr_or] if t])
+                    ttr_codes = ", ".join([t.code for t in [item.ttr_ou, item.ttr_ol, item.ttr_or, item.ttr_tt] if t])
                     data = [
                         idx,
                         item.serial_number or "",
@@ -3388,7 +3392,7 @@ def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db
                 for pm in pu_materials:
                     mat = db.query(Material).filter(Material.id == pm.material_id).first()
                     if mat:
-                        ttr_codes = ", ".join([t.code for t in [item.ttr_ou, item.ttr_ol, item.ttr_or] if t])
+                        ttr_codes = ", ".join([t.code for t in [item.ttr_ou, item.ttr_ol, item.ttr_or, item.ttr_tt] if t])
                         data = [
                             idx,
                             item.serial_number or "",
@@ -3438,7 +3442,7 @@ def export_tz_to_excel(tz_number: str = Query(...), db: Session = Depends(get_db
                         totals[mat.id]['quantity'] += pm.quantity
             else:
                 # Из ТТР
-                ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+                ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id, item.ttr_tt_id] if t]
                 for ttr_id in ttr_ids:
                     ttr_mats = db.query(TTR_Material).filter(TTR_Material.ttr_res_id == ttr_id).all()
                     for tm in ttr_mats:
