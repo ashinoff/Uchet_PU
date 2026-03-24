@@ -4296,6 +4296,102 @@ def remove_items_from_request(request_number: str, data: dict, db: Session = Dep
 
     return {"ok": True, "removed": removed, "request_deleted": remaining == 0, "remaining": remaining}
 
+@app.get("/api/requests/search-available")
+def search_available_for_request(
+    request_number: str,
+    request_contract: Optional[str] = None,
+    q: str = "",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Поиск ПУ для добавления в существующую заявку ЭСК"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может добавлять ПУ в заявки")
+    
+    if not q or len(q) < 2:
+        return []
+    
+    # Находим пример ПУ из этой заявки, чтобы понять из какого подразделения
+    sample_q = db.query(PUItem).filter(PUItem.request_number == request_number)
+    if request_contract:
+        sample_q = sample_q.filter(PUItem.request_contract == request_contract)
+    sample = sample_q.first()
+    if not sample:
+        raise HTTPException(404, "Заявка не найдена или пуста")
+    
+    # Ищем ПУ: согласованные, из ЭСК, без заявки
+    query = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
+        PUItem.request_number.is_(None),
+        PUItem.approval_status == ApprovalStatus.APPROVED,
+    )
+    
+    # Из того же подразделения ЭСК
+    if sample.current_unit_id:
+        query = query.filter(PUItem.current_unit_id == sample.current_unit_id)
+    
+    # Поиск по серийному номеру, договору или потребителю
+    search_filter = or_(
+        PUItem.serial_number.ilike(f"%{q}%"),
+        PUItem.contract_number.ilike(f"%{q}%"),
+        PUItem.consumer.ilike(f"%{q}%"),
+    )
+    query = query.filter(search_filter)
+    
+    items = query.limit(20).all()
+    
+    return [{
+        "id": i.id,
+        "serial_number": i.serial_number,
+        "pu_type": i.pu_type,
+        "consumer": i.consumer,
+        "address": i.address,
+        "contract_number": i.contract_number,
+        "power": i.power,
+        "faza": i.faza,
+        "work_type_name": i.work_type_name,
+        "price_with_nds": (i.price_truba_with_nds or 0) + (i.price_va_with_nds or 0),
+        "current_unit_name": i.current_unit.name if i.current_unit else None,
+    } for i in items]
+
+@app.post("/api/requests/{request_number}/add-items")
+def add_items_to_request(request_number: str, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Добавить ПУ в существующую заявку ЭСК — только СУЭ"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может добавлять ПУ в заявки")
+    
+    item_ids = data.get("item_ids", [])
+    request_contract = data.get("request_contract")
+    
+    if not item_ids:
+        raise HTTPException(400, "Не выбраны ПУ для добавления")
+    
+    # Проверяем что заявка существует
+    existing_count = db.query(PUItem).filter(PUItem.request_number == request_number).count()
+    if existing_count == 0:
+        raise HTTPException(404, "Заявка не найдена")
+    
+    added = 0
+    for item_id in item_ids:
+        item = db.query(PUItem).filter(
+            PUItem.id == item_id,
+            PUItem.request_number.is_(None),
+            PUItem.approval_status == ApprovalStatus.APPROVED,
+        ).first()
+        if item:
+            item.request_number = request_number
+            item.request_contract = request_contract
+            # Копируем work_type_name из ТТР если есть
+            if item.ttr_esk_id:
+                ttr = db.query(TTR_ESK).filter(TTR_ESK.id == item.ttr_esk_id).first()
+                if ttr and ttr.work_type_name:
+                    item.work_type_name = ttr.work_type_name
+            added += 1
+    
+    db.commit()
+    
+    total = db.query(PUItem).filter(PUItem.request_number == request_number).count()
+    
+    return {"added": added, "total": total, "request_number": request_number}
 
 @app.get("/api/memo/generate")
 def generate_memo(
