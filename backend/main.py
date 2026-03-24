@@ -165,6 +165,7 @@ class PUItem(Base):
     ttr_ou_id = Column(Integer, ForeignKey("ttr_res.id"))  # ТТР организации учета
     ttr_ol_id = Column(Integer, ForeignKey("ttr_res.id"))  # ТТР обустройство линии
     ttr_or_id = Column(Integer, ForeignKey("ttr_res.id"))  # ТТР распред. щита
+    ttr_tt_id = Column(Integer, ForeignKey("ttr_res.id"))  # ТТР для ТТ (У-27)
     
     # ТТР для ЭСК
     # Параметры СМР/ЛСР для ЭСК
@@ -545,6 +546,7 @@ class PUCardUpdate(BaseModel):
     ttr_ou_id: Optional[int] = None
     ttr_ol_id: Optional[int] = None
     ttr_or_id: Optional[int] = None
+    ttr_tt_id: Optional[int] = None
     ttr_esk_id: Optional[int] = None
     trubostoyka: Optional[bool] = None
     form_factor: Optional[str] = None
@@ -1420,6 +1422,7 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "ttr_ou_id": item.ttr_ou_id,
         "ttr_ol_id": item.ttr_ol_id,
         "ttr_or_id": item.ttr_or_id,
+        "ttr_tt_id": item.ttr_tt_id,
         "ttr_esk_id": item.ttr_esk_id,
         "trubostoyka": item.trubostoyka,
         "materials_used": item.materials_used,
@@ -1456,10 +1459,14 @@ def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db),
     if not item:
         raise HTTPException(404, "ПУ не найден")
     
-    # Проверка доступа - СУЭ и ЭСК Админ только просмотр
+    # Проверка доступа - ЭСК Админ только просмотр
+    # СУЭ Админ может редактировать карточки РЭС
     if is_sue_admin(user):
-        raise HTTPException(403, "СУЭ может только просматривать карточки ПУ")
-    if is_esk_admin(user):
+        # СУЭ может редактировать только карточки РЭС подразделений
+        unit = db.query(Unit).filter(Unit.id == item.current_unit_id).first()
+        if not unit or unit.unit_type != 'RES':
+            raise HTTPException(403, "СУЭ Админ может редактировать только карточки РЭС")
+    elif is_esk_admin(user):
         raise HTTPException(403, "ЭСК Админ может только просматривать и перемещать ПУ")
     
     visible = get_visible_units(user, db)
@@ -2949,8 +2956,8 @@ def get_ttr_for_pu(pu_type: str, ttr_type: str, db: Session = Depends(get_db), u
     for t in ttrs:
         print(f"  - id={t.id}, code={t.code}, ttr_type={t.ttr_type}")
     
-    # ⭐ ИСПРАВЛЕНИЕ: добавляем ttr_type в ответ!
-    return [{"id": t.id, "code": t.code, "name": t.name, "ttr_type": t.ttr_type} for t in ttrs]
+    # ⭐ ИСПРАВЛЕНИЕ: добавляем ttr_type и use_tt в ответ!
+    return [{"id": t.id, "code": t.code, "name": t.name, "ttr_type": t.ttr_type, "use_tt": t.use_tt} for t in ttrs]
 
 @app.get("/api/pu/items/{item_id}/materials")
 def get_pu_materials(
@@ -2958,6 +2965,7 @@ def get_pu_materials(
     ttr_ou_id: Optional[int] = None,
     ttr_ol_id: Optional[int] = None, 
     ttr_or_id: Optional[int] = None,
+    ttr_tt_id: Optional[int] = None,
     db: Session = Depends(get_db), 
     user: User = Depends(get_current_user)
 ):
@@ -2967,10 +2975,10 @@ def get_pu_materials(
         raise HTTPException(404, "ПУ не найден")
     
     # Если переданы параметры - используем их, иначе берём из сохранённого item
-    if ttr_ou_id is not None or ttr_ol_id is not None or ttr_or_id is not None:
-        ttr_ids = [t for t in [ttr_ou_id, ttr_ol_id, ttr_or_id] if t]
+    if ttr_ou_id is not None or ttr_ol_id is not None or ttr_or_id is not None or ttr_tt_id is not None:
+        ttr_ids = [t for t in [ttr_ou_id, ttr_ol_id, ttr_or_id, ttr_tt_id] if t]
     else:
-        ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id] if t]
+        ttr_ids = [t for t in [item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id, item.ttr_tt_id] if t]
     
     if not ttr_ids:
         return {"defaults": [], "facts": []}
@@ -3646,6 +3654,91 @@ def remove_items_from_tz(data: dict, db: Session = Depends(get_db), user: User =
     remaining = db.query(PUItem).filter(PUItem.tz_number == tz_number).count()
     
     return {"removed": updated, "remaining": remaining, "tz_number": tz_number}
+
+@app.get("/api/tz/search-available")
+def search_available_for_tz(
+    tz_number: str,
+    q: str = "",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Поиск ПУ для добавления в существующий ТЗ"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может добавлять ПУ в ТЗ")
+    
+    if not q or len(q) < 2:
+        return []
+    
+    # Определяем тип ТЗ по его номеру, чтобы фильтровать по статусу
+    sample = db.query(PUItem).filter(PUItem.tz_number == tz_number).first()
+    if not sample:
+        raise HTTPException(404, "ТЗ не найден или пуст")
+    
+    tz_status = sample.status.value  # TECHPRIS, ZAMENA, IZHC
+    
+    # Ищем ПУ без ТЗ с подходящим статусом
+    query = db.query(PUItem).filter(
+        PUItem.tz_number.is_(None),
+        PUItem.status == tz_status,
+    )
+    
+    # Фильтр по РЭС (только из того же подразделения что и ТЗ)
+    if sample.current_unit_id:
+        query = query.filter(PUItem.current_unit_id == sample.current_unit_id)
+    
+    # Поиск по серийному номеру или договору/ЛС
+    search_filter = or_(
+        PUItem.serial_number.ilike(f"%{q}%"),
+        PUItem.contract_number.ilike(f"%{q}%"),
+        PUItem.ls_number.ilike(f"%{q}%"),
+    )
+    query = query.filter(search_filter)
+    
+    items = query.limit(20).all()
+    
+    return [{
+        "id": i.id,
+        "serial_number": i.serial_number,
+        "pu_type": i.pu_type,
+        "status": i.status.value,
+        "consumer": i.consumer,
+        "address": i.address,
+        "ls_number": i.ls_number,
+        "contract_number": i.contract_number,
+        "power": i.power,
+        "faza": i.faza,
+    } for i in items]
+
+@app.post("/api/tz/add-items")
+def add_items_to_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Добавить ПУ в существующий ТЗ — только СУЭ"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Только СУЭ может добавлять ПУ в ТЗ")
+    
+    item_ids = data.get("item_ids", [])
+    tz_number = data.get("tz_number", "")
+    
+    if not item_ids:
+        raise HTTPException(400, "Не выбраны ПУ для добавления")
+    if not tz_number:
+        raise HTTPException(400, "Не указан номер ТЗ")
+    
+    # Проверяем что ТЗ существует
+    existing_count = db.query(PUItem).filter(PUItem.tz_number == tz_number).count()
+    if existing_count == 0:
+        raise HTTPException(404, "ТЗ не найден")
+    
+    # Добавляем только ПУ без ТЗ
+    updated = db.query(PUItem).filter(
+        PUItem.id.in_(item_ids),
+        PUItem.tz_number.is_(None)
+    ).update({"tz_number": tz_number}, synchronize_session=False)
+    
+    db.commit()
+    
+    total = db.query(PUItem).filter(PUItem.tz_number == tz_number).count()
+    
+    return {"added": updated, "total": total, "tz_number": tz_number}
 
 @app.get("/api/tz/next-number")
 def get_next_tz_number(
