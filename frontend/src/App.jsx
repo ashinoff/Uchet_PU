@@ -787,13 +787,15 @@ useEffect(() => {
       // Загружаем ТТР привязанные к типу ПУ
       if (itemData.pu_type) {
         try {
-          const [ouRes, olRes, orRes, ttRes] = await Promise.all([
+          const [ouRes, olRes, orRes, allTtrRes] = await Promise.all([
             api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OU' } }),
             api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OL' } }),
             api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OR' } }),
-            api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'TT' } }).catch(() => ({ data: [] }))
+            api.get('/ttr/res')  // Загружаем все ТТР чтобы взять TT (У-27 универсален, не привязан к типу ПУ)
           ])
-          const allTtrData = [...ouRes.data, ...olRes.data, ...orRes.data, ...ttRes.data]
+          // Берём OU/OL/OR из for-pu (привязанные к типу ПУ), а TT — из общего справочника
+          const ttItems = allTtrRes.data.filter(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
+          const allTtrData = [...ouRes.data, ...olRes.data, ...orRes.data, ...ttItems]
           setTtrRes(allTtrData)
           
           // Авто-привязка У-27: если ЗАМЕНА и есть ТТР с use_tt, ставим ttr_tt_id автоматически
@@ -802,7 +804,7 @@ useEffect(() => {
               (t.id === itemData.ttr_ou_id || t.id === itemData.ttr_ol_id || t.id === itemData.ttr_or_id) && t.use_tt
             )
             if (hasUseTt) {
-              const ttTtr = allTtrData.find(t => t.ttr_type === 'TT')
+              const ttTtr = allTtrData.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
               if (ttTtr) {
                 itemData.ttr_tt_id = ttTtr.id
                 setItem(prev => prev ? { ...prev, ttr_tt_id: ttTtr.id } : prev)
@@ -1125,7 +1127,7 @@ if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
   )
   if (hasUseTt && newItem.status === 'ZAMENA') {
     // Автоматически ставим первый ТТР типа TT (У-27)
-    const ttTtr = ttrRes.find(t => t.ttr_type === 'TT')
+    const ttTtr = ttrRes.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
     if (ttTtr) newItem.ttr_tt_id = ttTtr.id
   } else {
     // Снимаем У-27 если ТТ больше не нужен
@@ -1438,7 +1440,7 @@ const updateMaterialQty = (materialId, qty) => {
               {item.status === 'ZAMENA' && ttrRes.some(t => 
                 (t.id === item?.ttr_ou_id || t.id === item?.ttr_ol_id || t.id === item?.ttr_or_id) && t.use_tt
               ) && (() => {
-                const ttTtr = ttrRes.find(t => t.ttr_type === 'TT')
+                const ttTtr = ttrRes.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
                 return (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
                     <label className="block text-sm font-medium text-amber-700 mb-1">⚡ ТТР для ТТ</label>
