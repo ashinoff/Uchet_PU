@@ -794,17 +794,17 @@ useEffect(() => {
             api.get('/ttr/res')  // Загружаем все ТТР чтобы взять TT (У-27 универсален, не привязан к типу ПУ)
           ])
           // Берём OU/OL/OR из for-pu (привязанные к типу ПУ), а TT — из общего справочника
-          const ttItems = allTtrRes.data.filter(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
+          const ttItems = allTtrRes.data.filter(t => t.code && t.code.trim() === 'У-27')
           const allTtrData = [...ouRes.data, ...olRes.data, ...orRes.data, ...ttItems]
           setTtrRes(allTtrData)
           
           // Авто-привязка У-27: если ЗАМЕНА и выбран У-25, ставим ttr_tt_id автоматически
           if (itemData.status === 'ZAMENA' && !itemData.ttr_tt_id) {
             const hasU25 = allTtrData.some(t => 
-              (t.id === itemData.ttr_ou_id || t.id === itemData.ttr_ol_id || t.id === itemData.ttr_or_id) && t.code && t.code.toUpperCase().includes('У-25')
+              (t.id === itemData.ttr_ou_id || t.id === itemData.ttr_ol_id || t.id === itemData.ttr_or_id) && t.code && t.code.trim() === 'У-25'
             )
             if (hasU25) {
-              const ttTtr = allTtrData.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
+              const ttTtr = allTtrData.find(t => t.code && t.code.trim() === 'У-27')
               if (ttTtr) {
                 itemData.ttr_tt_id = ttTtr.id
                 setItem(prev => prev ? { ...prev, ttr_tt_id: ttTtr.id } : prev)
@@ -1133,11 +1133,11 @@ if (field === 'smr_executor' && value === 'РСК') {
 if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
   // Проверяем есть ли среди выбранных ТТР именно У-25
   const hasU25 = ttrRes.some(t => 
-    (t.id === newItem.ttr_ou_id || t.id === newItem.ttr_ol_id || t.id === newItem.ttr_or_id) && t.code && t.code.toUpperCase().includes('У-25')
+    (t.id === newItem.ttr_ou_id || t.id === newItem.ttr_ol_id || t.id === newItem.ttr_or_id) && t.code && t.code.trim() === 'У-25'
   )
   if (hasU25 && newItem.status === 'ZAMENA') {
     // Автоматически ставим У-27
-    const ttTtr = ttrRes.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
+    const ttTtr = ttrRes.find(t => t.code && t.code.trim() === 'У-27')
     if (ttTtr) newItem.ttr_tt_id = ttTtr.id
   } else {
     // Снимаем У-27 если У-25 не выбран
@@ -1427,10 +1427,10 @@ const updateMaterialQty = (materialId, qty) => {
                     <option value="">—</option>
                     {ttrRes.filter(t => {
                       if (t.ttr_type !== 'OU') return false
-                      // Фильтр по статусу: Техприс → Установка, Замена/ИЖЦ → Замена
-                      const nameUp = (t.name || '').toLowerCase()
-                      if (item.status === 'TECHPRIS') return nameUp.startsWith('установка')
-                      if (item.status === 'ZAMENA' || item.status === 'IZHC') return nameUp.startsWith('замена')
+                      // Фильтр по статусу: Техприс → только Установка, Замена/ИЖЦ → только Замена
+                      const nameLow = (t.name || '').trim().toLowerCase()
+                      if (item.status === 'TECHPRIS') return nameLow.startsWith('установка') || nameLow.includes('установка ')
+                      if (item.status === 'ZAMENA' || item.status === 'IZHC') return nameLow.startsWith('замена') || nameLow.includes('замена ')
                       return true
                     }).map(t => <option key={t.id} value={t.id}>{t.code}</option>)}
                   </select>
@@ -1455,9 +1455,9 @@ const updateMaterialQty = (materialId, qty) => {
               </div>
               {/* ТТР для ТТ (У-27) — автоматически только при выборе У-25 */}
               {item.status === 'ZAMENA' && ttrRes.some(t => 
-                (t.id === item?.ttr_ou_id || t.id === item?.ttr_ol_id || t.id === item?.ttr_or_id) && t.code && t.code.toUpperCase().includes('У-25')
+                (t.id === item?.ttr_ou_id || t.id === item?.ttr_ol_id || t.id === item?.ttr_or_id) && t.code && t.code.trim() === 'У-25'
               ) && (() => {
-                const ttTtr = ttrRes.find(t => t.ttr_type === 'TT' || (t.code && t.code.toUpperCase().includes('У-27')))
+                const ttTtr = ttrRes.find(t => t.code && t.code.trim() === 'У-27')
                 return (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
                     <label className="block text-sm font-medium text-amber-700 mb-1">⚡ ТТР для ТТ</label>
