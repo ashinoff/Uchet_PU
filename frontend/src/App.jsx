@@ -787,12 +787,13 @@ useEffect(() => {
       // Загружаем ТТР привязанные к типу ПУ
       if (itemData.pu_type) {
         try {
-          const [ouRes, olRes, orRes] = await Promise.all([
+          const [ouRes, olRes, orRes, ttRes] = await Promise.all([
             api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OU' } }),
             api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OL' } }),
-            api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OR' } })
+            api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'OR' } }),
+            api.get('/ttr/res/for-pu', { params: { pu_type: itemData.pu_type, ttr_type: 'TT' } }).catch(() => ({ data: [] }))
           ])
-          setTtrRes([...ouRes.data, ...olRes.data, ...orRes.data])
+          setTtrRes([...ouRes.data, ...olRes.data, ...orRes.data, ...ttRes.data])
         } catch (err) {
           // Если ошибка — загружаем все ТТР
           const allTtr = await api.get('/ttr/res')
@@ -819,22 +820,23 @@ useEffect(() => {
 
 // Очищаем материалы когда ВСЕ ТТР сброшены (с задержкой чтобы перекрыть левый вызов)
 useEffect(() => {
-  if (item && !item.ttr_ou_id && !item.ttr_ol_id && !item.ttr_or_id) {
+  if (item && !item.ttr_ou_id && !item.ttr_ol_id && !item.ttr_or_id && !item.ttr_tt_id) {
     const timer = setTimeout(() => {
       console.log('Force clearing materials')
       setMaterials([])
     }, 200)
     return () => clearTimeout(timer)
   }
-}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id])
+}, [item?.ttr_ou_id, item?.ttr_ol_id, item?.ttr_or_id, item?.ttr_tt_id])
 
 // Загружаем материалы при открытии карточки (если ТТР уже выбраны)
 useEffect(() => {
-  if (item && !loading && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id)) {
+  if (item && !loading && (item.ttr_ou_id || item.ttr_ol_id || item.ttr_or_id || item.ttr_tt_id)) {
     loadMaterials({
       ttr_ou_id: item.ttr_ou_id,
       ttr_ol_id: item.ttr_ol_id,
-      ttr_or_id: item.ttr_or_id
+      ttr_or_id: item.ttr_or_id,
+      ttr_tt_id: item.ttr_tt_id
     })
   }
 }, [item?.id, loading])
@@ -1101,12 +1103,13 @@ if (field === 'smr_executor' && value === 'РСК') {
 }
 
 // Загружаем материалы при выборе ТТР
-if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id'].includes(field)) {
+if (['ttr_ou_id', 'ttr_ol_id', 'ttr_or_id', 'ttr_tt_id'].includes(field)) {
   // Передаём актуальные значения из newItem, а не из старого item
   loadMaterials({
     ttr_ou_id: newItem.ttr_ou_id,
     ttr_ol_id: newItem.ttr_ol_id,
-    ttr_or_id: newItem.ttr_or_id
+    ttr_or_id: newItem.ttr_or_id,
+    ttr_tt_id: newItem.ttr_tt_id
   })
 }
 }
@@ -1121,11 +1124,12 @@ const loadMaterials = async (overrideTtr = null) => {
   const ttrOuId = overrideTtr ? overrideTtr.ttr_ou_id : item?.ttr_ou_id
   const ttrOlId = overrideTtr ? overrideTtr.ttr_ol_id : item?.ttr_ol_id  
   const ttrOrId = overrideTtr ? overrideTtr.ttr_or_id : item?.ttr_or_id
+  const ttrTtId = overrideTtr ? overrideTtr.ttr_tt_id : item?.ttr_tt_id
 
-  console.log('loadMaterials called:', { overrideTtr, ttrOuId, ttrOlId, ttrOrId })
+  console.log('loadMaterials called:', { overrideTtr, ttrOuId, ttrOlId, ttrOrId, ttrTtId })
   console.trace('Call stack:')
   
-  if (!ttrOuId && !ttrOlId && !ttrOrId) {
+  if (!ttrOuId && !ttrOlId && !ttrOrId && !ttrTtId) {
     setMaterials([])
     return
   }
@@ -1137,6 +1141,7 @@ const loadMaterials = async (overrideTtr = null) => {
     if (ttrOuId) params.append('ttr_ou_id', ttrOuId)
     if (ttrOlId) params.append('ttr_ol_id', ttrOlId)
     if (ttrOrId) params.append('ttr_or_id', ttrOrId)
+    if (ttrTtId) params.append('ttr_tt_id', ttrTtId)
     
     const r = await api.get(`/pu/items/${itemId}/materials?${params.toString()}`)
     
@@ -1198,12 +1203,12 @@ const updateMaterialQty = (materialId, qty) => {
 
     const isEsk = item?.current_unit_type === 'ESK_UNIT' || item?.current_unit_type === 'ESK'
     const isRes = item?.current_unit_type === 'RES'
-// СУЭ только просмотр, РЭС редактирует свои, ЭСК редактирует свои
+// СУЭ может редактировать карточки РЭС, РЭС редактирует свои, ЭСК редактирует свои
     
     const isApproved = item?.approval_status === 'APPROVED'
     const isRejected = item?.approval_status === 'REJECTED'
     const hasTZ = item?.tz_number && item.tz_number.trim() !== ''
-    const canEdit = ((isResUser && isRes) || (isEskUser && isEsk)) && !isApproved && !hasTZ
+    const canEdit = ((isResUser && isRes) || (isSueAdmin && isRes) || (isEskUser && isEsk)) && !isApproved && !hasTZ
     // ЭСК может редактировать если REJECTED или NONE
     const canEditEsk = isEskUser && isEsk && (item?.approval_status === 'REJECTED' || item?.approval_status === 'NONE' || !item?.approval_status)
 
@@ -1395,6 +1400,24 @@ const updateMaterialQty = (materialId, qty) => {
                   {errors.ttr_or_id && <p className="text-red-500 text-xs mt-1">⚠️ {errors.ttr_or_id}</p>}
                 </div>
               </div>
+              {/* ТТР для ТТ (У-27) — появляется при выборе ТТР с use_tt=true (например У-25) */}
+              {item.status === 'ZAMENA' && ttrRes.some(t => 
+                (t.id === item?.ttr_ou_id || t.id === item?.ttr_ol_id || t.id === item?.ttr_or_id) && t.use_tt
+              ) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
+                  <label className="block text-sm font-medium text-amber-700 mb-1">⚡ ТТР для ТТ (У-27)</label>
+                  <select 
+                    value={item.ttr_tt_id || ''} 
+                    onChange={e => update('ttr_tt_id', parseInt(e.target.value) || null)} 
+                    disabled={!canEdit} 
+                    className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white"
+                  >
+                    <option value="">— Выберите ТТР для ТТ —</option>
+                    {ttrRes.filter(t => t.ttr_type === 'TT').map(t => <option key={t.id} value={t.id}>{t.code} — {t.name}</option>)}
+                  </select>
+                  <p className="text-xs text-amber-600 mt-1">Обязательно для ПУ с трансформаторами тока</p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">СМР выполнил</label>
@@ -2042,6 +2065,14 @@ function TZPage() {
   const [tzItems, setTzItems] = useState([])
   const [selectedTzItems, setSelectedTzItems] = useState([])
   const [removingFromTz, setRemovingFromTz] = useState(false)
+  
+  // Добавление ПУ в ТЗ
+  const [showAddSearch, setShowAddSearch] = useState(false)
+  const [addSearchQuery, setAddSearchQuery] = useState('')
+  const [addSearchResults, setAddSearchResults] = useState([])
+  const [addSearching, setAddSearching] = useState(false)
+  const [selectedAddItems, setSelectedAddItems] = useState([])
+  const [addingToTz, setAddingToTz] = useState(false)
   const [pendingItems, setPendingItems] = useState([])
   const [units, setUnits] = useState([])
   const [selectedStatus, setSelectedStatus] = useState('TECHPRIS')
@@ -2117,6 +2148,10 @@ function TZPage() {
     } else {
       setExpandedTz(tzNumber)
       setSelectedTzItems([])
+      setShowAddSearch(false)
+      setAddSearchQuery('')
+      setAddSearchResults([])
+      setSelectedAddItems([])
       const r = await api.get(`/tz/${encodeURIComponent(tzNumber)}/items`)
       setTzItems(r.data)
     }
@@ -2168,6 +2203,52 @@ const exportToExcel = async () => {
       alert('Ошибка: ' + (err.response?.data?.detail || err.message))
     } finally {
       setRemovingFromTz(false)
+    }
+  }
+
+  // Поиск ПУ для добавления в ТЗ
+  const searchForAdd = async (query) => {
+    setAddSearchQuery(query)
+    if (!query || query.length < 2 || !expandedTz) {
+      setAddSearchResults([])
+      return
+    }
+    setAddSearching(true)
+    try {
+      const r = await api.get('/tz/search-available', { params: { tz_number: expandedTz, q: query } })
+      setAddSearchResults(r.data)
+    } catch (err) {
+      console.error(err)
+      setAddSearchResults([])
+    } finally {
+      setAddSearching(false)
+    }
+  }
+
+  // Добавить выбранные ПУ в ТЗ
+  const addToTz = async () => {
+    if (!expandedTz || selectedAddItems.length === 0) return
+    if (!confirm(`Добавить ${selectedAddItems.length} ПУ в ТЗ ${expandedTz}?`)) return
+    
+    setAddingToTz(true)
+    try {
+      const r = await api.post('/tz/add-items', { item_ids: selectedAddItems, tz_number: expandedTz })
+      alert(`✅ Добавлено в ТЗ: ${r.data.added} шт. Всего в ТЗ: ${r.data.total} шт.`)
+      
+      // Обновляем
+      setSelectedAddItems([])
+      setAddSearchQuery('')
+      setAddSearchResults([])
+      setShowAddSearch(false)
+      
+      const tzListR = await api.get('/tz/list')
+      setTzList(tzListR.data)
+      const itemsR = await api.get(`/tz/${encodeURIComponent(expandedTz)}/items`)
+      setTzItems(itemsR.data)
+    } catch (err) {
+      alert('Ошибка: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setAddingToTz(false)
     }
   }
 
@@ -2382,6 +2463,12 @@ const saveAllMaterials = async () => {
                                   {removingFromTz ? '⏳ Удаление...' : `🗑️ Удалить из ТЗ (${selectedTzItems.length})`}
                                 </button>
                               )}
+                              <button 
+                                onClick={() => { setShowAddSearch(!showAddSearch); setAddSearchQuery(''); setAddSearchResults([]); setSelectedAddItems([]) }}
+                                className={`px-3 py-1 ${showAddSearch ? 'bg-gray-500' : 'bg-blue-600'} text-white rounded-lg text-sm`}
+                              >
+                                {showAddSearch ? '✕ Закрыть поиск' : '➕ Добавить ПУ'}
+                              </button>
                               <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
                             </div>
                           </div>
@@ -2425,6 +2512,79 @@ const saveAllMaterials = async () => {
                               ))}
                             </tbody>
                           </table>
+                          
+                          {/* Панель добавления ПУ в ТЗ */}
+                          {showAddSearch && (
+                            <div className="mt-4 border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
+                              <h4 className="font-medium text-blue-800 mb-3">🔍 Поиск ПУ для добавления в ТЗ</h4>
+                              <div className="flex gap-2 mb-3">
+                                <input 
+                                  type="text"
+                                  value={addSearchQuery}
+                                  onChange={e => searchForAdd(e.target.value)}
+                                  placeholder="Введите серийный номер, договор или ЛС (мин. 2 символа)..."
+                                  className="flex-1 px-3 py-2 border rounded-lg"
+                                  autoFocus
+                                />
+                                {selectedAddItems.length > 0 && (
+                                  <button 
+                                    onClick={addToTz}
+                                    disabled={addingToTz}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                                  >
+                                    {addingToTz ? '⏳ Добавление...' : `➕ Добавить (${selectedAddItems.length})`}
+                                  </button>
+                                )}
+                              </div>
+                              
+                              {addSearching && <div className="text-center py-3 text-gray-500">Поиск...</div>}
+                              
+                              {!addSearching && addSearchQuery.length >= 2 && addSearchResults.length === 0 && (
+                                <div className="text-center py-3 text-gray-500">Ничего не найдено. ПУ должен быть без ТЗ и из того же РЭС.</div>
+                              )}
+                              
+                              {addSearchResults.length > 0 && (
+                                <table className="w-full text-sm bg-white rounded-lg overflow-hidden border">
+                                  <thead className="bg-blue-100">
+                                    <tr>
+                                      <th className="w-10 px-3 py-2">
+                                        <input 
+                                          type="checkbox"
+                                          checked={addSearchResults.length > 0 && selectedAddItems.length === addSearchResults.length}
+                                          onChange={() => setSelectedAddItems(selectedAddItems.length === addSearchResults.length ? [] : addSearchResults.map(i => i.id))}
+                                        />
+                                      </th>
+                                      <th className="px-3 py-2 text-left">Серийный номер</th>
+                                      <th className="px-3 py-2 text-left">Тип</th>
+                                      <th className="px-3 py-2 text-left">ЛС / Договор</th>
+                                      <th className="px-3 py-2 text-left">Потребитель</th>
+                                      <th className="px-3 py-2 text-left">Мощность</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {addSearchResults.map(item => (
+                                      <tr key={item.id} className={`border-t hover:bg-blue-50 cursor-pointer ${selectedAddItems.includes(item.id) ? 'bg-blue-100' : ''}`}
+                                        onClick={() => setSelectedAddItems(s => s.includes(item.id) ? s.filter(x => x !== item.id) : [...s, item.id])}
+                                      >
+                                        <td className="px-3 py-2">
+                                          <input 
+                                            type="checkbox"
+                                            checked={selectedAddItems.includes(item.id)}
+                                            onChange={() => {}}
+                                          />
+                                        </td>
+                                        <td className="px-3 py-2 font-mono">{item.serial_number}</td>
+                                        <td className="px-3 py-2 max-w-xs truncate" title={item.pu_type}>{item.pu_type || '—'}</td>
+                                        <td className="px-3 py-2">{item.ls_number || item.contract_number || '—'}</td>
+                                        <td className="px-3 py-2">{item.consumer || '—'}</td>
+                                        <td className="px-3 py-2">{item.power ? `${item.power} кВт` : '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )}
@@ -3602,7 +3762,7 @@ function TTRResTab() {
       <tr key={i.id} className="border-t">
         <td className="px-4 py-3 font-mono">{i.code}</td>
         <td className="px-4 py-3">{i.name}</td>
-        <td className="px-4 py-3">{i.ttr_type === 'OU' ? 'Орг. учета' : i.ttr_type === 'OL' ? 'Обуст. линии' : 'Распред. щит'}</td>
+        <td className="px-4 py-3">{i.ttr_type === 'OU' ? 'Орг. учета' : i.ttr_type === 'OL' ? 'Обуст. линии' : i.ttr_type === 'TT' ? 'Трансф. тока' : 'Распред. щит'}</td>
         <td className="px-4 py-3">
           {isSueAdmin && (
             <div style={{display: 'flex', gap: '4px', flexWrap: 'nowrap', justifyContent: 'flex-end'}}>
@@ -3668,6 +3828,7 @@ function TTRResForm({ item, onSave, onClose }) {
         <option value="OU">Организация учета</option>
         <option value="OL">Обустройство линии</option>
         <option value="OR">Распред. щит</option>
+        <option value="TT">Трансформатор тока (ТТ)</option>
       </select>
       <label className="flex items-center gap-2 mt-1">
         <input 
