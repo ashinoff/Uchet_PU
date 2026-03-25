@@ -1462,7 +1462,8 @@ def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db),
     
     # Проверка доступа - ЭСК Админ только просмотр
     # СУЭ Админ может редактировать карточки РЭС
-    if is_sue_admin(user):
+    sue_admin = is_sue_admin(user)
+    if sue_admin:
         # СУЭ может редактировать только карточки РЭС подразделений
         unit = db.query(Unit).filter(Unit.id == item.current_unit_id).first()
         if not unit or unit.unit_type != 'RES':
@@ -1473,8 +1474,8 @@ def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db),
     visible = get_visible_units(user, db)
     if item.current_unit_id not in visible:
         raise HTTPException(403, "Нет доступа к этому ПУ")
-    # Согласованные ПУ нельзя редактировать
-    if item.approval_status == ApprovalStatus.APPROVED:
+    # Согласованные ПУ нельзя редактировать (кроме СУЭ админа)
+    if item.approval_status == ApprovalStatus.APPROVED and not sue_admin:
         raise HTTPException(403, "Согласованные ПУ нельзя редактировать")
     
     # Валидация договора
@@ -1499,10 +1500,31 @@ def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db),
             if not data.voltage and not item.voltage and detected.get('voltage'):
                 data.voltage = detected['voltage']
     
-    # Обновляем поля
+    # Запоминаем старые ТТР для очистки материалов
+    old_ttr_ids = {item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id, item.ttr_tt_id}
+    
+    # Обновляем поля (для СУЭ админа разрешаем запись None — сброс полей)
+    nullable_fields = {'ttr_ou_id', 'ttr_ol_id', 'ttr_or_id', 'ttr_tt_id', 'ttr_esk_id',
+                       'smr_executor', 'smr_date', 'smr_master_id', 'contract_number', 
+                       'contract_date', 'plan_date', 'consumer', 'address', 'ls_number',
+                       'va_nominal_id', 'tt_nominal_id', 'power', 'form_factor', 'va_type',
+                       'lsr_number', 'lsr_va', 'lsr_truba',
+                       'price_no_nds', 'price_with_nds', 'price_va_no_nds', 'price_va_with_nds',
+                       'price_truba_no_nds', 'price_truba_with_nds'}
+    
     for key, value in data.dict(exclude_unset=True).items():
         if value is not None:
             setattr(item, key, value)
+        elif key in nullable_fields:
+            # Разрешаем сброс в NULL для этих полей
+            setattr(item, key, None)
+    
+    # Если ТТР были сброшены — очищаем привязанные материалы
+    new_ttr_ids = {item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id, item.ttr_tt_id}
+    if old_ttr_ids != new_ttr_ids:
+        # Если все ТТР сброшены — удаляем все материалы
+        if not any([item.ttr_ou_id, item.ttr_ol_id, item.ttr_or_id, item.ttr_tt_id]):
+            db.query(PUMaterial).filter(PUMaterial.pu_item_id == item_id).delete()
     
     db.commit()
     return {"ok": True}
@@ -2265,6 +2287,194 @@ def health_check(db: Session = Depends(get_db), user: User = Depends(get_current
         "checked_at": datetime.now().isoformat()
     }
 
+@app.get("/api/admin/export-issues")
+def export_issues_to_excel(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Выгрузка ПУ с проблемами в Excel"""
+    if not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    issues_data = []  # [{serial, pu_type, unit, status, problem, ...}]
+    
+    # 1. ПУ без подразделения
+    for item in db.query(PUItem).filter(PUItem.current_unit_id == None).all():
+        issues_data.append({"item": item, "problem": "Нет подразделения", "unit_name": "—"})
+    
+    # 2. Битые ссылки на ТТР
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.ttr_ou_id != None).all():
+        ttr = db.query(TTR_RES).filter(TTR_RES.id == item.ttr_ou_id).first()
+        if not ttr:
+            issues_data.append({"item": item, "problem": f"Битая ссылка ТТР ОУ (id={item.ttr_ou_id})", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.ttr_ol_id != None).all():
+        ttr = db.query(TTR_RES).filter(TTR_RES.id == item.ttr_ol_id).first()
+        if not ttr:
+            issues_data.append({"item": item, "problem": f"Битая ссылка ТТР ОЛ (id={item.ttr_ol_id})", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.ttr_or_id != None).all():
+        ttr = db.query(TTR_RES).filter(TTR_RES.id == item.ttr_or_id).first()
+        if not ttr:
+            issues_data.append({"item": item, "problem": f"Битая ссылка ТТР ОР (id={item.ttr_or_id})", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    # 3. ВА без номинала
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.has_va == True, PUItem.va_nominal_id == None).all():
+        issues_data.append({"item": item, "problem": "ВА без номинала", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    # 4. ТТ без номинала
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.has_tt == True, PUItem.tt_nominal_id == None).all():
+        issues_data.append({"item": item, "problem": "ТТ без номинала", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    # 5. Дубликаты серийных номеров
+    from sqlalchemy import func as sql_func
+    dup_serials = db.query(PUItem.serial_number).group_by(PUItem.serial_number).having(sql_func.count(PUItem.id) > 1).all()
+    dup_sn_set = {d[0] for d in dup_serials}
+    if dup_sn_set:
+        for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.serial_number.in_(dup_sn_set)).all():
+            issues_data.append({"item": item, "problem": "Дубликат серийного номера", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    # 6. Дубликаты договоров
+    dup_contracts = db.query(PUItem.contract_number).filter(
+        PUItem.contract_number != None, PUItem.contract_number != ''
+    ).group_by(PUItem.contract_number).having(sql_func.count(PUItem.id) > 1).all()
+    dup_cn_set = {d[0] for d in dup_contracts}
+    if dup_cn_set:
+        for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.contract_number.in_(dup_cn_set)).all():
+            # Не дублируем если уже есть по другой причине
+            if not any(e["item"].id == item.id and "Дубликат договора" in e["problem"] for e in issues_data):
+                issues_data.append({"item": item, "problem": f"Дубликат договора ({item.contract_number})", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    # 7. Техприс без договора
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
+        PUItem.status == PUStatus.TECHPRIS,
+        or_(PUItem.contract_number == None, PUItem.contract_number == '')
+    ).all():
+        issues_data.append({"item": item, "problem": "Техприс без договора", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    # 8. Замена/ИЖЦ без ЛС
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
+        PUItem.status.in_([PUStatus.ZAMENA, PUStatus.IZHC]),
+        or_(PUItem.ls_number == None, PUItem.ls_number == '')
+    ).all():
+        issues_data.append({"item": item, "problem": f"{'Замена' if item.status == PUStatus.ZAMENA else 'ИЖЦ'} без ЛС", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    # 9. Не на складе без фазности
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
+        PUItem.status != PUStatus.SKLAD,
+        or_(PUItem.faza == None, PUItem.faza == '')
+    ).all():
+        issues_data.append({"item": item, "problem": "Нет фазности", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    # 10. Не на складе без ТТР ОУ
+    for item in db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
+        PUItem.status != PUStatus.SKLAD,
+        PUItem.ttr_ou_id == None,
+        PUItem.current_unit.has(Unit.unit_type == UnitType.RES)
+    ).all():
+        issues_data.append({"item": item, "problem": "Нет ТТР орг. учета", "unit_name": item.current_unit.name if item.current_unit else "—"})
+    
+    if not issues_data:
+        raise HTTPException(404, "Проблем не найдено! Все ПУ в порядке.")
+    
+    # Создаём Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Проблемные ПУ"
+    
+    header_font = Font(bold=True, color="FFFFFF", size=10)
+    header_fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    
+    headers = [
+        ("№", 5),
+        ("Проблема", 35),
+        ("Серийный номер", 20),
+        ("Тип ПУ", 35),
+        ("Подразделение", 20),
+        ("Статус", 12),
+        ("Договор", 22),
+        ("ЛС", 15),
+        ("ТЗ", 15),
+        ("Заявка", 12),
+        ("Фазность", 10),
+        ("ТТР ОУ", 10),
+        ("ТТР ОЛ", 10),
+        ("ТТР ОР", 10),
+    ]
+    
+    for col, (header, width) in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+        ws.column_dimensions[get_column_letter(col)].width = width
+    
+    ws.row_dimensions[1].height = 35
+    
+    status_labels = {'SKLAD': 'Склад', 'TECHPRIS': 'Техприс', 'ZAMENA': 'Замена', 'IZHC': 'ИЖЦ'}
+    
+    # Убираем дубли (один ПУ может иметь несколько проблем — группируем)
+    pu_problems = {}
+    for entry in issues_data:
+        item = entry["item"]
+        if item.id not in pu_problems:
+            pu_problems[item.id] = {"item": item, "problems": [], "unit_name": entry["unit_name"]}
+        pu_problems[item.id]["problems"].append(entry["problem"])
+    
+    warn_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    err_fill = PatternFill(start_color="FCE4EC", end_color="FCE4EC", fill_type="solid")
+    
+    for idx, (pu_id, data) in enumerate(pu_problems.items(), 1):
+        row = idx + 1
+        item = data["item"]
+        problems_str = "; ".join(data["problems"])
+        is_error = any(w in problems_str for w in ["Дубликат", "Битая"])
+        fill = err_fill if is_error else warn_fill
+        
+        row_data = [
+            idx,
+            problems_str,
+            item.serial_number or "",
+            item.pu_type or "",
+            data["unit_name"],
+            status_labels.get(item.status.value, item.status.value) if item.status else "",
+            item.contract_number or "",
+            item.ls_number or "",
+            item.tz_number or "",
+            item.request_number or "",
+            item.faza or "",
+            item.ttr_ou_id or "",
+            item.ttr_ol_id or "",
+            item.ttr_or_id or "",
+        ]
+        
+        for col, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row, column=col, value=value)
+            cell.border = thin_border
+            cell.fill = fill
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+        
+        ws.row_dimensions[row].height = 28
+    
+    # Итого
+    total_row = len(pu_problems) + 2
+    ws.cell(row=total_row, column=1, value=f"Всего проблемных ПУ: {len(pu_problems)}")
+    ws.cell(row=total_row, column=1).font = Font(bold=True)
+    
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename_utf8 = f"Проблемные_ПУ_{datetime.now().strftime('%d.%m.%Y')}.xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename_utf8)}"}
+    )
 @app.post("/api/admin/restore")
 def restore_backup(
     file: UploadFile = File(...),
