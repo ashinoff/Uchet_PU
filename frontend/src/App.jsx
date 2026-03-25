@@ -3200,7 +3200,6 @@ const exportToExcel = async () => {
                 <tr>
                   <th className="w-10 px-4 py-3"></th>
                   <th className="px-4 py-3 text-left">Номер заявки</th>
-                  <th className="px-4 py-3 text-left">ЭСК</th>
                   <th className="px-4 py-3 text-left">Кол-во ПУ</th>
                 </tr>
               </thead>
@@ -3212,12 +3211,11 @@ const exportToExcel = async () => {
                       <tr key={idx} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(req)}>
                         <td className="px-4 py-3">{expandedReq === key ? '▼' : '▶'}</td>
                         <td className="px-4 py-3 font-medium">{req.display_name}</td>
-                        <td className="px-4 py-3">{req.unit_name || '—'}</td>
                         <td className="px-4 py-3">{req.count}</td>
                       </tr>
                       {expandedReq === key && (
                         <tr>
-                          <td colSpan={4} className="bg-gray-50 p-4">
+                          <td colSpan={3} className="bg-gray-50 p-4">
                             <div className="flex justify-between items-center mb-3">
                               <span className="font-medium">ПУ в заявке {req.display_name}</span>
                               <div className="flex gap-2">
@@ -3629,7 +3627,7 @@ function MemoPage() {
                 <div key={idx} className={`p-3 rounded-lg cursor-pointer flex justify-between items-center ${selectedDoc?.number === req.request_number ? 'bg-green-100 border-green-300' : 'bg-gray-50 hover:bg-gray-100'}`} onClick={() => generateMemo('request', req.request_number)}>
                   <div>
                     <div className="font-medium">{req.request_number}</div>
-                    <div className="text-sm text-gray-500">{req.unit_name} • {req.count} ПУ</div>
+                    <div className="text-sm text-gray-500">{req.count} ПУ</div>
                   </div>
                   <span className="text-gray-400">→</span>
                 </div>
