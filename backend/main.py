@@ -3947,6 +3947,7 @@ def export_request_to_excel(
             ("План. дата", 14),
             ("Мощность", 10),
             ("Тип ПУ", 35),
+            ("Номер ПУ", 18),
             ("Фазность", 10),
             ("Вид работ", 25),
             ("ЛСР ПУ/ВА", 12),
@@ -4022,6 +4023,7 @@ def export_request_to_excel(
                 plan_date_str,
                 item.power if item.power is not None else "",
                 item.pu_type or "",
+                item.serial_number or "",
                 item.faza or "",
                 item.work_type_name or "",
                 item.lsr_va or "",
@@ -4039,9 +4041,9 @@ def export_request_to_excel(
                 # Выравнивание
                 if col == 1:  # №
                     cell.alignment = center_alignment
-                elif col in [7, 8, 9, 11, 15]:  # Даты, мощность, фазность, трубостойка
+                elif col in [7, 8, 9, 12, 16]:  # Даты, мощность, фазность, трубостойка
                     cell.alignment = center_alignment
-                elif col in [14, 17, 18]:  # Деньги 
+                elif col in [15, 18, 19]:  # Деньги 
                     cell.alignment = money_alignment
                     if isinstance(value, (int, float)) and value > 0:
                         cell.number_format = '#,##0.00'
@@ -4056,13 +4058,13 @@ def export_request_to_excel(
         ws.cell(row=total_row, column=1).font = Font(bold=True)
         ws.cell(row=total_row, column=1).alignment = Alignment(horizontal="right")
         
-        ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=17)
+        ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=18)
 
-        ws.cell(row=total_row, column=18, value=total_with_nds)
-        ws.cell(row=total_row, column=18).font = Font(bold=True)
-        ws.cell(row=total_row, column=18).number_format = '#,##0.00'
-        ws.cell(row=total_row, column=18).border = thin_border
-        ws.cell(row=total_row, column=18).alignment = money_alignment
+        ws.cell(row=total_row, column=19, value=total_with_nds)
+        ws.cell(row=total_row, column=19).font = Font(bold=True)
+        ws.cell(row=total_row, column=19).number_format = '#,##0.00'
+        ws.cell(row=total_row, column=19).border = thin_border
+        ws.cell(row=total_row, column=19).alignment = money_alignment
         
         # Количество ПУ
         ws.cell(row=total_row + 1, column=1, value=f"Всего ПУ: {len(items)} шт.")
