@@ -2568,7 +2568,13 @@ const saveAllMaterials = async () => {
                           {/* Панель добавления ПУ в ТЗ */}
                           {showAddSearch && (
                             <div className="mt-4 border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
-                              <h4 className="font-medium text-blue-800 mb-3">🔍 Поиск ПУ для добавления в ТЗ</h4>
+                              <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-medium text-blue-800">🔍 Поиск ПУ для добавления в ТЗ</h4>
+                                <button 
+                                  onClick={() => { setShowAddSearch(false); setAddSearchQuery(''); setAddSearchResults([]); setSelectedAddItems([]) }}
+                                  className="px-3 py-1 bg-gray-400 hover:bg-gray-500 text-white rounded-lg text-sm"
+                                >✕ Закрыть</button>
+                              </div>
                               <div className="flex gap-2 mb-3">
                                 <input 
                                   type="text"
@@ -2953,6 +2959,14 @@ function RequestsPage() {
     }
   }, [tab])
 
+  // Перезагрузка при смене фильтра ЭСК
+  useEffect(() => {
+    if (tab === 'create' && canCreateRequest) {
+      setSelectedItems([])
+      loadPending()
+    }
+  }, [selectedUnit])
+
   const loadRequests = () => {
     api.get('/requests/list').then(r => setRequestsList(r.data))
   }
@@ -3316,7 +3330,13 @@ const exportToExcel = async () => {
                             {/* Панель добавления ПУ в заявку */}
                             {showReqAddSearch && canManageRequest && (
                               <div className="mt-4 border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
-                                <h4 className="font-medium text-blue-800 mb-3">🔍 Поиск ПУ для добавления в заявку</h4>
+                                <div className="flex justify-between items-center mb-3">
+                                  <h4 className="font-medium text-blue-800">🔍 Поиск ПУ для добавления в заявку</h4>
+                                  <button 
+                                    onClick={() => { setShowReqAddSearch(false); setReqAddSearchQuery(''); setReqAddSearchResults([]); setSelectedReqAddItems([]) }}
+                                    className="px-3 py-1 bg-gray-400 hover:bg-gray-500 text-white rounded-lg text-sm"
+                                  >✕ Закрыть</button>
+                                </div>
                                 <div className="flex gap-2 mb-3">
                                   <input 
                                     type="text"
@@ -3423,7 +3443,7 @@ const exportToExcel = async () => {
                   className="px-3 py-2 border rounded-lg w-32"
                 />
               </div>
-              <select value={selectedUnit} onChange={e => { setSelectedUnit(e.target.value); loadPending() }} className="px-3 py-2 border rounded-lg">
+              <select value={selectedUnit} onChange={e => setSelectedUnit(e.target.value)} className="px-3 py-2 border rounded-lg">
                 <option value="">Все ЭСК</option>
                 {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
@@ -3452,15 +3472,6 @@ const exportToExcel = async () => {
         <div>
           <span className="text-gray-600 text-sm">Выбрано ПУ:</span>
           <span className="ml-2 font-bold text-lg">{selectedItems.length} шт</span>
-        </div>
-        <div>
-          <span className="text-gray-600 text-sm">Без НДС:</span>
-          <span className="ml-2 font-bold text-lg">
-            {pendingItems
-              .filter(i => selectedItems.includes(i.id))
-              .reduce((sum, i) => sum + ((i.price_truba_no_nds || 0) + (i.price_va_no_nds || 0)), 0)
-              .toLocaleString()} ₽
-          </span>
         </div>
         <div>
           <span className="text-gray-600 text-sm">С НДС:</span>
