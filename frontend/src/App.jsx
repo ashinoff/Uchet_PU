@@ -3338,7 +3338,7 @@ const exportToExcel = async () => {
                                 {reqAddSearching && <div className="text-center py-3 text-gray-500">Поиск...</div>}
                                 
                                 {!reqAddSearching && reqAddSearchQuery.length >= 2 && reqAddSearchResults.length === 0 && (
-                                  <div className="text-center py-3 text-gray-500">Ничего не найдено. ПУ должен быть согласован, без заявки и из того же ЭСК.</div>
+                                  <div className="text-center py-3 text-gray-500">Ничего не найдено. ПУ должен быть согласован и без заявки.</div>
                                 )}
                                 
                                 {reqAddSearchResults.length > 0 && (
