@@ -5431,47 +5431,59 @@ const renderBreakdownTable = (units, totals, title, bgColor) => {
             <tbody>
               {units.map(unit => {
                 const bd = unit.breakdown?.[activeSection] || {}
+                const cell = (val) => {
+                  const v = val || 0
+                  if (v === 0) return <span className="text-gray-300">—</span>
+                  return <span className="font-semibold text-green-800">{v}</span>
+                }
+                const cellBg = (val) => (val || 0) > 0 ? 'bg-green-50' : ''
                 return (
                   <tr key={unit.id} className="border-t hover:bg-gray-50">
                     <td className="px-3 py-2 font-medium border-r sticky left-0 bg-white">{unit.name}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.split?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.split?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['3фтт'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.split?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.split?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['3фтт'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.split?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.split?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.classic?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.classic?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center">{bd.ZAMENA?.classic?.['3фтт'] || 0}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.IZHC?.split?.['1ф'])}`}>{cell(bd.IZHC?.split?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.IZHC?.split?.['3ф'])}`}>{cell(bd.IZHC?.split?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.IZHC?.classic?.['1ф'])}`}>{cell(bd.IZHC?.classic?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.IZHC?.classic?.['3ф'])}`}>{cell(bd.IZHC?.classic?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.IZHC?.classic?.['3фтт'])}`}>{cell(bd.IZHC?.classic?.['3фтт'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.TECHPRIS?.split?.['1ф'])}`}>{cell(bd.TECHPRIS?.split?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.TECHPRIS?.split?.['3ф'])}`}>{cell(bd.TECHPRIS?.split?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.TECHPRIS?.classic?.['1ф'])}`}>{cell(bd.TECHPRIS?.classic?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.TECHPRIS?.classic?.['3ф'])}`}>{cell(bd.TECHPRIS?.classic?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.TECHPRIS?.classic?.['3фтт'])}`}>{cell(bd.TECHPRIS?.classic?.['3фтт'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.ZAMENA?.split?.['1ф'])}`}>{cell(bd.ZAMENA?.split?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.ZAMENA?.split?.['3ф'])}`}>{cell(bd.ZAMENA?.split?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.ZAMENA?.classic?.['1ф'])}`}>{cell(bd.ZAMENA?.classic?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellBg(bd.ZAMENA?.classic?.['3ф'])}`}>{cell(bd.ZAMENA?.classic?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center ${cellBg(bd.ZAMENA?.classic?.['3фтт'])}`}>{cell(bd.ZAMENA?.classic?.['3фтт'])}</td>
                   </tr>
                 )
               })}
               {isAdmin && totals && (() => {
                 const bd = totals.breakdown?.[activeSection] || {}
+                const cellT = (val) => {
+                  const v = val || 0
+                  if (v === 0) return <span className="text-gray-400">—</span>
+                  return <span className="font-bold text-green-900">{v}</span>
+                }
+                const cellTBg = (val) => (val || 0) > 0 ? 'bg-green-100' : ''
                 return (
                   <tr className="border-t bg-gray-100 font-bold">
                     <td className="px-3 py-2 border-r sticky left-0 bg-gray-100">ИТОГО</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.split?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.split?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.IZHC?.classic?.['3фтт'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.split?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.split?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.TECHPRIS?.classic?.['3фтт'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.split?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.split?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.classic?.['1ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center border-r">{bd.ZAMENA?.classic?.['3ф'] || 0}</td>
-                    <td className="px-1 py-2 text-center">{bd.ZAMENA?.classic?.['3фтт'] || 0}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.IZHC?.split?.['1ф'])}`}>{cellT(bd.IZHC?.split?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.IZHC?.split?.['3ф'])}`}>{cellT(bd.IZHC?.split?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.IZHC?.classic?.['1ф'])}`}>{cellT(bd.IZHC?.classic?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.IZHC?.classic?.['3ф'])}`}>{cellT(bd.IZHC?.classic?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.IZHC?.classic?.['3фтт'])}`}>{cellT(bd.IZHC?.classic?.['3фтт'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.TECHPRIS?.split?.['1ф'])}`}>{cellT(bd.TECHPRIS?.split?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.TECHPRIS?.split?.['3ф'])}`}>{cellT(bd.TECHPRIS?.split?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.TECHPRIS?.classic?.['1ф'])}`}>{cellT(bd.TECHPRIS?.classic?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.TECHPRIS?.classic?.['3ф'])}`}>{cellT(bd.TECHPRIS?.classic?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.TECHPRIS?.classic?.['3фтт'])}`}>{cellT(bd.TECHPRIS?.classic?.['3фтт'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.ZAMENA?.split?.['1ф'])}`}>{cellT(bd.ZAMENA?.split?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.ZAMENA?.split?.['3ф'])}`}>{cellT(bd.ZAMENA?.split?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.ZAMENA?.classic?.['1ф'])}`}>{cellT(bd.ZAMENA?.classic?.['1ф'])}</td>
+                    <td className={`px-1 py-2 text-center border-r ${cellTBg(bd.ZAMENA?.classic?.['3ф'])}`}>{cellT(bd.ZAMENA?.classic?.['3ф'])}</td>
+                    <td className={`px-1 py-2 text-center ${cellTBg(bd.ZAMENA?.classic?.['3фтт'])}`}>{cellT(bd.ZAMENA?.classic?.['3фтт'])}</td>
                   </tr>
                 )
               })()}
