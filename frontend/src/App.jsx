@@ -1254,7 +1254,7 @@ const updateMaterialQty = (materialId, qty) => {
     const isApproved = item?.approval_status === 'APPROVED'
     const isRejected = item?.approval_status === 'REJECTED'
     const hasTZ = item?.tz_number && item.tz_number.trim() !== ''
-    const canEdit = ((isResUser && isRes) || (isSueAdmin && isRes) || (isEskUser && isEsk)) && !isApproved && !hasTZ
+    const canEdit = (isSueAdmin && isRes) || (((isResUser && isRes) || (isEskUser && isEsk)) && !isApproved && !hasTZ)
     // ЭСК может редактировать если REJECTED или NONE
     const canEditEsk = isEskUser && isEsk && (item?.approval_status === 'REJECTED' || item?.approval_status === 'NONE' || !item?.approval_status)
 
@@ -1750,10 +1750,12 @@ const updateMaterialQty = (materialId, qty) => {
 
 {/* Блокировка по ТЗ */}
 {hasTZ && (
-  <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+  <div className={`p-4 rounded-lg ${isSueAdmin ? 'bg-amber-50 border border-amber-200' : 'bg-blue-50 border border-blue-200'}`}>
     <div className="flex justify-between items-center">
-      <span className="text-blue-700 font-medium">
-        📋 ТЗ: {item.tz_number} — редактирование заблокировано
+      <span className={isSueAdmin ? 'text-amber-700 font-medium' : 'text-blue-700 font-medium'}>
+        {isSueAdmin 
+          ? `📋 ТЗ: ${item.tz_number} — редактирование доступно (админ СУЭ)` 
+          : `📋 ТЗ: ${item.tz_number} — редактирование заблокировано`}
       </span>
       {isSueAdmin && (
         <button 
@@ -1791,7 +1793,7 @@ const updateMaterialQty = (materialId, qty) => {
         item.approval_status === 'REJECTED' ? 'text-red-700 font-medium' :
         'text-yellow-700'
       }>
-        {item.approval_status === 'APPROVED' && '✅ Согласовано — редактирование заблокировано'}
+        {item.approval_status === 'APPROVED' && (isSueAdmin ? '✅ Согласовано — редактирование доступно (админ СУЭ)' : '✅ Согласовано — редактирование заблокировано')}
         {item.approval_status === 'PENDING' && '⏳ На согласовании'}
         {item.approval_status === 'REJECTED' && '❌ Отклонено — требуется исправление'}
       </span>
@@ -4792,6 +4794,7 @@ function SystemTab() {
   const [healthCheck, setHealthCheck] = useState(null)
   const [loadingHealth, setLoadingHealth] = useState(false)
   const [loadingBackup, setLoadingBackup] = useState(false)
+  const [loadingIssues, setLoadingIssues] = useState(false)
 
   const runHealthCheck = async () => {
     setLoadingHealth(true)
@@ -4802,6 +4805,28 @@ function SystemTab() {
       alert(err.response?.data?.detail || 'Ошибка')
     }
     setLoadingHealth(false)
+  }
+
+  const exportIssues = async () => {
+    setLoadingIssues(true)
+    try {
+      const response = await api.get('/admin/export-issues', { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Проблемные_ПУ_${new Date().toISOString().slice(0,10)}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      if (err.response?.status === 404) {
+        alert('✅ Проблем не найдено! Все ПУ в порядке.')
+      } else {
+        alert(err.response?.data?.detail || 'Ошибка выгрузки')
+      }
+    }
+    setLoadingIssues(false)
   }
 
   const downloadBackup = async () => {
@@ -4855,6 +4880,9 @@ function SystemTab() {
     <div className="flex gap-4 flex-wrap">
       <button onClick={runHealthCheck} disabled={loadingHealth} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
         {loadingHealth ? '⏳ Проверка...' : '🔍 Проверить базу'}
+      </button>
+      <button onClick={exportIssues} disabled={loadingIssues} className="px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50">
+        {loadingIssues ? '⏳ Формирование...' : '📥 Выгрузить проблемные ПУ'}
       </button>
       <button onClick={downloadBackup} disabled={loadingBackup} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
         {loadingBackup ? '⏳ Создание...' : '💾 Скачать бэкап'}
