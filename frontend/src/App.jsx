@@ -2929,6 +2929,7 @@ function RequestsPage() {
   const [units, setUnits] = useState([])
   const [selectedUnit, setSelectedUnit] = useState('')
   const [selectedItems, setSelectedItems] = useState([])
+  const [selectedItemsInfo, setSelectedItemsInfo] = useState({}) // {id: {price_total}} — сумма между фильтрами
   const [loading, setLoading] = useState(false)
   const [lastRequest, setLastRequest] = useState(null)
   const [requestNumber, setRequestNumber] = useState('')
@@ -2959,10 +2960,9 @@ function RequestsPage() {
     }
   }, [tab])
 
-  // Перезагрузка при смене фильтра ЭСК
+  // Перезагрузка при смене фильтра ЭСК (выбор НЕ сбрасываем — накапливаем)
   useEffect(() => {
     if (tab === 'create' && canCreateRequest) {
-      setSelectedItems([])
       loadPending()
     }
   }, [selectedUnit])
@@ -3050,6 +3050,7 @@ const exportToExcel = async () => {
       })
       alert(`✅ Создана заявка: ${r.data.display_name}`)
       setSelectedItems([])
+      setSelectedItemsInfo({})
       loadRequests()
       loadPending()
       loadLastRequest()
@@ -3476,16 +3477,18 @@ const exportToExcel = async () => {
         <div>
           <span className="text-gray-600 text-sm">С НДС:</span>
           <span className="ml-2 font-bold text-green-700 text-lg">
-            {pendingItems
-              .filter(i => selectedItems.includes(i.id))
+            {Object.values(selectedItemsInfo)
               .reduce((sum, i) => sum + (i.price_total || 0), 0)
               .toLocaleString()} ₽
           </span>
         </div>
       </div>
-      <button onClick={handleCreate} disabled={loading || selectedItems.length === 0 || !requestNumber} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
-        {loading ? 'Создание...' : 'Создать заявку'}
-      </button>
+      <div className="flex gap-2">
+        <button onClick={() => { setSelectedItems([]); setSelectedItemsInfo({}) }} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">Сбросить выбор</button>
+        <button onClick={handleCreate} disabled={loading || selectedItems.length === 0 || !requestNumber} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
+          {loading ? 'Создание...' : 'Создать заявку'}
+        </button>
+      </div>
     </div>
   )}
   
@@ -3501,9 +3504,25 @@ const exportToExcel = async () => {
             ) : (
               <>
                 <div className="px-4 py-2 bg-gray-50 border-b flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Найдено: {pendingItems.length}</span>
-                  <button onClick={() => setSelectedItems(selectedItems.length === pendingItems.length ? [] : pendingItems.map(i => i.id))} className="text-sm text-blue-600">
-                    {selectedItems.length === pendingItems.length ? 'Снять все' : 'Выбрать все'}
+                  <span className="text-sm text-gray-600">Найдено: {pendingItems.length} {selectedItems.length > 0 ? `• Выбрано всего: ${selectedItems.length}` : ''}</span>
+                  <button onClick={() => {
+                    const currentIds = pendingItems.map(i => i.id)
+                    const allCurrentSelected = currentIds.every(id => selectedItems.includes(id))
+                    if (allCurrentSelected) {
+                      setSelectedItems(s => s.filter(id => !currentIds.includes(id)))
+                      setSelectedItemsInfo(prev => {
+                        const next = { ...prev }
+                        currentIds.forEach(id => delete next[id])
+                        return next
+                      })
+                    } else {
+                      const newInfo = { ...selectedItemsInfo }
+                      pendingItems.forEach(i => { newInfo[i.id] = { price_total: i.price_total || 0 } })
+                      setSelectedItemsInfo(newInfo)
+                      setSelectedItems(s => [...new Set([...s, ...currentIds])])
+                    }
+                  }} className="text-sm text-blue-600">
+                    {pendingItems.every(i => selectedItems.includes(i.id)) ? 'Снять все на странице' : 'Выбрать все на странице'}
                   </button>
                 </div>
                 <table className="w-full text-sm">
@@ -3523,9 +3542,17 @@ const exportToExcel = async () => {
   </thead>
 <tbody>
   {pendingItems.map(i => (
-    <tr key={i.id} className="border-t hover:bg-gray-50">
+    <tr key={i.id} className={`border-t hover:bg-gray-50 ${selectedItems.includes(i.id) ? 'bg-blue-50' : ''}`}>
       <td className="px-3 py-3">
-        <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => setSelectedItems(s => s.includes(i.id) ? s.filter(x => x !== i.id) : [...s, i.id])} />
+        <input type="checkbox" checked={selectedItems.includes(i.id)} onChange={() => {
+          if (selectedItems.includes(i.id)) {
+            setSelectedItems(s => s.filter(x => x !== i.id))
+            setSelectedItemsInfo(prev => { const next = { ...prev }; delete next[i.id]; return next })
+          } else {
+            setSelectedItems(s => [...s, i.id])
+            setSelectedItemsInfo(prev => ({ ...prev, [i.id]: { price_total: i.price_total || 0 } }))
+          }
+        }} />
       </td>
       <td className="px-3 py-3">{i.unit_name || i.res_name || '—'}</td>
       <td className="px-3 py-3 font-mono">{i.serial_number}</td>
