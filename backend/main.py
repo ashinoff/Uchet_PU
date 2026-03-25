@@ -4317,23 +4317,18 @@ def search_available_for_request(
     if not q or len(q) < 2:
         return []
     
-    # Находим пример ПУ из этой заявки, чтобы понять из какого подразделения
-    sample_q = db.query(PUItem).filter(PUItem.request_number == request_number)
+    # Проверяем что заявка существует
+    exists_q = db.query(PUItem).filter(PUItem.request_number == request_number)
     if request_contract:
-        sample_q = sample_q.filter(PUItem.request_contract == request_contract)
-    sample = sample_q.first()
-    if not sample:
+        exists_q = exists_q.filter(PUItem.request_contract == request_contract)
+    if exists_q.count() == 0:
         raise HTTPException(404, "Заявка не найдена или пуста")
     
-    # Ищем ПУ: согласованные, из ЭСК, без заявки
+    # Ищем ПУ: согласованные, без заявки (для ЭСК участок не важен)
     query = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
         PUItem.request_number.is_(None),
         PUItem.approval_status == ApprovalStatus.APPROVED,
     )
-    
-    # Из того же подразделения ЭСК
-    if sample.current_unit_id:
-        query = query.filter(PUItem.current_unit_id == sample.current_unit_id)
     
     # Поиск по серийному номеру, договору или потребителю
     search_filter = or_(
