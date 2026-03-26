@@ -1168,7 +1168,7 @@ def export_pu_items(
     """Выгрузка реестра ПУ в Excel"""
     try:
         visible = get_visible_units(user, db)
-        q = db.query(PUItem).options(joinedload(PUItem.current_unit))
+        q = db.query(PUItem).options(joinedload(PUItem.current_unit), joinedload(PUItem.ttr_esk))
         
         # Те же фильтры что и в get_items
         if is_lab_user(user):
@@ -1297,7 +1297,7 @@ def export_pu_items(
                 item.tz_number or "",
                 item.request_number or "",
                 approval_labels.get(item.approval_status.value if item.approval_status else 'NONE', '—'),
-                item.work_type_name or "",
+                item.work_type_name or (item.ttr_esk.work_type_name if item.ttr_esk else "") or "",
                 item.smr_date.strftime("%d.%m.%Y") if item.smr_date else "",
                 item.created_at.strftime("%d.%m.%Y") if item.created_at else "",
             ]
