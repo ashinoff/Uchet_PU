@@ -1251,6 +1251,7 @@ def export_pu_items(
             ("№ ТЗ", 15),
             ("№ Заявки", 12),
             ("Согласование", 15),
+            ("Вид работ (ЛСР)", 30),
             ("Дата СМР", 12),
             ("Дата загрузки", 12),
         ]
@@ -1296,6 +1297,7 @@ def export_pu_items(
                 item.tz_number or "",
                 item.request_number or "",
                 approval_labels.get(item.approval_status.value if item.approval_status else 'NONE', '—'),
+                item.work_type_name or "",
                 item.smr_date.strftime("%d.%m.%Y") if item.smr_date else "",
                 item.created_at.strftime("%d.%m.%Y") if item.created_at else "",
             ]
