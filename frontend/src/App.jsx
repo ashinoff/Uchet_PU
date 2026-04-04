@@ -2113,6 +2113,7 @@ function TZPage() {
   const { isSueAdmin } = useAuth()
   const [tab, setTab] = useState('list')
   const [tzList, setTzList] = useState([])
+  const [tzSort, setTzSort] = useState({ field: 'tz_number', dir: 'desc' })
   const [expandedTz, setExpandedTz] = useState(null)
   const [tzItems, setTzItems] = useState([])
   const [selectedTzItems, setSelectedTzItems] = useState([])
@@ -2484,14 +2485,25 @@ const saveAllMaterials = async () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="w-10 px-4 py-3"></th>
-                  <th className="px-4 py-3 text-left">Номер ТЗ</th>
-                  <th className="px-4 py-3 text-left">Тип</th>
-                  <th className="px-4 py-3 text-left">РЭС</th>
-                  <th className="px-4 py-3 text-left">Кол-во ПУ</th>
+                  {[
+                    { field: 'tz_number', label: 'Номер ТЗ' },
+                    { field: 'status', label: 'Тип' },
+                    { field: 'unit_name', label: 'РЭС' },
+                    { field: 'count', label: 'Кол-во ПУ' },
+                  ].map(col => (
+                    <th key={col.field} className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none" onClick={() => setTzSort(prev => ({ field: col.field, dir: prev.field === col.field && prev.dir === 'asc' ? 'desc' : 'asc' }))}>
+                      {col.label} {tzSort.field === col.field ? (tzSort.dir === 'asc' ? '▲' : '▼') : ''}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {tzList.map((tz, idx) => (
+                {[...tzList].sort((a, b) => {
+                  const av = a[tzSort.field] ?? ''
+                  const bv = b[tzSort.field] ?? ''
+                  const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'ru')
+                  return tzSort.dir === 'asc' ? cmp : -cmp
+                }).map((tz, idx) => (
                   <>
                     <tr key={idx} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(tz.tz_number)}>
                       <td className="px-4 py-3">{expandedTz === tz.tz_number ? '▼' : '▶'}</td>
@@ -2923,6 +2935,7 @@ function RequestsPage() {
   const { isSueAdmin, isEskAdmin, isEskUser } = useAuth()
   const [tab, setTab] = useState('list')
   const [requestsList, setRequestsList] = useState([])
+  const [reqSort, setReqSort] = useState({ field: 'request_number', dir: 'desc' })
   const [expandedReq, setExpandedReq] = useState(null)
   const [reqItems, setReqItems] = useState([])
   const [pendingItems, setPendingItems] = useState([])
@@ -3216,12 +3229,23 @@ const exportToExcel = async () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="w-10 px-4 py-3"></th>
-                  <th className="px-4 py-3 text-left">Номер заявки</th>
-                  <th className="px-4 py-3 text-left">Кол-во ПУ</th>
+                  {[
+                    { field: 'display_name', label: 'Номер заявки' },
+                    { field: 'count', label: 'Кол-во ПУ' },
+                  ].map(col => (
+                    <th key={col.field} className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none" onClick={() => setReqSort(prev => ({ field: col.field, dir: prev.field === col.field && prev.dir === 'asc' ? 'desc' : 'asc' }))}>
+                      {col.label} {reqSort.field === col.field ? (reqSort.dir === 'asc' ? '▲' : '▼') : ''}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {requestsList.map((req, idx) => {
+                {[...requestsList].sort((a, b) => {
+                  const av = a[reqSort.field] ?? ''
+                  const bv = b[reqSort.field] ?? ''
+                  const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'ru')
+                  return reqSort.dir === 'asc' ? cmp : -cmp
+                }).map((req, idx) => {
                   const key = `${req.request_number}|${req.request_contract || ''}`
                   return (
                     <>
