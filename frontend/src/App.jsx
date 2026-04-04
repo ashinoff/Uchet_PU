@@ -142,8 +142,8 @@ function Sidebar({ page, setPage }) {
   return (
     <aside className="fixed left-0 top-0 h-full w-56 bg-slate-800 text-white flex flex-col">
       <div className="p-4 border-b border-slate-700">
-        <div className="font-bold text-lg">ПУ Система</div>
-        <div className="text-xs text-slate-400">v2.0</div>
+        <div className="font-bold text-lg">Система учета ПУ</div>
+        <div className="text-xs text-slate-400">ПК «Светлячок»</div>
       </div>
       <nav className="flex-1 p-3 space-y-1">
         {items.map(i => (
@@ -160,6 +160,11 @@ function Sidebar({ page, setPage }) {
           <div className="text-xs text-slate-500">{user?.role_name}</div>
         </div>
         <button onClick={logout} className="w-full px-3 py-2 text-left hover:bg-slate-700 rounded-lg">🚪 Выйти</button>
+      </div>
+      <div className="p-3 border-t border-slate-700 text-xs text-slate-500">
+        <div className="text-slate-400 font-medium mb-1">Техническая поддержка:</div>
+        <div>Элла Сергеевна</div>
+        <div>+7 (988) 414-93-74</div>
       </div>
     </aside>
   )
@@ -196,7 +201,7 @@ function LoginPage() {
         <div className="text-center mb-6">
           <div className="text-4xl mb-2">⚡</div>
           <h1 className="text-2xl font-bold">Система учета ПУ</h1>
-          <p className="text-gray-500 text-sm">Версия 2.0</p>
+          <p className="text-gray-500 text-sm">ПК «Светлячок»</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input type="text" placeholder="Логин" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-4 py-3 border rounded-lg" />
