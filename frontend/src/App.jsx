@@ -2114,6 +2114,9 @@ function TZPage() {
   const [tab, setTab] = useState('list')
   const [tzList, setTzList] = useState([])
   const [tzSort, setTzSort] = useState({ field: 'tz_number', dir: 'desc' })
+  const [tzFilterType, setTzFilterType] = useState('')
+  const [tzFilterUnit, setTzFilterUnit] = useState('')
+  const [tzFilterTz, setTzFilterTz] = useState('')
   const [expandedTz, setExpandedTz] = useState(null)
   const [tzItems, setTzItems] = useState([])
   const [selectedTzItems, setSelectedTzItems] = useState([])
@@ -2476,10 +2479,49 @@ const saveAllMaterials = async () => {
         <button onClick={() => { setTab('create'); setStep(1) }} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
       </div>
 
-      {tab === 'list' && (
-        <div className="bg-white rounded-xl border overflow-hidden">
-          {tzList.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">Нет сформированных ТЗ</div>
+      {tab === 'list' && (() => {
+        // Фильтрация
+        const filtered = tzList.filter(tz => {
+          if (tzFilterType && tz.status !== tzFilterType) return false
+          if (tzFilterUnit && tz.unit_name !== tzFilterUnit) return false
+          if (tzFilterTz && tz.tz_number !== tzFilterTz) return false
+          return true
+        })
+        // Уникальные значения для фильтров (из текущего отфильтрованного контекста)
+        const availableTypes = [...new Set(tzList.filter(tz => !tzFilterUnit || tz.unit_name === tzFilterUnit).map(tz => tz.status))].sort()
+        const availableUnits = [...new Set(tzList.filter(tz => !tzFilterType || tz.status === tzFilterType).map(tz => tz.unit_name).filter(Boolean))].sort()
+        const availableTz = [...new Set(filtered.map(tz => tz.tz_number))].sort()
+        const hasFilters = tzFilterType || tzFilterUnit || tzFilterTz
+
+        return (
+        <div className="space-y-3">
+          {/* Панель фильтров */}
+          <div className="bg-white rounded-xl border p-4">
+            <div className="flex flex-wrap gap-3 items-center">
+              <span className="text-sm text-gray-500 font-medium">Фильтры:</span>
+              <select value={tzFilterType} onChange={e => { setTzFilterType(e.target.value); setTzFilterTz('') }} className="px-3 py-2 border rounded-lg text-sm">
+                <option value="">Все типы</option>
+                {availableTypes.map(s => <option key={s} value={s}>{statusLabels[s] || s}</option>)}
+              </select>
+              <select value={tzFilterUnit} onChange={e => { setTzFilterUnit(e.target.value); setTzFilterTz('') }} className="px-3 py-2 border rounded-lg text-sm">
+                <option value="">Все РЭС</option>
+                {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <select value={tzFilterTz} onChange={e => setTzFilterTz(e.target.value)} className="px-3 py-2 border rounded-lg text-sm min-w-[200px]">
+                <option value="">Все ТЗ ({filtered.length})</option>
+                {availableTz.map(tn => <option key={tn} value={tn}>{tn}</option>)}
+              </select>
+              {hasFilters && (
+                <button onClick={() => { setTzFilterType(''); setTzFilterUnit(''); setTzFilterTz('') }} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-600">
+                  ✕ Сбросить
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border overflow-hidden">
+          {filtered.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">{tzList.length === 0 ? 'Нет сформированных ТЗ' : 'Нет ТЗ по выбранным фильтрам'}</div>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
@@ -2498,7 +2540,7 @@ const saveAllMaterials = async () => {
                 </tr>
               </thead>
               <tbody>
-                {[...tzList].sort((a, b) => {
+                {[...filtered].sort((a, b) => {
                   const av = a[tzSort.field] ?? ''
                   const bv = b[tzSort.field] ?? ''
                   const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'ru')
@@ -2664,7 +2706,8 @@ const saveAllMaterials = async () => {
             </table>
           )}
         </div>
-      )}
+        </div>
+      )})()}
 
       {tab === 'create' && step === 1 && (
         <div className="space-y-4">
