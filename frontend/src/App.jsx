@@ -36,9 +36,11 @@ function AuthProvider({ children }) {
   const isEskAdmin = user?.role_code === 'ESK_ADMIN'
   const isResUser = user?.role_code === 'RES_USER'
   const isEskUser = user?.role_code === 'ESK_USER'
+  const isOksAdmin = user?.role_code === 'OKS_ADMIN'
+  const isOksUser = user?.role_code === 'OKS_USER'
   
   const canUpload = isLabUser
-  const canMove = isSueAdmin || isEskAdmin
+  const canMove = isSueAdmin || isEskAdmin || isOksAdmin
   const canDelete = isSueAdmin
   const canManageUsers = isSueAdmin
   const canApprove = isResUser || isSueAdmin
@@ -48,7 +50,7 @@ function AuthProvider({ children }) {
 
   return <AuthContext.Provider value={{ 
     user, loading, login, logout, 
-    isSueAdmin, isLabUser, isEskAdmin, isResUser, isEskUser,
+    isSueAdmin, isLabUser, isEskAdmin, isResUser, isEskUser, isOksAdmin, isOksUser,
     canUpload, canMove, canDelete, canManageUsers, canApprove, canCreateTZ, canManageReferences, canManageMasters
   }}>{children}</AuthContext.Provider>
 }
@@ -219,7 +221,7 @@ function LoginPage() {
 
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
 function HomePage({ setPage }) {
-  const { user, canUpload, canManageUsers, canApprove, isSueAdmin, isEskAdmin } = useAuth()
+  const { user, canUpload, canManageUsers, canApprove, isSueAdmin, isEskAdmin, isOksAdmin } = useAuth()
   const [stats, setStats] = useState(null)
   const [error, setError] = useState(null)
 
@@ -298,14 +300,27 @@ function HomePage({ setPage }) {
         </div>
       </div>
     )}
+    {/* ОКС — для СУЭ и ОКС Админа */}
+    {(isSueAdmin || isOksAdmin) && stats.oks && (
+      <div>
+        <h3 className="text-sm font-medium text-gray-500 mb-2">🏗️ ОКС</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatCard label="Всего ПУ" value={stats.oks.total || 0} color="blue" />
+          <StatCard label="Установлено" value={stats.oks.installed || 0} color="emerald" />
+          <StatCard label="На складе" value={stats.oks.sklad || 0} color="gray" />
+          <StatCard label="Техприс" value={stats.oks.techpris || 0} color="green" />
+          <StatCard label="Замена" value={stats.oks.zamena || 0} color="yellow" />
+          <StatCard label="ИЖЦ" value={stats.oks.izhc || 0} color="purple" />
+        </div>
+      </div>
+    )}
   </div>
 )}
-
       {stats?.pending_approval > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between">
           <div>
             <span className="text-orange-700 font-medium">🔔 На согласовании: {stats.pending_approval}</span>
-            <p className="text-orange-600 text-sm">Требуется проверка СМР от ЭСК</p>
+            <p className="text-orange-600 text-sm">Требуется проверка СМР от ЭСК / ОКС</p>
           </div>
           <button onClick={() => setPage('approval')} className="px-4 py-2 bg-orange-500 text-white rounded-lg">Перейти</button>
         </div>
@@ -367,7 +382,7 @@ function StatCard({ label, value, color = 'blue' }) {
 
 // ==================== СПИСОК ПУ ====================
 function PUListPage({ filter = 'all' }) {
-  const { canMove, canDelete, isSueAdmin, isEskAdmin, isEskUser } = useAuth()
+  const { canMove, canDelete, isSueAdmin, isEskAdmin, isEskUser, isOksAdmin, isOksUser } = useAuth()
   const [items, setItems] = useState([])
   const [units, setUnits] = useState([])
   const [search, setSearch] = useState('')
@@ -485,16 +500,19 @@ function PUListPage({ filter = 'all' }) {
   // Фильтруем подразделения для списка и перемещения
   const visibleUnits = isEskAdmin 
     ? units.filter(u => u.unit_type === 'ESK' || u.unit_type === 'ESK_UNIT')
+    : isOksAdmin
+    ? units.filter(u => u.unit_type === 'OKS' || u.unit_type === 'OKS_UNIT')
     : units
 
   const moveUnits = units.filter(u => {
     if (isSueAdmin) return u.unit_type === 'RES'
     if (isEskAdmin) return u.unit_type === 'ESK' || u.unit_type === 'ESK_UNIT'
+    if (isOksAdmin) return u.unit_type === 'OKS' || u.unit_type === 'OKS_UNIT'
     return false
   })
 
-  // Для ЭСК только Техприс и Склад
-  const statusOptions = isEskAdmin 
+  // Для ЭСК и ОКС только Техприс и Склад
+  const statusOptions = (isEskAdmin || isOksAdmin)
     ? [{ value: 'SKLAD', label: 'Склад' }, { value: 'TECHPRIS', label: 'Техприс' }]
     : Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))
 
@@ -554,7 +572,7 @@ function PUListPage({ filter = 'all' }) {
   )}
 </div>
 
-{!isEskAdmin && (
+{!isEskAdmin && !isOksAdmin && (
   <div className="relative w-40">
     <input 
       type="text" 
@@ -579,7 +597,7 @@ function PUListPage({ filter = 'all' }) {
             <option value="">Все статусы</option>
             {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          {(isSueAdmin || isEskAdmin) && (
+          {(isSueAdmin || isEskAdmin || isOksAdmin) && (
             <select value={unitFilter} onChange={e => { setUnitFilter(e.target.value); setPage(1) }} className="px-3 py-2 border rounded-lg">
               <option value="">Все подразделения</option>
               {visibleUnits.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -590,6 +608,7 @@ function PUListPage({ filter = 'all' }) {
               <button onClick={() => { setUnitTypeFilter('all'); setPage(1) }} className={`px-3 py-1 rounded ${unitTypeFilter === 'all' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>Все</button>
               <button onClick={() => { setUnitTypeFilter('res'); setPage(1) }} className={`px-3 py-1 rounded ${unitTypeFilter === 'res' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>РЭС</button>
               <button onClick={() => { setUnitTypeFilter('esk'); setPage(1) }} className={`px-3 py-1 rounded ${unitTypeFilter === 'esk' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>ЭСК</button>
+              <button onClick={() => { setUnitTypeFilter('oks'); setPage(1) }} className={`px-3 py-1 rounded ${unitTypeFilter === 'oks' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>ОКС</button>
             </div>
           )}
         </div>
@@ -600,7 +619,7 @@ function PUListPage({ filter = 'all' }) {
           <span className="text-blue-700 font-medium">Выбрано: {selected.length}</span>
           <div className="flex gap-2">
             {canMove && <button onClick={() => setMoveModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➡️ Переместить</button>}
-            {(isEskUser || isEskAdmin) && (
+            {(isEskUser || isEskAdmin || isOksUser || isOksAdmin) && (
               <button onClick={handleSendApprovalBatch} className="px-4 py-2 bg-orange-500 text-white rounded-lg">📤 На согласование</button>
             )}
             {canDelete && <button onClick={() => setDeleteModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">🗑️ Удалить</button>}
@@ -751,7 +770,7 @@ function DeleteWithCodeModal({ title, onClose, onDelete }) {
 
 // ==================== КАРТОЧКА ПУ ====================
 function PUCardModal({ itemId, onClose }) {
-  const { isSueAdmin, isResUser, isEskUser, isEskAdmin } = useAuth()
+  const { isSueAdmin, isResUser, isEskUser, isEskAdmin, isOksUser } = useAuth()
   const [item, setItem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -966,32 +985,48 @@ const handleSave = async () => {
 }
 
 const handleSendApproval = async () => {
+  // ОКС работает по логике РЭС (техприс): другие обязательные поля, без ЭСК-ЛСР/мастера
+  const _isOks = item?.current_unit_type === 'OKS_UNIT' || item?.current_unit_type === 'OKS'
   // Проверяем обязательные поля для согласования
   const requiredFields = []
   
-  if (!item.faza) requiredFields.push('Фазность')
-  if (!item.form_factor) requiredFields.push('Форм-фактор')
-  if (!item.va_type) requiredFields.push('Щит с ВА')
-  if (!item.contract_number) requiredFields.push('Номер договора')
-  if (!item.consumer) requiredFields.push('Потребитель')
-  if (!item.address) requiredFields.push('Адрес')
-  if (!item.smr_master_id) requiredFields.push('СМР выполнил (мастер)')
-  if (!item.smr_date) requiredFields.push('Дата СМР')
-  
-  // Проверяем ЛСР
-  if (!item.lsr_va && !item.lsr_truba) requiredFields.push('ЛСР (выберите Щит с ВА или Трубостойку)')
+  if (_isOks) {
+    if (!item.contract_number) requiredFields.push('Номер договора')
+    if (!item.consumer) requiredFields.push('Потребитель')
+    if (!item.address) requiredFields.push('Адрес')
+    if (!item.smr_date) requiredFields.push('Дата СМР')
+  } else {
+    if (!item.faza) requiredFields.push('Фазность')
+    if (!item.form_factor) requiredFields.push('Форм-фактор')
+    if (!item.va_type) requiredFields.push('Щит с ВА')
+    if (!item.contract_number) requiredFields.push('Номер договора')
+    if (!item.consumer) requiredFields.push('Потребитель')
+    if (!item.address) requiredFields.push('Адрес')
+    if (!item.smr_master_id) requiredFields.push('СМР выполнил (мастер)')
+    if (!item.smr_date) requiredFields.push('Дата СМР')
+    
+    // Проверяем ЛСР
+    if (!item.lsr_va && !item.lsr_truba) requiredFields.push('ЛСР (выберите Щит с ВА или Трубостойку)')
+  }
   
   if (requiredFields.length > 0) {
     // Подсвечиваем ошибки
     const newErrors = {}
-    if (!item.faza) newErrors.faza = 'Обязательно'
-    if (!item.form_factor) newErrors.form_factor = 'Обязательно'
-    if (!item.va_type) newErrors.va_type = 'Обязательно'
-    if (!item.contract_number) newErrors.contract_number = 'Обязательно'
-    if (!item.consumer) newErrors.consumer = 'Обязательно'
-    if (!item.address) newErrors.address = 'Обязательно'
-    if (!item.smr_master_id) newErrors.smr_master_id = 'Обязательно'
-    if (!item.smr_date) newErrors.smr_date = 'Обязательно'
+    if (_isOks) {
+      if (!item.contract_number) newErrors.contract_number = 'Обязательно'
+      if (!item.consumer) newErrors.consumer = 'Обязательно'
+      if (!item.address) newErrors.address = 'Обязательно'
+      if (!item.smr_date) newErrors.smr_date = 'Обязательно'
+    } else {
+      if (!item.faza) newErrors.faza = 'Обязательно'
+      if (!item.form_factor) newErrors.form_factor = 'Обязательно'
+      if (!item.va_type) newErrors.va_type = 'Обязательно'
+      if (!item.contract_number) newErrors.contract_number = 'Обязательно'
+      if (!item.consumer) newErrors.consumer = 'Обязательно'
+      if (!item.address) newErrors.address = 'Обязательно'
+      if (!item.smr_master_id) newErrors.smr_master_id = 'Обязательно'
+      if (!item.smr_date) newErrors.smr_date = 'Обязательно'
+    }
     setErrors(newErrors)
     
     alert(`❌ Заполните обязательные поля:\n\n• ${requiredFields.join('\n• ')}`)
@@ -1254,17 +1289,21 @@ const updateMaterialQty = (materialId, qty) => {
 
     const isEsk = item?.current_unit_type === 'ESK_UNIT' || item?.current_unit_type === 'ESK'
     const isRes = item?.current_unit_type === 'RES'
-// СУЭ может редактировать карточки РЭС, РЭС редактирует свои, ЭСК редактирует свои
+    const isOks = item?.current_unit_type === 'OKS_UNIT' || item?.current_unit_type === 'OKS'
+    // ОКС по содержанию карточки идентичен РЭС (ТТР РЭС, материалы, ВА/ТТ),
+    // но отправляет на согласование как ЭСК. isResLike — для контентных секций.
+    const isResLike = isRes || isOks
+// СУЭ может редактировать карточки РЭС, РЭС редактирует свои, ЭСК/ОКС редактируют свои
     
     const isApproved = item?.approval_status === 'APPROVED'
     const isRejected = item?.approval_status === 'REJECTED'
     const hasTZ = item?.tz_number && item.tz_number.trim() !== ''
-    const canEdit = (isSueAdmin && isRes) || (((isResUser && isRes) || (isEskUser && isEsk)) && !isApproved && !hasTZ)
-    // ЭСК может редактировать если REJECTED или NONE
-    const canEditEsk = isEskUser && isEsk && (item?.approval_status === 'REJECTED' || item?.approval_status === 'NONE' || !item?.approval_status)
+    const canEdit = (isSueAdmin && isRes) || (((isResUser && isRes) || (isEskUser && isEsk) || (isOksUser && isOks)) && !isApproved && !hasTZ)
+    // ЭСК/ОКС могут редактировать если REJECTED или NONE
+    const canEditEsk = (isEskUser && isEsk || isOksUser && isOks) && (item?.approval_status === 'REJECTED' || item?.approval_status === 'NONE' || !item?.approval_status)
 
-  // Для ЭСК только Техприс и Склад
-  const statusOptions = isEsk 
+  // Для ЭСК и ОКС только Техприс и Склад
+  const statusOptions = (isEsk || isOks)
     ? [{ value: 'SKLAD', label: 'На складе' }, { value: 'TECHPRIS', label: 'Техприс' }]
     : [
         { value: 'SKLAD', label: 'На складе' },
@@ -1420,8 +1459,8 @@ const updateMaterialQty = (materialId, qty) => {
             </>
           )}
 
-          {/* ТТР для РЭС */}
-          {isRes && item.status !== 'SKLAD' && (
+          {/* ТТР для РЭС / ОКС */}
+          {isResLike && item.status !== 'SKLAD' && (
             <>
               <hr />
               <h3 className="font-medium">ТТР (для РЭС)</h3>
@@ -1607,8 +1646,8 @@ const updateMaterialQty = (materialId, qty) => {
   </>
 )}
 
-{/* ВА и ТТ для РЭС */}
-{isRes && item.status !== 'SKLAD' && canEdit && (
+{/* ВА и ТТ для РЭС / ОКС */}
+{isResLike && item.status !== 'SKLAD' && canEdit && (
   <div className="border-t pt-4 mt-4">
     <h4 className="font-medium text-gray-700 mb-3">⚡ Оборудование</h4>
     <div className="grid grid-cols-2 gap-4">
@@ -1688,8 +1727,8 @@ const updateMaterialQty = (materialId, qty) => {
   </div>
 )}
           
-          {/* Материалы для РЭС */}
-{isRes && item.status !== 'SKLAD' && materials.length > 0 && (
+          {/* Материалы для РЭС / ОКС */}
+{isResLike && item.status !== 'SKLAD' && materials.length > 0 && (
   <>
     <hr />
     <h3 className="font-medium">📦 Материалы</h3>
@@ -1835,7 +1874,7 @@ const updateMaterialQty = (materialId, qty) => {
         {canEdit && (
           <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex justify-end gap-2">
             <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg">Отмена</button>
-            {isEsk && item.status === 'TECHPRIS' && item.approval_status !== 'APPROVED' && item.approval_status !== 'PENDING' && (
+            {(isEsk || isOks) && item.status === 'TECHPRIS' && item.approval_status !== 'APPROVED' && item.approval_status !== 'PENDING' && (
               <button onClick={handleSendApproval} disabled={saving} className="px-4 py-2 bg-orange-500 text-white rounded-lg disabled:opacity-50">
                 📤 На согласование
               </button>
@@ -2008,7 +2047,7 @@ function ApprovalPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">Согласование СМР</h1>
-          <p className="text-gray-500">ПУ от ЭСК на проверку</p>
+          <p className="text-gray-500">ПУ от ЭСК и ОКС на проверку</p>
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">📥 Выгрузить в Excel</button>
@@ -2023,6 +2062,7 @@ function ApprovalPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-3 py-3 text-left">Источник</th>
                 <th className="px-3 py-3 text-left">РЭС</th>
                 <th className="px-3 py-3 text-left">Серийный номер</th>
                 <th className="px-3 py-3 text-left">Тип ПУ</th>
@@ -2038,6 +2078,9 @@ function ApprovalPage() {
             <tbody>
               {items.map(i => (
                 <tr key={i.id} className="border-t hover:bg-gray-50">
+                  <td className="px-3 py-3">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${i.source === 'ОКС' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>{i.source || 'ЭСК'}</span>
+                  </td>
                   <td className="px-3 py-3">{i.res_name || '—'}</td>
                   <td className="px-3 py-3 font-mono">{i.serial_number}</td>
                   <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
@@ -5297,13 +5340,13 @@ function ClearDBModal({ onClose, onClear }) {
 }
 
 function MoveBulkPage() {
-  const { isEskAdmin, isSueAdmin } = useAuth()
+  const { isEskAdmin, isSueAdmin, isOksAdmin } = useAuth()
   const [file, setFile] = useState(null)
   const [adminCode, setAdminCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
 
-  if (!isEskAdmin && !isSueAdmin) {
+  if (!isEskAdmin && !isSueAdmin && !isOksAdmin) {
     return <div className="text-center py-12 text-gray-500">Нет доступа</div>
   }
 
@@ -5343,7 +5386,7 @@ function MoveBulkPage() {
         <h3 className="font-medium text-blue-800 mb-2">📋 Формат файла Excel:</h3>
         <ul className="text-blue-700 text-sm space-y-1">
           <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
-          <li>• <b>Колонка B:</b> Название подразделения ЭСК (например: Адлерский ЭСК)</li>
+          <li>• <b>Колонка B:</b> Название подразделения (ЭСК — напр. «Адлерский ЭСК», ОКС — напр. «ОКС Адлерский РЭС»)</li>
         </ul>
       </div>
 
