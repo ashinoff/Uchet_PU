@@ -3980,9 +3980,10 @@ def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(ge
         year = now.strftime("%y")
         suffix = f"{month}-{year}"
     
-    # Для ОКС добавляем маркер, чтобы отличать от ТЗ РЭС и избежать коллизий номеров
-    oks_marker = "ОКС " if is_oks_unit else ""
-    tz_number = f"{oks_marker}{prefix} {unit.short_code}-{suffix}"
+    # Для ОКС добавляем маркер в конце номера (после даты), чтобы отличать
+    # от ТЗ РЭС и избежать коллизий номеров
+    oks_suffix = "-ОКС" if is_oks_unit else ""
+    tz_number = f"{prefix} {unit.short_code}-{suffix}{oks_suffix}"
     
     # Проверяем уникальность
     existing = db.query(PUItem).filter(PUItem.tz_number == tz_number).first()
@@ -4154,12 +4155,12 @@ def get_next_tz_number(
     
     next_suffix = f"{month}-{year}"
     
-    # Маркер ОКС для участков ОКС
-    oks_marker = "ОКС " if unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT) else ""
+    # Маркер ОКС в конце номера для участков ОКС
+    oks_suffix = "-ОКС" if unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT) else ""
     
     return {
         "next_suffix": next_suffix,
-        "preview": f"{oks_marker}{prefix} {unit.short_code}-{next_suffix}"
+        "preview": f"{prefix} {unit.short_code}-{next_suffix}{oks_suffix}"
     }
 
 @app.get("/api/requests/list")
