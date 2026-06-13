@@ -2425,6 +2425,7 @@ function TZPage() {
   const [addingToTz, setAddingToTz] = useState(false)
   const [pendingItems, setPendingItems] = useState([])
   const [units, setUnits] = useState([])
+  const [allSubUnits, setAllSubUnits] = useState([])
   const [selectedStatus, setSelectedStatus] = useState('TECHPRIS')
   const [selectedUnit, setSelectedUnit] = useState('')
   const [selectedPower, setSelectedPower] = useState('')
@@ -2440,7 +2441,10 @@ function TZPage() {
 
   useEffect(() => {
     api.get('/tz/list').then(r => setTzList(r.data))
-    api.get('/units').then(r => setUnits(r.data.filter(u => isOksAdmin ? (u.unit_type === 'OKS_UNIT') : (u.unit_type === 'RES'))))
+    api.get('/units').then(r => {
+      setUnits(r.data.filter(u => isOksAdmin ? (u.unit_type === 'OKS_UNIT') : (u.unit_type === 'RES')))
+      setAllSubUnits(r.data.filter(u => u.unit_type === 'RES' || u.unit_type === 'OKS_UNIT'))
+    })
   }, [])
 
   // Загрузка ПУ при изменении фильтров
@@ -2619,7 +2623,8 @@ const exportToExcel = async () => {
     }
     
     const suffix = customSuffix || '01-26'
-    return `${prefix} ${unit.short_code}-${suffix}`
+    const oksSuffix = (unit.unit_type === 'OKS_UNIT' || unit.unit_type === 'OKS') ? '-ОКС' : ''
+    return `${prefix} ${unit.short_code}-${suffix}${oksSuffix}`
   }
 
   // Переход к шагу 2 — загрузка материалов
@@ -2763,9 +2768,9 @@ const saveAllMaterials = async () => {
 
   const statusLabels = { TECHPRIS: 'Техприс', ZAMENA: 'Замена', IZHC: 'ИЖЦ' }
   const needPowerCategory = selectedStatus === 'TECHPRIS'
-  // ТЗ ОКС помечены префиксом "ОКС ". Управлять (добавлять/исключать ПУ) можно только своими ТЗ
+  // ТЗ ОКС помечены суффиксом "-ОКС" в конце. Управлять (добавлять/исключать ПУ) можно только своими ТЗ
   const canManageTz = (tz) => {
-    const isOksTz = (tz.tz_number || '').startsWith('ОКС ')
+    const isOksTz = (tz.tz_number || '').endsWith('-ОКС')
     return (isSueAdmin && !isOksTz) || (isOksAdmin && isOksTz)
   }
 
@@ -2788,7 +2793,10 @@ const saveAllMaterials = async () => {
         })
         // Уникальные значения для фильтров (из текущего отфильтрованного контекста)
         const availableTypes = [...new Set(tzList.filter(tz => !tzFilterUnit || tz.unit_name === tzFilterUnit).map(tz => tz.status))].sort()
-        const availableUnits = [...new Set(tzList.filter(tz => !tzFilterType || tz.status === tzFilterType).map(tz => tz.unit_name).filter(Boolean))].sort()
+        const availableUnits = [...new Set([
+          ...tzList.filter(tz => !tzFilterType || tz.status === tzFilterType).map(tz => tz.unit_name).filter(Boolean),
+          ...allSubUnits.map(u => u.name)
+        ])].sort()
         const availableTz = [...new Set(filtered.map(tz => tz.tz_number))].sort()
         const hasFilters = tzFilterType || tzFilterUnit || tzFilterTz
 
