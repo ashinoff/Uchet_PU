@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, Fragment } from 'react'
+import { useState, useEffect, createContext, useContext, Fragment, useRef } from 'react'
 import api from './api'
 
 // ==================== КОНТЕКСТ АВТОРИЗАЦИИ ====================
@@ -360,11 +360,11 @@ function HomePage({ setPage, onOpenPU }) {
       </div>
 
       {stats && (
-        <div className="space-y-2">
-          {isSueAdmin && <StatRow icon="chart" title="Все подразделения" data={stats.all} unitType="all" onPick={onOpenPU} />}
-          {isSueAdmin && <StatRow icon="building" title="РЭС (РСК)" data={stats.res} unitType="res" onPick={onOpenPU} />}
-          {(isSueAdmin || isEskAdmin) && <StatRow icon="zap" title="ЭСК" data={stats.esk} unitType="esk" onPick={onOpenPU} />}
-          {(isSueAdmin || isOksAdmin) && <StatRow icon="crane" title="ОКС" data={stats.oks} unitType="oks" onPick={onOpenPU} />}
+        <div className="space-y-4">
+          {isSueAdmin && <StatGroup icon="chart" title="Все подразделения" data={stats.all} unitType="all" onPick={onOpenPU} />}
+          {isSueAdmin && <StatGroup icon="building" title="РЭС (РСК)" data={stats.res} unitType="res" onPick={onOpenPU} />}
+          {(isSueAdmin || isEskAdmin) && <StatGroup icon="zap" title="ЭСК" data={stats.esk} unitType="esk" onPick={onOpenPU} />}
+          {(isSueAdmin || isOksAdmin) && <StatGroup icon="crane" title="ОКС" data={stats.oks} unitType="oks" onPick={onOpenPU} />}
         </div>
       )}
       {stats?.pending_approval > 0 && (
@@ -442,29 +442,32 @@ function StatCard({ label, value, color = 'blue' }) {
   )
 }
 
-// Компактная строка остатков подразделения: название + кликабельные цифры в один ряд.
-// Клик по цифре открывает список ПУ с соответствующими фильтрами.
-function StatRow({ icon, title, data, unitType, onPick }) {
+// Группа остатков подразделения: заголовок + сетка компактных кликабельных карточек.
+// Клик по карточке открывает список ПУ с соответствующими фильтрами.
+function StatGroup({ icon, title, data, unitType, onPick }) {
   if (!data) return null
   const metrics = [
-    { key: 'total',     label: 'Всего',       value: data.total || 0,     color: 'text-[#0B4DA2]', preset: { unitType, status: '',         filter: 'all' } },
-    { key: 'installed', label: 'Установлено', value: data.installed || 0, color: 'text-emerald-600', preset: { unitType, status: '',       filter: 'done' } },
-    { key: 'sklad',     label: 'На складе',   value: data.sklad || 0,     color: 'text-slate-600', preset: { unitType, status: 'SKLAD',    filter: 'all' } },
-    { key: 'techpris',  label: 'Техприс',     value: data.techpris || 0,  color: 'text-green-600', preset: { unitType, status: 'TECHPRIS', filter: 'all' } },
-    { key: 'zamena',    label: 'Замена',      value: data.zamena || 0,    color: 'text-amber-500', preset: { unitType, status: 'ZAMENA',   filter: 'all' } },
-    { key: 'izhc',      label: 'ИЖЦ',         value: data.izhc || 0,      color: 'text-violet-600', preset: { unitType, status: 'IZHC',     filter: 'all' } },
+    { key: 'total',     label: 'Всего',       value: data.total || 0,     color: 'text-[#0B4DA2]',  dot: 'bg-[#0B4DA2]', preset: { unitType, status: '',         filter: 'all' } },
+    { key: 'installed', label: 'Установлено', value: data.installed || 0, color: 'text-emerald-600', dot: 'bg-emerald-500', preset: { unitType, status: '',       filter: 'done' } },
+    { key: 'sklad',     label: 'На складе',   value: data.sklad || 0,     color: 'text-slate-600',  dot: 'bg-slate-400', preset: { unitType, status: 'SKLAD',    filter: 'all' } },
+    { key: 'techpris',  label: 'Техприс',     value: data.techpris || 0,  color: 'text-green-600',  dot: 'bg-green-500', preset: { unitType, status: 'TECHPRIS', filter: 'all' } },
+    { key: 'zamena',    label: 'Замена',      value: data.zamena || 0,    color: 'text-amber-500',  dot: 'bg-amber-400', preset: { unitType, status: 'ZAMENA',   filter: 'all' } },
+    { key: 'izhc',      label: 'ИЖЦ',         value: data.izhc || 0,      color: 'text-violet-600', dot: 'bg-violet-500', preset: { unitType, status: 'IZHC',     filter: 'all' } },
   ]
   return (
-    <div className="bg-white rounded-xl border border-slate-200 px-4 py-2.5 flex items-center gap-x-4 gap-y-2 flex-wrap">
-      <div className="flex items-center gap-2 min-w-[140px] font-medium text-slate-800 text-sm">
-        <Icon name={icon} className="w-4 h-4 text-slate-400 shrink-0" /> {title}
-      </div>
-      <div className="flex flex-wrap gap-1 flex-1 justify-end">
+    <div>
+      <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2">
+        <Icon name={icon} className="w-4 h-4" /> {title}
+      </h3>
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {metrics.map(m => (
           <button key={m.key} onClick={() => onPick(m.preset)} title={`Открыть: ${m.label}`}
-            className="group flex items-baseline gap-1.5 px-2.5 py-1 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 active:bg-slate-100 transition">
-            <span className="text-[11px] text-slate-400 group-hover:text-slate-600">{m.label}</span>
-            <span className={`text-base font-bold tabular-nums ${m.color}`}>{m.value}</span>
+            className="bg-white rounded-xl border border-slate-200 p-3 text-left hover:shadow-sm hover:border-[#0B4DA2]/40 active:bg-slate-50 transition">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${m.dot}`} />
+              <div className="text-[11px] text-slate-500 truncate">{m.label}</div>
+            </div>
+            <div className={`text-xl font-bold tabular-nums ${m.color}`}>{m.value}</div>
           </button>
         ))}
       </div>
@@ -478,13 +481,13 @@ function PUListPage({ filter = 'all', preset = null }) {
   const [items, setItems] = useState([])
   const [units, setUnits] = useState([])
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState(preset?.status || '')
   const [unitFilter, setUnitFilter] = useState('')
-  const [unitTypeFilter, setUnitTypeFilter] = useState('all')
+  const [unitTypeFilter, setUnitTypeFilter] = useState(preset?.unitType || 'all')
   const [contractSearch, setContractSearch] = useState('')
   const [lsSearch, setLsSearch] = useState('')
   // Активный «режим» списка (sklad/done/actioned/all). База — из prop filter, может переопределяться пресетом с главной.
-  const [dynFilter, setDynFilter] = useState(filter)
+  const [dynFilter, setDynFilter] = useState(preset?.filter || filter)
   // Debounced-значения поиска (запрос уходит после паузы в наборе, а не на каждую букву)
   const [debSearch, setDebSearch] = useState('')
   const [debContract, setDebContract] = useState('')
@@ -531,7 +534,9 @@ function PUListPage({ filter = 'all', preset = null }) {
 
   useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, dynFilter, sortField, sortDir, debSearch, debContract, debLs])
 
+  const reqIdRef = useRef(0)
   const load = async () => {
+    const myId = ++reqIdRef.current
     setLoading(true)
     const params = { page, size: 50, sort_field: sortField, sort_dir: sortDir }
     if (debSearch) params.search = debSearch
@@ -541,11 +546,15 @@ function PUListPage({ filter = 'all', preset = null }) {
     if (debContract) params.contract = debContract
     if (debLs) params.ls = debLs
     if (dynFilter) params.filter = dynFilter  // all, sklad, done, actioned
-    const r = await api.get('/pu/items', { params })
-    setItems(r.data.items)
-    setTotal(r.data.total)
-    setPages(r.data.pages)
-    setLoading(false)
+    try {
+      const r = await api.get('/pu/items', { params })
+      if (myId !== reqIdRef.current) return  // пришёл устаревший ответ — игнорируем
+      setItems(r.data.items)
+      setTotal(r.data.total)
+      setPages(r.data.pages)
+    } finally {
+      if (myId === reqIdRef.current) setLoading(false)
+    }
   }
 
   
