@@ -1003,9 +1003,9 @@ def get_analysis(
                 "breakdown": breakdown
             }
         
-        result = {"res": [], "esk": []}
+        result = {"res": [], "esk": [], "oks": []}
         
-        if is_res_user(user) or is_esk_user(user):
+        if is_res_user(user) or is_esk_user(user) or is_oks_user(user):
             if user.unit_id:
                 unit = db.query(Unit).filter(Unit.id == user.unit_id).first()
                 if unit:
@@ -1013,12 +1013,15 @@ def get_analysis(
                     item = {"id": unit.id, "name": unit.name, **stats}
                     if unit.unit_type == UnitType.RES:
                         result["res"].append(item)
+                    elif unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT):
+                        result["oks"].append(item)
                     else:
                         result["esk"].append(item)
             return result
         
         res_units = db.query(Unit).filter(Unit.unit_type == UnitType.RES).order_by(Unit.name).all()
         esk_units = db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).order_by(Unit.name).all()
+        oks_units = db.query(Unit).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT])).order_by(Unit.name).all()
         
         def empty_breakdown():
             bd = {}
@@ -1060,17 +1063,29 @@ def get_analysis(
             esk_total["sklad"] += stats["sklad"]
             sum_breakdowns(esk_total["breakdown"], stats["breakdown"])
         
+        oks_total = {"total": 0, "installed": 0, "actioned": 0, "sklad": 0, "breakdown": empty_breakdown()}
+        for unit in oks_units:
+            stats = get_unit_stats(unit.id)
+            result["oks"].append({"id": unit.id, "name": unit.name, **stats})
+            oks_total["total"] += stats["total"]
+            oks_total["installed"] += stats["installed"]
+            oks_total["actioned"] += stats["actioned"]
+            oks_total["sklad"] += stats["sklad"]
+            sum_breakdowns(oks_total["breakdown"], stats["breakdown"])
+        
         grand_bd = empty_breakdown()
         sum_breakdowns(grand_bd, res_total["breakdown"])
         sum_breakdowns(grand_bd, esk_total["breakdown"])
+        sum_breakdowns(grand_bd, oks_total["breakdown"])
         
         result["res_total"] = res_total
         result["esk_total"] = esk_total
+        result["oks_total"] = oks_total
         result["grand_total"] = {
-            "total": res_total["total"] + esk_total["total"],
-            "installed": res_total["installed"] + esk_total["installed"],
-            "actioned": res_total["actioned"] + esk_total["actioned"],
-            "sklad": res_total["sklad"] + esk_total["sklad"],
+            "total": res_total["total"] + esk_total["total"] + oks_total["total"],
+            "installed": res_total["installed"] + esk_total["installed"] + oks_total["installed"],
+            "actioned": res_total["actioned"] + esk_total["actioned"] + oks_total["actioned"],
+            "sklad": res_total["sklad"] + esk_total["sklad"] + oks_total["sklad"],
             "breakdown": grand_bd
         }
         
@@ -3287,8 +3302,8 @@ def get_pu_materials(
 
 @app.post("/api/pu/items/{item_id}/materials")
 def save_pu_materials(item_id: int, data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Сохранить фактические материалы для ПУ"""
-    if not is_res_user(user) and not is_sue_admin(user):
+    """Сохранить фактические материалы для ПУ (РЭС и ОКС работают с материалами)"""
+    if not is_res_user(user) and not is_sue_admin(user) and not is_oks_user(user):
         raise HTTPException(403, "Нет доступа")
     
     item = db.query(PUItem).filter(PUItem.id == item_id).first()
