@@ -56,6 +56,82 @@ function AuthProvider({ children }) {
 
 const useAuth = () => useContext(AuthContext)
 
+// ==================== ДИЗАЙН-СИСТЕМА ====================
+// Палитра: белый фон, фирменный синий РОССЕТИ, нейтральный slate, семантика.
+const BRAND = '#0B4DA2'        // основной синий
+const BRAND_DARK = '#08376f'   // ховер/нажатие
+
+// Единые стили кнопок (используются по всему интерфейсу)
+const btn = {
+  primary: "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#0B4DA2] text-white text-sm font-medium shadow-sm hover:bg-[#093f86] active:bg-[#08376f] disabled:opacity-50 disabled:pointer-events-none transition-colors",
+  secondary: "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white text-slate-700 text-sm font-medium border border-slate-200 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 transition-colors",
+  success: "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-colors",
+  danger: "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-medium shadow-sm hover:bg-rose-700 disabled:opacity-50 transition-colors",
+  ghost: "inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-100 transition-colors",
+}
+
+// Набор SVG-иконок (тонкая линия, наследует currentColor). Заменяют эмодзи.
+function Icon({ name, className = "w-5 h-5", strokeWidth = 1.8 }) {
+  const p = {
+    home: <path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>,
+    package: <><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></>,
+    upload: <><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/></>,
+    download: <><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/></>,
+    warehouse: <><path d="M3 21V8l9-4 9 4v13"/><path d="M3 21h18"/><path d="M7 21v-7h10v7"/></>,
+    check: <path d="m5 12 5 5 9-10"/>,
+    checkCircle: <><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></>,
+    clipboard: <><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M8 10h8M8 14h8M8 18h5"/></>,
+    chart: <><path d="M4 20V4M4 20h16"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></>,
+    fileText: <><path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M8 13h8M8 17h6"/></>,
+    fileEdit: <><path d="M6 3h7l4 4v5"/><path d="M5 4a1 1 0 0 1 1-1m11 18H6a1 1 0 0 1-1-1V4"/><path d="M13 3v4h4"/><path d="m16 19 4-4-2-2-4 4v2z"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.6-1.2-1.8-3.1-1.9.8a7.6 7.6 0 0 0-2.6-1.5L13.5 2.5h-3l-.3 2a7.6 7.6 0 0 0-2.6 1.5l-1.9-.8L3.9 8.3l1.6 1.2a7.6 7.6 0 0 0 0 3l-1.6 1.2 1.8 3.1 1.9-.8a7.6 7.6 0 0 0 2.6 1.5l.3 2h3l.3-2a7.6 7.6 0 0 0 2.6-1.5l1.9.8 1.8-3.1z"/></>,
+    logout: <><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4"/><path d="M15 12H9"/><path d="m13 8 4 4-4 4"/></>,
+    bell: <><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/></>,
+    zap: <path d="M13 2 4 14h7l-1 8 9-12h-7z"/>,
+    building: <><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/><path d="M10 21v-3h4v3"/></>,
+    crane: <><path d="M5 21V5l9 3"/><path d="M5 5h13"/><path d="M14 5v3"/><path d="M14 8v3"/><path d="M3 21h7"/><path d="M14 11h3v3a2 2 0 0 1-4 0"/></>,
+    wrench: <path d="M15 4a4 4 0 0 0-5 5L4 15l3 3 6-6a4 4 0 0 0 5-5l-2.5 2.5-2.5-.5-.5-2.5z"/>,
+    plug: <><path d="M9 3v5M15 3v5"/><path d="M7 8h10v3a5 5 0 0 1-10 0z"/><path d="M12 16v5"/></>,
+    plus: <path d="M12 5v14M5 12h14"/>,
+    trash: <><path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/></>,
+    edit: <><path d="M4 20h4l10-10-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></>,
+    refresh: <><path d="M20 11a8 8 0 0 0-14-4l-2 2"/><path d="M4 5v4h4"/><path d="M4 13a8 8 0 0 0 14 4l2-2"/><path d="M20 19v-4h-4"/></>,
+    x: <path d="M6 6l12 12M18 6 6 18"/>,
+    arrowRight: <path d="M5 12h14M13 6l6 6-6 6"/>,
+    arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6"/>,
+    send: <path d="M4 12 20 4l-6 16-3-7z"/>,
+    unlock: <><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></>,
+    tag: <><path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/></>,
+    ruble: <><path d="M8 21V4h5a4 4 0 0 1 0 8H6"/><path d="M6 16h6"/></>,
+    bulb: <><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.3 1 2.5h6c0-1.2.4-1.9 1-2.5A6 6 0 0 0 12 3z"/></>,
+    users: <><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 5"/><path d="M17 14a6 6 0 0 1 4 6"/></>,
+    hardhat: <><path d="M4 17a8 8 0 0 1 16 0"/><path d="M3 17h18v2H3z"/><path d="M10 9V6h4v3"/></>,
+    ban: <><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></>,
+    alert: <><path d="M12 4 2 20h20z"/><path d="M12 10v5M12 18h.01"/></>,
+    clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    ruler: <><rect x="3" y="8" width="18" height="8" rx="1" transform="rotate(0 12 12)"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></>,
+    save: <><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 3v5h7"/><rect x="8" y="13" width="8" height="6"/></>,
+    chevron: <path d="m6 9 6 6 6-6"/>,
+  }
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round"
+      strokeLinejoin="round" className={className} aria-hidden="true">
+      {p[name] || null}
+    </svg>
+  )
+}
+
+// Логотип-марка РОССЕТИ (молния в скруглённом квадрате)
+function BrandMark({ className = "w-9 h-9" }) {
+  return (
+    <span className={`inline-flex items-center justify-center rounded-xl bg-[#0B4DA2] text-white ${className}`}>
+      <Icon name="zap" className="w-1/2 h-1/2" strokeWidth={2} />
+    </span>
+  )
+}
+
 // Компонент загрузки РОССЕТИ
 function RossetiLoader({ size = 'normal' }) {
   const letters = ['Р', 'О', 'С', 'С', 'Е', 'Т', 'И']
@@ -90,11 +166,11 @@ function Main() {
   if (!user) return <LoginPage />
 
   return (
-    <div className="min-h-screen flex bg-gray-100">
+    <div className="min-h-screen flex bg-slate-50 text-slate-800">
       <Sidebar page={page} setPage={setPage} />
-      <div className="flex-1 ml-56">
+      <div className="flex-1 ml-60">
         <Header />
-        <div className="p-6">
+        <div className="p-6 max-w-[1400px]">
           {page === 'home' && <HomePage setPage={setPage} />}
           {page === 'pu' && <PUListPage filter="all" />}
           {page === 'pu-sklad' && <PUListPage filter="sklad" />}
@@ -126,44 +202,54 @@ function Sidebar({ page, setPage }) {
   }, [canApprove, page])
 
   const items = [
-    { id: 'home', label: '🏠 Главная', show: true },
-    { id: 'pu', label: '📦 Приборы учета', show: true },
-    { id: 'upload', label: '📤 Загрузка', show: canUpload },
-    { id: 'pu-sklad', label: '🏪 Склад', show: true },
-    { id: 'pu-done', label: '✅ Завершённые СМР', show: true },
-    { id: 'pu-actioned', label: '📋 Актированные ПУ', show: true },
-    { id: 'analysis', label: '📊 Анализ остатков', show: true },
-    { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
-    { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin || isOksAdmin },
-    { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin || isEskAdmin || isEskUser || isOksAdmin },
-    { id: 'memo', label: '📄 Служебки', show: isSueAdmin },
-    { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin || isResUser || isEskUser },
+    { id: 'home', icon: 'home', label: 'Главная', show: true },
+    { id: 'pu', icon: 'package', label: 'Приборы учёта', show: true },
+    { id: 'upload', icon: 'upload', label: 'Загрузка', show: canUpload },
+    { id: 'pu-sklad', icon: 'warehouse', label: 'Склад', show: true },
+    { id: 'pu-done', icon: 'check', label: 'Завершённые СМР', show: true },
+    { id: 'pu-actioned', icon: 'tag', label: 'Актированные ПУ', show: true },
+    { id: 'analysis', icon: 'chart', label: 'Анализ остатков', show: true },
+    { id: 'approval', icon: 'checkCircle', label: 'Согласование', show: canApprove, badge: pendingCount },
+    { id: 'tz', icon: 'clipboard', label: 'Техн. задания', show: isSueAdmin || isOksAdmin },
+    { id: 'requests', icon: 'fileEdit', label: 'Заявки ЭСК', show: isSueAdmin || isEskAdmin || isEskUser || isOksAdmin },
+    { id: 'memo', icon: 'fileText', label: 'Служебки', show: isSueAdmin },
+    { id: 'settings', icon: 'settings', label: 'Настройки', show: canManageUsers || isEskAdmin || isResUser || isEskUser },
     ].filter(i => i.show)
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-56 bg-slate-800 text-white flex flex-col">
-      <div className="p-4 border-b border-slate-700">
-        <div className="font-bold text-lg">Система учета ПУ</div>
-        <div className="text-xs text-slate-400">ПК «Светлячок»</div>
-      </div>
-      <nav className="flex-1 p-3 space-y-1">
-        {items.map(i => (
-          <button key={i.id} onClick={() => setPage(i.id)} className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between ${page === i.id ? 'bg-blue-600' : 'hover:bg-slate-700'}`}>
-            <span>{i.label}</span>
-            {i.badge > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{i.badge}</span>}
-          </button>
-        ))}
-      </nav>
-      <div className="p-3 border-t border-slate-700">
-        <div className="bg-slate-700/50 rounded-lg p-2 mb-2">
-          <div className="font-medium truncate">{user?.full_name}</div>
-          <div className="text-xs text-slate-400">{user?.unit_name}</div>
-          <div className="text-xs text-slate-500">{user?.role_name}</div>
+    <aside className="fixed left-0 top-0 h-full w-60 bg-slate-900 text-slate-300 flex flex-col">
+      <div className="px-4 py-5 flex items-center gap-3 border-b border-white/5">
+        <BrandMark className="w-9 h-9" />
+        <div className="leading-tight">
+          <div className="font-semibold text-white text-sm">Система учёта ПУ</div>
+          <div className="text-[11px] text-slate-400">ПК «Светлячок»</div>
         </div>
-        <button onClick={logout} className="w-full px-3 py-2 text-left hover:bg-slate-700 rounded-lg">🚪 Выйти</button>
       </div>
-      <div className="p-3 border-t border-slate-700 text-xs text-slate-500">
-        <div className="text-slate-400 font-medium mb-1">Техническая поддержка:</div>
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
+        {items.map(i => {
+          const active = page === i.id
+          return (
+            <button key={i.id} onClick={() => setPage(i.id)}
+              className={`group w-full text-left px-3 py-2 rounded-lg flex items-center gap-3 text-sm transition-colors ${active ? 'bg-[#0B4DA2] text-white font-medium shadow-sm' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}>
+              <Icon name={i.icon} className={`w-[18px] h-[18px] shrink-0 ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`} />
+              <span className="flex-1 truncate">{i.label}</span>
+              {i.badge > 0 && <span className="bg-rose-500 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full">{i.badge}</span>}
+            </button>
+          )
+        })}
+      </nav>
+      <div className="px-3 pb-2 pt-3 border-t border-white/5">
+        <div className="bg-white/5 rounded-lg px-3 py-2.5 mb-2">
+          <div className="font-medium text-white text-sm truncate">{user?.full_name}</div>
+          <div className="text-xs text-slate-400 truncate">{user?.unit_name}</div>
+          <div className="text-[11px] text-slate-500 truncate">{user?.role_name}</div>
+        </div>
+        <button onClick={logout} className="w-full px-3 py-2 flex items-center gap-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white rounded-lg transition-colors">
+          <Icon name="logout" className="w-[18px] h-[18px]" /> Выйти
+        </button>
+      </div>
+      <div className="px-4 py-3 border-t border-white/5 text-[11px] text-slate-500">
+        <div className="text-slate-400 font-medium mb-0.5">Техническая поддержка</div>
         <div>Элла Сергеевна</div>
         <div>+7 (988) 414-93-74</div>
       </div>
@@ -173,9 +259,9 @@ function Sidebar({ page, setPage }) {
 
 function Header() {
   const { user } = useAuth()
-  return <header className="h-16 bg-white border-b px-6 flex items-center justify-between sticky top-0 z-10">
-    <h1 className="font-semibold">{user?.unit_name || 'Система учета ПУ'}</h1>
-    <span className="text-sm text-gray-500">{user?.role_name}</span>
+  return <header className="h-16 bg-white/90 backdrop-blur border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-10">
+    <h1 className="font-semibold text-slate-900">{user?.unit_name || 'Система учёта ПУ'}</h1>
+    <span className="text-sm text-slate-500 bg-slate-100 px-3 py-1 rounded-full">{user?.role_name}</span>
   </header>
 }
 
@@ -197,22 +283,36 @@ function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-8 w-full max-w-md">
-        <div className="text-center mb-6">
-          <div className="text-4xl mb-2">⚡</div>
-          <h1 className="text-2xl font-bold">Система учета ПУ</h1>
-          <p className="text-gray-500 text-sm">ПК «Светлячок»</p>
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Фоновый акцент */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0B4DA2] to-[#08213f]" />
+      <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/5" />
+      <div className="absolute -bottom-32 -left-20 w-96 h-96 rounded-full bg-white/5" />
+
+      <div className="relative bg-white rounded-2xl shadow-xl shadow-black/20 p-8 w-full max-w-md border border-white/10">
+        <div className="flex flex-col items-center text-center mb-8">
+          <BrandMark className="w-14 h-14" />
+          <h1 className="text-xl font-semibold text-slate-900 mt-4">Система учёта ПУ</h1>
+          <p className="text-slate-400 text-sm mt-1">ПК «Светлячок»</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input type="text" placeholder="Логин" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-4 py-3 border rounded-lg" />
-          <input type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 border rounded-lg" />
-          {error && <div className="text-red-500 text-sm">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-            {loading ? 'Вход...' : 'Войти'}
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1.5">Логин</label>
+            <input type="text" placeholder="Введите логин" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B4DA2]/30 focus:border-[#0B4DA2] transition" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1.5">Пароль</label>
+            <input type="password" placeholder="Введите пароль" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B4DA2]/30 focus:border-[#0B4DA2] transition" />
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 text-rose-600 text-sm bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
+              <Icon name="alert" className="w-4 h-4 shrink-0" /> {error}
+            </div>
+          )}
+          <button type="submit" disabled={loading} className="w-full py-2.5 bg-[#0B4DA2] text-white font-medium rounded-lg hover:bg-[#093f86] active:bg-[#08376f] disabled:opacity-50 transition-colors">
+            {loading ? 'Вход…' : 'Войти'}
           </button>
         </form>
-        
       </div>
     </div>
   )
@@ -238,27 +338,27 @@ function HomePage({ setPage }) {
   }
 
   const shortcuts = [
-    { id: 'pu', icon: '📦', label: 'Приборы учета', desc: 'Просмотр и управление', show: true },
-    { id: 'upload', icon: '📤', label: 'Загрузить реестр', desc: 'Импорт из Excel', show: canUpload },
-    { id: 'approval', icon: '✅', label: 'Согласование', desc: 'СМР от ЭСК', show: canApprove },
-    { id: 'tz', icon: '📋', label: 'Тех. задания', desc: 'Формирование ТЗ', show: isSueAdmin || isOksAdmin },
-    { id: 'requests', icon: '📝', label: 'Заявки ЭСК', desc: 'Реестр заявок', show: isSueAdmin || isOksAdmin },
-    { id: 'settings', icon: '⚙️', label: 'Настройки', desc: 'Справочники', show: canManageUsers || isEskAdmin },
+    { id: 'pu', icon: 'package', label: 'Приборы учёта', desc: 'Просмотр и управление', show: true },
+    { id: 'upload', icon: 'upload', label: 'Загрузить реестр', desc: 'Импорт из Excel', show: canUpload },
+    { id: 'approval', icon: 'checkCircle', label: 'Согласование', desc: 'СМР от ЭСК и ОКС', show: canApprove },
+    { id: 'tz', icon: 'clipboard', label: 'Тех. задания', desc: 'Формирование ТЗ', show: isSueAdmin || isOksAdmin },
+    { id: 'requests', icon: 'fileEdit', label: 'Заявки ЭСК', desc: 'Реестр заявок', show: isSueAdmin || isOksAdmin },
+    { id: 'settings', icon: 'settings', label: 'Настройки', desc: 'Справочники и доступ', show: canManageUsers || isEskAdmin },
   ].filter(s => s.show)
 
   return (
     <div className="space-y-6">
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
+      <div className="rounded-2xl p-6 text-white bg-gradient-to-r from-[#0B4DA2] to-[#1565C0] shadow-sm">
         <h1 className="text-2xl font-bold">Добро пожаловать, {user?.full_name}!</h1>
-        <p className="text-blue-100">{user?.unit_name} • {user?.role_name}</p>
+        <p className="text-blue-100/90 mt-0.5">{user?.unit_name} • {user?.role_name}</p>
       </div>
 
       {stats && (
-  <div className="space-y-4">
+  <div className="space-y-5">
     {/* Все — только для СУЭ */}
     {isSueAdmin && stats.all && (
       <div>
-        <h3 className="text-sm font-medium text-gray-500 mb-2">📊 Все подразделения</h3>
+        <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2"><Icon name="chart" className="w-4 h-4" /> Все подразделения</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard label="Всего ПУ" value={stats.all.total || 0} color="blue" />
           <StatCard label="Установлено" value={stats.all.installed || 0} color="emerald" />
@@ -273,7 +373,7 @@ function HomePage({ setPage }) {
     {/* РЭС — только для СУЭ */}
     {isSueAdmin && stats.res && (
       <div>
-        <h3 className="text-sm font-medium text-gray-500 mb-2">🏢 РЭС (РСК)</h3>
+        <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2"><Icon name="building" className="w-4 h-4" /> РЭС (РСК)</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard label="Всего ПУ" value={stats.res.total || 0} color="blue" />
           <StatCard label="Установлено" value={stats.res.installed || 0} color="emerald" />
@@ -288,7 +388,7 @@ function HomePage({ setPage }) {
     {/* ЭСК — для СУЭ и ЭСК Админа */}
     {(isSueAdmin || isEskAdmin) && stats.esk && (
       <div>
-        <h3 className="text-sm font-medium text-gray-500 mb-2">⚡ ЭСК</h3>
+        <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2"><Icon name="zap" className="w-4 h-4" /> ЭСК</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard label="Всего ПУ" value={stats.esk.total || 0} color="blue" />
           <StatCard label="Установлено" value={stats.esk.installed || 0} color="emerald" />
@@ -302,7 +402,7 @@ function HomePage({ setPage }) {
     {/* ОКС — для СУЭ и ОКС Админа */}
     {(isSueAdmin || isOksAdmin) && stats.oks && (
       <div>
-        <h3 className="text-sm font-medium text-gray-500 mb-2">🏗️ ОКС</h3>
+        <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2"><Icon name="crane" className="w-4 h-4" /> ОКС</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard label="Всего ПУ" value={stats.oks.total || 0} color="blue" />
           <StatCard label="Установлено" value={stats.oks.installed || 0} color="emerald" />
@@ -316,23 +416,28 @@ function HomePage({ setPage }) {
   </div>
 )}
       {stats?.pending_approval > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between">
-          <div>
-            <span className="text-orange-700 font-medium">🔔 На согласовании: {stats.pending_approval}</span>
-            <p className="text-orange-600 text-sm">Требуется проверка СМР от ЭСК / ОКС</p>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-amber-100 text-amber-600 shrink-0"><Icon name="bell" className="w-5 h-5" /></span>
+            <div>
+              <span className="text-amber-800 font-medium">На согласовании: {stats.pending_approval}</span>
+              <p className="text-amber-700/80 text-sm">Требуется проверка СМР от ЭСК / ОКС</p>
+            </div>
           </div>
-          <button onClick={() => setPage('approval')} className="px-4 py-2 bg-orange-500 text-white rounded-lg">Перейти</button>
+          <button onClick={() => setPage('approval')} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium whitespace-nowrap transition-colors">Перейти</button>
         </div>
       )}
 
       <div>
-        <h2 className="text-lg font-semibold mb-4">Быстрый доступ</h2>
+        <h2 className="text-lg font-semibold text-slate-900 mb-4">Быстрый доступ</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {shortcuts.map(s => (
-            <button key={s.id} onClick={() => setPage(s.id)} className="bg-white p-6 rounded-xl border hover:shadow-md text-left">
-              <div className="text-3xl mb-3">{s.icon}</div>
-              <div className="font-semibold">{s.label}</div>
-              <div className="text-sm text-gray-500">{s.desc}</div>
+            <button key={s.id} onClick={() => setPage(s.id)} className="group bg-white p-5 rounded-xl border border-slate-200 hover:border-[#0B4DA2]/40 hover:shadow-md text-left transition">
+              <span className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-[#0B4DA2]/8 text-[#0B4DA2] mb-3 group-hover:bg-[#0B4DA2] group-hover:text-white transition-colors">
+                <Icon name={s.icon} className="w-5 h-5" />
+              </span>
+              <div className="font-semibold text-slate-900">{s.label}</div>
+              <div className="text-sm text-slate-500">{s.desc}</div>
             </button>
           ))}
         </div>
@@ -354,29 +459,35 @@ function SortHeader({ field, label, sortField, sortDir, onSort }) {
   
   return (
     <th 
-      className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none"
+      className="px-4 py-3 text-left cursor-pointer hover:bg-slate-100 select-none"
       onClick={handleClick}
     >
       <div className="flex items-center gap-1">
         <span>{label}</span>
-        <span className="text-gray-400 text-xs">
-          {isActive ? (sortDir === 'asc' ? '▲' : '▼') : '▽'}
-        </span>
+        <Icon name="chevron" className={`w-3.5 h-3.5 transition-transform ${isActive ? 'text-[#0B4DA2]' : 'text-slate-300'} ${isActive && sortDir === 'asc' ? 'rotate-180' : ''}`} />
       </div>
     </th>
   )
 }
 
 function StatCard({ label, value, color = 'blue' }) {
-  const colors = {
-    blue: 'bg-blue-50 text-blue-700',
-    gray: 'bg-gray-50 text-gray-700',
-    green: 'bg-green-50 text-green-700',
-    yellow: 'bg-yellow-50 text-yellow-700',
-    purple: 'bg-purple-50 text-purple-700',
-    emerald: 'bg-emerald-50 text-emerald-700',
+  const accent = {
+    blue: 'text-[#0B4DA2]', gray: 'text-slate-500', green: 'text-green-600',
+    yellow: 'text-amber-500', purple: 'text-violet-600', emerald: 'text-emerald-600',
   }
-  return <div className={`rounded-xl p-5 ${colors[color]}`}><div className="text-2xl font-bold">{value}</div><div className="text-sm opacity-80">{label}</div></div>
+  const dot = {
+    blue: 'bg-[#0B4DA2]', gray: 'bg-slate-400', green: 'bg-green-500',
+    yellow: 'bg-amber-400', purple: 'bg-violet-500', emerald: 'bg-emerald-500',
+  }
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm hover:border-slate-300 transition">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={`w-2 h-2 rounded-full ${dot[color] || dot.blue}`} />
+        <div className="text-xs text-slate-500">{label}</div>
+      </div>
+      <div className={`text-2xl font-bold tabular-nums ${accent[color] || accent.blue}`}>{value}</div>
+    </div>
+  )
 }
 
 // ==================== СПИСОК ПУ ====================
@@ -490,7 +601,7 @@ function PUListPage({ filter = 'all' }) {
   const handleSendApprovalBatch = async () => {
   try {
     await api.post('/pu/send-approval-batch', { item_ids: selected })
-    alert(`✅ Отправлено на согласование: ${selected.length} ПУ`)
+    alert(`Отправлено на согласование: ${selected.length} ПУ`)
     setSelected([])
     load()
   } catch (err) {
@@ -526,15 +637,15 @@ function PUListPage({ filter = 'all' }) {
       <div>
         <h1 className="text-2xl font-bold">
           {filter === 'all' && 'Все приборы учета'}
-          {filter === 'sklad' && '🏪 Склад'}
-          {filter === 'done' && '✅ Завершённые СМР'}
-          {filter === 'actioned' && '📋 Актированные ПУ'}
+          {filter === 'sklad' && 'Склад'}
+          {filter === 'done' && 'Завершённые СМР'}
+          {filter === 'actioned' && 'Актированные ПУ'}
         </h1>
         <p className="text-gray-500">Всего: {total}</p>
       </div>
       <div className="flex gap-2">
-        <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">📥 Выгрузить в Excel</button>
-        <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
+        <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"><Icon name="download" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Выгрузить в Excel</button>
+        <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"><Icon name="refresh" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Обновить</button>
       </div>
     </div>
 
@@ -553,7 +664,7 @@ function PUListPage({ filter = 'all' }) {
       onClick={() => setSearch('')} 
       className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
     >
-      ✕
+      <Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" />
     </button>
   )}
 </div>
@@ -571,7 +682,7 @@ function PUListPage({ filter = 'all' }) {
       onClick={() => setContractSearch('')} 
       className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
     >
-      ✕
+      <Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" />
     </button>
   )}
 </div>
@@ -590,7 +701,7 @@ function PUListPage({ filter = 'all' }) {
         onClick={() => setLsSearch('')} 
         className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
       >
-        ✕
+        <Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" />
       </button>
     )}
   </div>
@@ -622,11 +733,11 @@ function PUListPage({ filter = 'all' }) {
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
           <span className="text-blue-700 font-medium">Выбрано: {selected.length}</span>
           <div className="flex gap-2">
-            {canMove && <button onClick={() => setMoveModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➡️ Переместить</button>}
+            {canMove && <button onClick={() => setMoveModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="arrowRight" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Переместить</button>}
             {(isEskUser || isEskAdmin || isOksUser || isOksAdmin) && (
-              <button onClick={handleSendApprovalBatch} className="px-4 py-2 bg-orange-500 text-white rounded-lg">📤 На согласование</button>
+              <button onClick={handleSendApprovalBatch} className="px-4 py-2 bg-orange-500 text-white rounded-lg"><Icon name="send" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> На согласование</button>
             )}
-            {canDelete && <button onClick={() => setDeleteModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg">🗑️ Удалить</button>}
+            {canDelete && <button onClick={() => setDeleteModal(true)} className="px-4 py-2 bg-red-600 text-white rounded-lg"><Icon name="trash" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Удалить</button>}
             <button onClick={() => setSelected([])} className="px-4 py-2 bg-gray-100 rounded-lg">Отменить</button>
           </div>
         </div>
@@ -662,13 +773,13 @@ function PUListPage({ filter = 'all' }) {
                   <td className="px-4 py-3">{i.tz_number || '—'}</td>
                   <td className="px-4 py-3">{i.request_number || '—'}</td>
                   <td className="px-4 py-3">
-                    {i.approval_status === 'APPROVED' && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">✓ Согласовано</span>}
-                    {i.approval_status === 'PENDING' && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">⏳ На согласовании</span>}
-                    {i.approval_status === 'REJECTED' && <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">❌ Отклонено</span>}
+                    {i.approval_status === 'APPROVED' && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs"><Icon name="check" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Согласовано</span>}
+                    {i.approval_status === 'PENDING' && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs"><Icon name="clock" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> На согласовании</span>}
+                    {i.approval_status === 'REJECTED' && <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs"><Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Отклонено</span>}
                     {(!i.approval_status || i.approval_status === 'NONE') && <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{i.uploaded_at ? new Date(i.uploaded_at).toLocaleDateString('ru') : '—'}</td>
-                  <td className="px-4 py-3"><button onClick={() => setCardModal(i.id)} className="text-blue-600 hover:underline">📋</button></td>
+                  <td className="px-4 py-3"><button onClick={() => setCardModal(i.id)} className="text-blue-600 hover:underline"><Icon name="clipboard" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button></td>
                 </tr>
               ))}
             </tbody>
@@ -678,8 +789,8 @@ function PUListPage({ filter = 'all' }) {
           <div className="px-4 py-3 border-t flex justify-between items-center">
             <span className="text-sm text-gray-500">Страница {page} из {pages}</span>
             <div className="flex gap-2">
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">←</button>
-              <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-3 py-1 border rounded disabled:opacity-50">→</button>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50"><Icon name="arrowLeft" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+              <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-3 py-1 border rounded disabled:opacity-50"><Icon name="arrowRight" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
             </div>
           </div>
         )}
@@ -724,7 +835,7 @@ function DeleteModal({ onClose, onDelete, count }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-4 text-red-600">🗑️ Удалить {count} ПУ?</h2>
+        <h2 className="text-lg font-semibold mb-4 text-red-600"><Icon name="trash" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Удалить {count} ПУ?</h2>
         <p className="text-gray-600 mb-4">Это действие нельзя отменить. Введите код администратора:</p>
         <input type="password" placeholder="Код админа" value={code} onChange={e => setCode(e.target.value)} className="w-full px-3 py-2 border rounded-lg mb-4" />
         <div className="flex justify-end gap-2">
@@ -752,7 +863,7 @@ function DeleteWithCodeModal({ title, onClose, onDelete }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-4 text-red-600">🗑️ {title}</h2>
+        <h2 className="text-lg font-semibold mb-4 text-red-600"><Icon name="trash" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> {title}</h2>
         <p className="text-gray-600 mb-4">Это действие нельзя отменить. Введите код администратора:</p>
         <input 
           type="password" 
@@ -975,7 +1086,7 @@ const handleSave = async () => {
           contract_date: r.data.contract_date || item.contract_date,
           plan_date: r.data.plan_date || item.plan_date
         })
-        alert('✅ Данные загружены')
+        alert('Данные загружены')
       } else {
         alert('Договор не найден в файле')
       }
@@ -985,7 +1096,7 @@ const handleSave = async () => {
       const r = await api.post('/pu/import-lookup-zamena', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       if (r.data.found) {
         setItem({ ...item, ls_number: r.data.ls_number })
-        alert('✅ ЛС загружен')
+        alert('ЛС загружен')
       } else {
         alert('Счётчик не найден в файле')
       }
@@ -1042,7 +1153,7 @@ const handleSendApproval = async () => {
     }
     setErrors(newErrors)
     
-    alert(`❌ Заполните обязательные поля:\n\n• ${requiredFields.join('\n• ')}`)
+    alert(`Заполните обязательные поля:\n\n• ${requiredFields.join('\n• ')}`)
     return
   }
   
@@ -1107,10 +1218,10 @@ const update = async (field, value) => {
   // Автоматика трубостойки
 if (field === 'trubostoyka' && isEsk) {
   if (value === true) {
-    // Трубостойка ДА → ставим ВА = трубостойка
+    // Трубостойка ДА ставим ВА = трубостойка
     newItem.va_type = 'trubostoyka'
   } else {
-    // Трубостойка НЕТ → сбрасываем если было trubostoyka
+    // Трубостойка НЕТ сбрасываем если было trubostoyka
     if (newItem.va_type === 'trubostoyka') {
       newItem.va_type = ''
     }
@@ -1398,7 +1509,7 @@ const updateMaterialQty = (materialId, qty) => {
                 <h3 className="font-medium">Данные техприсоединения</h3>
                 {canEdit && (
                   <label className={`px-3 py-1 text-sm rounded-lg cursor-pointer ${importing ? 'bg-gray-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
-                    {importing ? '⏳ Загрузка...' : '📥 Импорт из Excel'}
+                    {importing ? 'Загрузка...' : 'Импорт из Excel'}
                     <input type="file" accept=".xlsx,.xls" onChange={handleImport} disabled={importing} className="hidden" />
                   </label>
                 )}
@@ -1453,7 +1564,7 @@ const updateMaterialQty = (materialId, qty) => {
                <h3 className="font-medium">Данные для замены/ИЖЦ</h3>
                {canEdit && (
                  <label className={`px-3 py-1 text-sm rounded-lg cursor-pointer ${importing ? 'bg-gray-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
-                   {importing ? '⏳ Загрузка...' : '📥 Импорт из 1С'}
+                   {importing ? 'Загрузка...' : 'Импорт из 1С'}
                    <input type="file" accept=".xlsx,.xls" onChange={handleImport} disabled={importing} className="hidden" />
                  </label>
                )}
@@ -1484,7 +1595,7 @@ const updateMaterialQty = (materialId, qty) => {
                     <option value="">—</option>
                     {ttrRes.filter(t => {
                       if (t.ttr_type !== 'OU') return false
-                      // Фильтр по статусу: Техприс → только Установка, Замена/ИЖЦ → только Замена
+                      // Фильтр по статусу: Техприс только Установка, Замена/ИЖЦ только Замена
                       const nameLow = (t.name || '').trim().toLowerCase()
                       if (item.status === 'TECHPRIS') return nameLow.startsWith('установка') || nameLow.includes('установка ')
                       if (item.status === 'ZAMENA' || item.status === 'IZHC') return nameLow.startsWith('замена') || nameLow.includes('замена ')
@@ -1507,7 +1618,7 @@ const updateMaterialQty = (materialId, qty) => {
                     <option value="">—</option>
                     {ttrRes.filter(t => t.ttr_type === 'OR').map(t => <option key={t.id} value={t.id}>{t.code}</option>)}
                   </select>
-                  {errors.ttr_or_id && <p className="text-red-500 text-xs mt-1">⚠️ {errors.ttr_or_id}</p>}
+                  {errors.ttr_or_id && <p className="text-red-500 text-xs mt-1"><Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> {errors.ttr_or_id}</p>}
                 </div>
               </div>
               {/* ТТР для ТТ (У-27) — автоматически только при выборе У-25 */}
@@ -1517,7 +1628,7 @@ const updateMaterialQty = (materialId, qty) => {
                 const ttTtr = ttrRes.find(t => t.code && t.code.trim() === 'У-27')
                 return (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
-                    <label className="block text-sm font-medium text-amber-700 mb-1">⚡ ТТР для ТТ</label>
+                    <label className="block text-sm font-medium text-amber-700 mb-1"><Icon name="zap" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ТТР для ТТ</label>
                     <div className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-amber-100 font-medium text-amber-900">
                       {ttTtr ? `${ttTtr.code} — ${ttTtr.name}` : 'У-27 (не найден в справочнике)'}
                     </div>
@@ -1609,7 +1720,7 @@ const updateMaterialQty = (materialId, qty) => {
     {/* ЛСР Трубостойки (если выбрана) */}
     {item.trubostoyka === true && item.lsr_truba && (
       <div className="bg-orange-50 rounded-lg p-3">
-        <div className="text-sm font-medium text-orange-700 mb-2">🔧 Трубостойка</div>
+        <div className="text-sm font-medium text-orange-700 mb-2"><Icon name="wrench" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Трубостойка</div>
         <div className="grid grid-cols-3 gap-2 text-sm">
           <div><span className="text-gray-600">ЛСР:</span> <span className="font-medium">{item.lsr_truba}</span></div>
           <div><span className="text-gray-600">Без НДС:</span> <span className="font-medium">{item.price_truba_no_nds?.toLocaleString()} ₽</span></div>
@@ -1621,7 +1732,7 @@ const updateMaterialQty = (materialId, qty) => {
     {/* ЛСР по критериям ВА */}
     {item.faza && item.form_factor && item.va_type && item.lsr_va && (
       <div className="bg-blue-50 rounded-lg p-3">
-        <div className="text-sm font-medium text-blue-700 mb-2">📦 Щит с ВА</div>
+        <div className="text-sm font-medium text-blue-700 mb-2"><Icon name="package" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Щит с ВА</div>
         <div className="grid grid-cols-3 gap-2 text-sm">
           <div><span className="text-gray-600">ЛСР:</span> <span className="font-medium">{item.lsr_va}</span></div>
           <div><span className="text-gray-600">Без НДС:</span> <span className="font-medium">{item.price_va_no_nds?.toLocaleString()} ₽</span></div>
@@ -1633,7 +1744,7 @@ const updateMaterialQty = (materialId, qty) => {
     {/* ИТОГО */}
     {(item.lsr_truba || item.lsr_va) && (
       <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-        <div className="text-sm font-medium text-green-800 mb-2">💰 ИТОГО</div>
+        <div className="text-sm font-medium text-green-800 mb-2"><Icon name="ruble" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ИТОГО</div>
         <div className="grid grid-cols-2 gap-4">
           <div className="text-center">
             <div className="text-gray-600 text-sm">Без НДС</div>
@@ -1666,7 +1777,7 @@ const updateMaterialQty = (materialId, qty) => {
 {/* ВА и ТТ для РЭС / ОКС */}
 {isResLike && item.status !== 'SKLAD' && canEdit && (
   <div className="border-t pt-4 mt-4">
-    <h4 className="font-medium text-gray-700 mb-3">⚡ Оборудование</h4>
+    <h4 className="font-medium text-gray-700 mb-3"><Icon name="zap" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Оборудование</h4>
     <div className="grid grid-cols-2 gap-4">
       {/* ВА */}
       <div className="space-y-2">
@@ -1762,7 +1873,7 @@ const updateMaterialQty = (materialId, qty) => {
 {isResLike && item.status !== 'SKLAD' && materials.length > 0 && (
   <>
     <hr />
-    <h3 className="font-medium">📦 Материалы</h3>
+    <h3 className="font-medium"><Icon name="package" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Материалы</h3>
     {loadingMaterials ? (
       <div className="text-center py-4 text-gray-500">Загрузка...</div>
     ) : (
@@ -1829,8 +1940,8 @@ const updateMaterialQty = (materialId, qty) => {
     <div className="flex justify-between items-center">
       <span className={isSueAdmin ? 'text-amber-700 font-medium' : 'text-blue-700 font-medium'}>
         {isSueAdmin 
-          ? `📋 ТЗ: ${item.tz_number} — редактирование доступно (админ СУЭ)` 
-          : `📋 ТЗ: ${item.tz_number} — редактирование заблокировано`}
+          ? `ТЗ: ${item.tz_number} — редактирование доступно (админ СУЭ)` 
+          : `ТЗ: ${item.tz_number} — редактирование заблокировано`}
       </span>
       {isSueAdmin && (
         <button 
@@ -1839,7 +1950,7 @@ const updateMaterialQty = (materialId, qty) => {
             if (code) {
               try {
                 await api.put(`/pu/items/${item.id}`, { tz_number: null })
-                alert('✅ ТЗ снят, карточка разблокирована')
+                alert('ТЗ снят, карточка разблокирована')
                 onClose()
               } catch (err) {
                 alert(err.response?.data?.detail || 'Ошибка')
@@ -1848,7 +1959,7 @@ const updateMaterialQty = (materialId, qty) => {
           }}
           className="px-3 py-1 bg-orange-500 text-white rounded-lg text-sm"
         >
-          🔓 Снять ТЗ
+          <Icon name="unlock" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Снять ТЗ
         </button>
       )}
     </div>
@@ -1868,9 +1979,9 @@ const updateMaterialQty = (materialId, qty) => {
         item.approval_status === 'REJECTED' ? 'text-red-700 font-medium' :
         'text-yellow-700'
       }>
-        {item.approval_status === 'APPROVED' && (isSueAdmin ? '✅ Согласовано — редактирование доступно (админ СУЭ)' : '✅ Согласовано — редактирование заблокировано')}
-        {item.approval_status === 'PENDING' && '⏳ На согласовании'}
-        {item.approval_status === 'REJECTED' && '❌ Отклонено — требуется исправление'}
+        {item.approval_status === 'APPROVED' && (isSueAdmin ? 'Согласовано — редактирование доступно (админ СУЭ)' : 'Согласовано — редактирование заблокировано')}
+        {item.approval_status === 'PENDING' && 'На согласовании'}
+        {item.approval_status === 'REJECTED' && 'Отклонено — требуется исправление'}
       </span>
       {item.approval_status === 'APPROVED' && isSueAdmin && (
         <button 
@@ -1880,7 +1991,7 @@ const updateMaterialQty = (materialId, qty) => {
               try {
                 await api.post(`/pu/items/${item.id}/unlock`, { admin_code: code })
                 setItem({ ...item, approval_status: 'NONE' })
-                alert('✅ Карточка разблокирована')
+                alert('Карточка разблокирована')
               } catch (err) {
                 alert(err.response?.data?.detail || 'Ошибка')
               }
@@ -1888,13 +1999,13 @@ const updateMaterialQty = (materialId, qty) => {
           }}
           className="px-3 py-1 bg-orange-500 text-white rounded-lg text-sm"
         >
-          🔓 Разблокировать
+          <Icon name="unlock" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Разблокировать
         </button>
       )}
     </div>
     {item.approval_status === 'REJECTED' && item.rejection_comment && (
       <div className="mt-3 p-3 bg-white rounded border border-red-200">
-        <div className="text-sm text-red-600 font-medium mb-1">📝 Причина отклонения:</div>
+        <div className="text-sm text-red-600 font-medium mb-1"><Icon name="fileEdit" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Причина отклонения:</div>
         <div className="text-sm text-gray-700">{item.rejection_comment}</div>
       </div>
     )}
@@ -1907,7 +2018,7 @@ const updateMaterialQty = (materialId, qty) => {
             <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg">Отмена</button>
             {(isEsk || isOks) && item.status === 'TECHPRIS' && item.approval_status !== 'APPROVED' && item.approval_status !== 'PENDING' && (
               <button onClick={handleSendApproval} disabled={saving} className="px-4 py-2 bg-orange-500 text-white rounded-lg disabled:opacity-50">
-                📤 На согласование
+                <Icon name="send" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> На согласование
               </button>
             )}
             <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">{saving ? 'Сохранение...' : 'Сохранить'}</button>
@@ -1969,12 +2080,12 @@ function UploadPage() {
       <div className="bg-white rounded-xl border p-8">
         {result ? (
           <div className="text-center">
-            <div className="text-4xl mb-4">✅</div>
+            <div className="mb-4 flex justify-center"><span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-600"><Icon name="checkCircle" className="w-9 h-9" /></span></div>
             <h3 className="text-xl font-semibold">Загружено {result.items_count} ПУ</h3>
             <p className="text-gray-500">Файл: {result.filename}</p>
             {result.skipped_duplicates > 0 && (
               <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg text-left">
-                <p className="text-orange-700 font-medium">⚠️ Пропущено дубликатов: {result.skipped_duplicates}</p>
+                <p className="text-orange-700 font-medium"><Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Пропущено дубликатов: {result.skipped_duplicates}</p>
                 {result.duplicate_serials && result.duplicate_serials.length > 0 && (
                   <div className="mt-2">
                     <p className="text-sm text-orange-600">Серийные номера:</p>
@@ -1990,7 +2101,7 @@ function UploadPage() {
           </div>
         ) : (
           <div className="text-center">
-            <div className="text-4xl mb-4">📊</div>
+            <div className="mb-4 flex justify-center"><span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 text-slate-400"><Icon name="chart" className="w-9 h-9" /></span></div>
             {file ? <p className="mb-4 font-medium">{file.name}</p> : <p className="mb-4 text-gray-500">Выберите Excel файл (.xlsx, .xls)</p>}
             <div className="flex justify-center gap-3">
               <label className="px-4 py-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200">
@@ -2000,7 +2111,7 @@ function UploadPage() {
               {file && <button onClick={handleUpload} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">{loading ? 'Загрузка...' : 'Загрузить'}</button>}
             </div>
             <p className="mt-4 text-sm text-gray-400">Ожидаемые колонки: Заводской номер ПУ, Тип прибора учета, Подразделение</p>
-            <button onClick={handleDownloadTemplate} className="mt-3 px-4 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors">📥 Скачать шаблон Excel</button>
+            <button onClick={handleDownloadTemplate} className="mt-3 px-4 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors"><Icon name="download" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Скачать шаблон Excel</button>
           </div>
         )}
       </div>
@@ -2057,7 +2168,7 @@ function ReviewDetail({ detail, source, loading }) {
       {isOks ? (
         <>
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">📐 ТТР</div>
+            <div className="text-sm font-semibold text-gray-700 mb-2"><Icon name="ruler" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ТТР</div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <ReviewField label="Орг. учёта" value={detail.ttr_ou} />
               <ReviewField label="Обуст. линии" value={detail.ttr_ol} />
@@ -2067,7 +2178,7 @@ function ReviewDetail({ detail, source, loading }) {
           </div>
 
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">⚡ Оборудование</div>
+            <div className="text-sm font-semibold text-gray-700 mb-2"><Icon name="zap" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Оборудование</div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <ReviewField label="ВА (автомат)" value={detail.has_va ? `${detail.va_nominal || '—'}${detail.va_quantity ? ' × ' + detail.va_quantity + ' шт' : ''}` : 'Нет'} />
               <ReviewField label="ТТ" value={detail.has_tt ? (detail.tt_nominal || 'Да') : 'Нет'} />
@@ -2076,7 +2187,7 @@ function ReviewDetail({ detail, source, loading }) {
           </div>
 
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">📦 Материалы</div>
+            <div className="text-sm font-semibold text-gray-700 mb-2"><Icon name="package" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Материалы</div>
             {(!detail.materials || detail.materials.length === 0) ? (
               <div className="text-sm text-gray-400">Материалы не указаны</div>
             ) : (
@@ -2096,7 +2207,7 @@ function ReviewDetail({ detail, source, loading }) {
                         <td className="px-3 py-2">{m.name}</td>
                         <td className="px-3 py-2 text-gray-500">{m.unit}</td>
                         <td className="px-3 py-2 text-center">{m.quantity}</td>
-                        <td className="px-3 py-2 text-center">{m.used ? '✓' : '—'}</td>
+                        <td className="px-3 py-2 text-center">{m.used ? <Icon name="check" className="w-4 h-4 inline-block text-emerald-600" /> : <span className="text-slate-300">—</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2107,7 +2218,7 @@ function ReviewDetail({ detail, source, loading }) {
         </>
       ) : (
         <div>
-          <div className="text-sm font-semibold text-gray-700 mb-2">📐 Параметры ЭСК</div>
+          <div className="text-sm font-semibold text-gray-700 mb-2"><Icon name="ruler" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Параметры ЭСК</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <ReviewField label="Форм-фактор" value={detail.form_factor === 'split' ? 'Сплит' : detail.form_factor === 'classic' ? 'Классика' : detail.form_factor} />
             <ReviewField label="Щит с ВА" value={detail.va_type} />
@@ -2184,8 +2295,8 @@ function ReviewModal({ item, onClose, onApprove, onReject }) {
           ) : (
             <div className="flex justify-end gap-2">
               <button onClick={onClose} disabled={busy} className="px-4 py-2 bg-gray-200 rounded-lg">Закрыть</button>
-              <button onClick={() => setRejecting(true)} disabled={busy} className="px-4 py-2 bg-red-500 text-white rounded-lg disabled:opacity-50">✕ Не согласовать</button>
-              <button onClick={doApprove} disabled={busy} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">{busy ? '...' : '✓ Согласовать'}</button>
+              <button onClick={() => setRejecting(true)} disabled={busy} className="px-4 py-2 bg-red-500 text-white rounded-lg disabled:opacity-50"><Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Не согласовать</button>
+              <button onClick={doApprove} disabled={busy} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">{busy ? '...' : 'Согласовать'}</button>
             </div>
           )}
         </div>
@@ -2273,8 +2384,8 @@ function ApprovalPage() {
           <p className="text-gray-500">ПУ от ЭСК и ОКС на проверку</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">📥 Выгрузить в Excel</button>
-          <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
+          <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"><Icon name="download" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Выгрузить в Excel</button>
+          <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"><Icon name="refresh" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Обновить</button>
         </div>
       </div>
 
@@ -2317,16 +2428,16 @@ function ApprovalPage() {
                   <td className="px-3 py-3">{i.consumer || '—'}</td>
                   <td className="px-3 py-3">{i.contract_number || '—'}</td>
                   <td className="px-3 py-3 text-center">{i.faza || '—'}</td>
-                  <td className="px-3 py-3 text-center">{i.trubostoyka ? '✓' : '—'}</td>
+                  <td className="px-3 py-3 text-center">{i.trubostoyka ? <Icon name="check" className="w-4 h-4 inline-block text-emerald-600" /> : <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-3">{i.lsr_va || i.lsr_truba || '—'}</td>
                   <td className="px-3 py-3">{i.smr_date || '—'}</td>
                   <td className="px-3 py-3">
                     {i.source === 'ОКС' ? (
-                      <button onClick={() => setReviewModal(i)} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm whitespace-nowrap">🔍 Рассмотреть</button>
+                      <button onClick={() => setReviewModal(i)} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm whitespace-nowrap"><Icon name="search" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Рассмотреть</button>
                     ) : (
                       <div className="flex gap-2">
-                        <button onClick={() => handleApprove(i.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">✓ Согласовать</button>
-                        <button onClick={() => setRejectModal(i)} className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm">✕ Отклонить</button>
+                        <button onClick={() => handleApprove(i.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm"><Icon name="check" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Согласовать</button>
+                        <button onClick={() => setRejectModal(i)} className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm"><Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Отклонить</button>
                       </div>
                     )}
                   </td>
@@ -2544,7 +2655,7 @@ const exportToExcel = async () => {
         item_ids: selectedTzItems, 
         tz_number: expandedTz 
       })
-      alert(`✅ Удалено из ТЗ: ${r.data.removed} шт.${r.data.remaining === 0 ? '\nТЗ полностью очищено.' : ` Осталось в ТЗ: ${r.data.remaining} шт.`}`)
+      alert(`Удалено из ТЗ: ${r.data.removed} шт.${r.data.remaining === 0 ? '\nТЗ полностью очищено.' : ` Осталось в ТЗ: ${r.data.remaining} шт.`}`)
       
       // Обновляем список ТЗ и элементы
       setSelectedTzItems([])
@@ -2592,7 +2703,7 @@ const exportToExcel = async () => {
     setAddingToTz(true)
     try {
       const r = await api.post('/tz/add-items', { item_ids: selectedAddItems, tz_number: expandedTz })
-      alert(`✅ Добавлено в ТЗ: ${r.data.added} шт. Всего в ТЗ: ${r.data.total} шт.`)
+      alert(`Добавлено в ТЗ: ${r.data.added} шт. Всего в ТЗ: ${r.data.total} шт.`)
       
       // Обновляем
       setSelectedAddItems([])
@@ -2678,7 +2789,7 @@ setMaterialsData(dataWithFlags)
       await api.post('/pu/items/materials-bulk/save', {
         items: [{ item_id: puId, materials: puData.materials }]
       })
-      alert('✅ Сохранено')
+      alert('Сохранено')
     } catch (err) {
       alert('Ошибка: ' + (err.response?.data?.detail || err.message))
     }
@@ -2696,7 +2807,7 @@ const saveAllMaterials = async () => {
         tt_used: pu.tt_used
       }))
     })
-    alert('✅ Все материалы сохранены')
+    alert('Все материалы сохранены')
   } catch (err) {
     alert('Ошибка: ' + (err.response?.data?.detail || err.message))
   }
@@ -2731,7 +2842,7 @@ const saveAllMaterials = async () => {
       }
       
       const r = await api.post('/tz/create', payload)
-      alert(`✅ Создано ТЗ: ${r.data.tz_number}`)
+      alert(`Создано ТЗ: ${r.data.tz_number}`)
       setSelectedItems([])
       setStep(1)
       setMaterialsData([])
@@ -2784,8 +2895,8 @@ const saveAllMaterials = async () => {
       <h1 className="text-2xl font-bold">Технические задания</h1>
 
       <div className="flex gap-2 border-b">
-        <button onClick={() => { setTab('list'); setStep(1) }} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>📋 Реестр ТЗ</button>
-        <button onClick={() => { setTab('create'); setStep(1) }} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
+        <button onClick={() => { setTab('list'); setStep(1) }} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}><Icon name="clipboard" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Реестр ТЗ</button>
+        <button onClick={() => { setTab('create'); setStep(1) }} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Формирование</button>
       </div>
 
       {tab === 'list' && (() => {
@@ -2825,7 +2936,7 @@ const saveAllMaterials = async () => {
               </select>
               {hasFilters && (
                 <button onClick={() => { setTzFilterType(''); setTzFilterUnit(''); setTzFilterTz('') }} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-600">
-                  ✕ Сбросить
+                  <Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Сбросить
                 </button>
               )}
             </div>
@@ -2878,7 +2989,7 @@ const saveAllMaterials = async () => {
                                   disabled={removingFromTz}
                                   className="px-3 py-1 bg-red-600 text-white rounded-lg text-sm disabled:opacity-50"
                                 >
-                                  {removingFromTz ? '⏳ Удаление...' : `🗑️ Удалить из ТЗ (${selectedTzItems.length})`}
+                                  {removingFromTz ? 'Удаление...' : `Удалить из ТЗ (${selectedTzItems.length})`}
                                 </button>
                               )}
                               {canManageTz(tz) && (
@@ -2886,10 +2997,10 @@ const saveAllMaterials = async () => {
                                   onClick={() => { setShowAddSearch(!showAddSearch); setAddSearchQuery(''); setAddSearchResults([]); setSelectedAddItems([]) }}
                                   className={`px-3 py-1 ${showAddSearch ? 'bg-gray-500' : 'bg-blue-600'} text-white rounded-lg text-sm`}
                                 >
-                                  {showAddSearch ? '✕ Закрыть поиск' : '➕ Добавить ПУ'}
+                                  {showAddSearch ? 'Закрыть поиск' : 'Добавить ПУ'}
                                 </button>
                               )}
-                              <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                              <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm"><Icon name="download" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Выгрузить в Excel</button>
                             </div>
                           </div>
                           <table className="w-full text-sm bg-white rounded-lg overflow-hidden">
@@ -2937,11 +3048,11 @@ const saveAllMaterials = async () => {
                           {showAddSearch && (
                             <div className="mt-4 border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
                               <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-medium text-blue-800">🔍 Поиск ПУ для добавления в ТЗ</h4>
+                                <h4 className="font-medium text-blue-800"><Icon name="search" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Поиск ПУ для добавления в ТЗ</h4>
                                 <button 
                                   onClick={() => { setShowAddSearch(false); setAddSearchQuery(''); setAddSearchResults([]); setSelectedAddItems([]) }}
                                   className="px-3 py-1 bg-gray-400 hover:bg-gray-500 text-white rounded-lg text-sm"
-                                >✕ Закрыть</button>
+                                ><Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Закрыть</button>
                               </div>
                               <div className="flex gap-2 mb-3">
                                 <input 
@@ -2958,7 +3069,7 @@ const saveAllMaterials = async () => {
                                     disabled={addingToTz}
                                     className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
                                   >
-                                    {addingToTz ? '⏳ Добавление...' : `➕ Добавить (${selectedAddItems.length})`}
+                                    {addingToTz ? 'Добавление...' : `Добавить (${selectedAddItems.length})`}
                                   </button>
                                 )}
                               </div>
@@ -3074,7 +3185,7 @@ const saveAllMaterials = async () => {
                   disabled={loadingMaterials || selectedItems.length === 0 || !selectedUnit || (needPowerCategory && !selectedPower)} 
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
                 >
-                  {loadingMaterials ? 'Загрузка...' : `Далее → Материалы (${selectedItems.length})`}
+                  {loadingMaterials ? 'Загрузка...' : `Далее Материалы (${selectedItems.length})`}
                 </button>
               </div>
             </div>
@@ -3134,10 +3245,10 @@ const saveAllMaterials = async () => {
           <p className="text-sm text-gray-500">ТЗ: {getPreviewTzNumber()} • Выбрано ПУ: {materialsData.length}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setStep(1)} className="px-4 py-2 bg-gray-100 rounded-lg">← Назад</button>
-          <button onClick={saveAllMaterials} className="px-4 py-2 bg-green-600 text-white rounded-lg">💾 Сохранить все</button>
+          <button onClick={() => setStep(1)} className="px-4 py-2 bg-gray-100 rounded-lg"><Icon name="arrowLeft" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Назад</button>
+          <button onClick={saveAllMaterials} className="px-4 py-2 bg-green-600 text-white rounded-lg"><Icon name="save" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Сохранить все</button>
           <button onClick={handleCreate} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-            {loading ? 'Создание...' : '✅ Создать ТЗ'}
+            {loading ? 'Создание...' : 'Создать ТЗ'}
           </button>
         </div>
       </div>
@@ -3167,7 +3278,7 @@ const saveAllMaterials = async () => {
         ))
       }}
     />
-    ⚡ ВА: {pu.va_nominal_name} {pu.va_quantity > 1 ? `(${pu.va_quantity} шт)` : ''}
+    <Icon name="zap" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ВА: {pu.va_nominal_name} {pu.va_quantity > 1 ? `(${pu.va_quantity} шт)` : ''}
   </label>
 )}
 {pu.tt_nominal_name && (
@@ -3181,10 +3292,10 @@ const saveAllMaterials = async () => {
         ))
       }}
     />
-    🔌 ТТ: {pu.tt_nominal_name}
+    <Icon name="plug" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ТТ: {pu.tt_nominal_name}
   </label>
 )}
-                  <button onClick={() => saveSinglePU(pu.id)} className="px-3 py-1 bg-blue-500 text-white rounded text-sm">💾 Сохранить</button>
+                  <button onClick={() => saveSinglePU(pu.id)} className="px-3 py-1 bg-blue-500 text-white rounded text-sm"><Icon name="save" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Сохранить</button>
                 </div>
               </div>
               
@@ -3233,12 +3344,12 @@ const saveAllMaterials = async () => {
       </div>
           {/* Итого по материалам */}
           <div className="flex-shrink-0 bg-green-50 rounded-xl border border-green-200 p-4 mt-4 sticky bottom-0 shadow-lg">
-            <h4 className="font-semibold text-green-800 mb-3">📦 ИТОГО материалов</h4>
+            <h4 className="font-semibold text-green-800 mb-3"><Icon name="package" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ИТОГО материалов</h4>
             
             {/* ВА и ТТ */}
             {(materialsData.some(pu => pu.va_nominal_name) || materialsData.some(pu => pu.tt_nominal_name)) && (
               <div className="mb-4 p-3 bg-white rounded-lg border">
-                <div className="text-sm font-medium text-gray-700 mb-2">⚡ Оборудование:</div>
+                <div className="text-sm font-medium text-gray-700 mb-2"><Icon name="zap" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Оборудование:</div>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(
                     materialsData
@@ -3418,7 +3529,7 @@ const exportToExcel = async () => {
         request_number: requestNumber,
         request_contract: requestContract
       })
-      alert(`✅ Создана заявка: ${r.data.display_name}`)
+      alert(`Создана заявка: ${r.data.display_name}`)
       setSelectedItems([])
       setSelectedItemsInfo({})
       loadRequests()
@@ -3449,13 +3560,13 @@ const exportToExcel = async () => {
         admin_code: code
       })
       if (res.data.request_deleted) {
-        alert('✅ ПУ удалён. Заявка стала пустой и удалена.')
+        alert('ПУ удалён. Заявка стала пустой и удалена.')
         setExpandedReq(null)
         setReqItems([])
         setCheckedReqItems([])
         loadRequests()
       } else {
-        alert('✅ ПУ удалён из заявки')
+        alert('ПУ удалён из заявки')
         reloadCurrentRequest(req)
       }
     } catch (err) {
@@ -3476,13 +3587,13 @@ const exportToExcel = async () => {
         admin_code: code
       })
       if (res.data.request_deleted) {
-        alert(`✅ Удалено ${res.data.removed} ПУ. Заявка стала пустой и удалена.`)
+        alert(`Удалено ${res.data.removed} ПУ. Заявка стала пустой и удалена.`)
         setExpandedReq(null)
         setReqItems([])
         setCheckedReqItems([])
         loadRequests()
       } else {
-        alert(`✅ Удалено ${res.data.removed} ПУ из заявки. Осталось: ${res.data.remaining}`)
+        alert(`Удалено ${res.data.removed} ПУ из заявки. Осталось: ${res.data.remaining}`)
         reloadCurrentRequest(req)
       }
     } catch (err) {
@@ -3501,8 +3612,8 @@ const exportToExcel = async () => {
       const res = await api.post(`/requests/${encodeURIComponent(req.request_number)}/recalculate`, {
         item_ids: checkedReqItems
       })
-      let msg = `✅ Пересчитано: ${res.data.updated} ПУ`
-      if (res.data.errors?.length > 0) msg += `\n⚠️ Ошибки:\n${res.data.errors.join('\n')}`
+      let msg = `Пересчитано: ${res.data.updated} ПУ`
+      if (res.data.errors?.length > 0) msg += `\nОшибки:\n${res.data.errors.join('\n')}`
       alert(msg)
       reloadCurrentRequest(req)
     } catch (err) {
@@ -3548,7 +3659,7 @@ const exportToExcel = async () => {
         item_ids: selectedReqAddItems, 
         request_contract: req.request_contract 
       })
-      alert(`✅ Добавлено в заявку: ${r.data.added} шт. Всего: ${r.data.total} шт.`)
+      alert(`Добавлено в заявку: ${r.data.added} шт. Всего: ${r.data.total} шт.`)
       
       setSelectedReqAddItems([])
       setReqAddSearchQuery('')
@@ -3571,9 +3682,9 @@ const exportToExcel = async () => {
       <h1 className="text-2xl font-bold">Заявки ЭСК</h1>
 
       <div className="flex gap-2 border-b">
-        <button onClick={() => setTab('list')} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>📋 Реестр заявок</button>
+        <button onClick={() => setTab('list')} className={`px-4 py-2 border-b-2 ${tab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}><Icon name="clipboard" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Реестр заявок</button>
         {canCreateRequest && (
-          <button onClick={() => setTab('create')} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>➕ Формирование</button>
+          <button onClick={() => setTab('create')} className={`px-4 py-2 border-b-2 ${tab === 'create' ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Формирование</button>
         )}
       </div>
 
@@ -3624,14 +3735,14 @@ const exportToExcel = async () => {
                                       disabled={bulkLoading}
                                       className="px-3 py-1 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"
                                     >
-                                      🔄 Пересчитать ({checkedReqItems.length})
+                                      <Icon name="refresh" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Пересчитать ({checkedReqItems.length})
                                     </button>
                                     <button
                                       onClick={handleBulkRemove}
                                       disabled={bulkLoading}
                                       className="px-3 py-1 bg-red-600 text-white rounded-lg text-sm disabled:opacity-50"
                                     >
-                                      🗑️ Удалить ({checkedReqItems.length})
+                                      <Icon name="trash" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Удалить ({checkedReqItems.length})
                                     </button>
                                   </>
                                 )}
@@ -3640,10 +3751,10 @@ const exportToExcel = async () => {
                                     onClick={() => { setShowReqAddSearch(!showReqAddSearch); setReqAddSearchQuery(''); setReqAddSearchResults([]); setSelectedReqAddItems([]) }}
                                     className={`px-3 py-1 ${showReqAddSearch ? 'bg-gray-500' : 'bg-blue-600'} text-white rounded-lg text-sm`}
                                   >
-                                    {showReqAddSearch ? '✕ Закрыть поиск' : '➕ Добавить ПУ'}
+                                    {showReqAddSearch ? 'Закрыть поиск' : 'Добавить ПУ'}
                                   </button>
                                 )}
-                                <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
+                                <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm"><Icon name="download" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Выгрузить в Excel</button>
                               </div>
                             </div>
                             <div className="overflow-x-auto">
@@ -3700,7 +3811,7 @@ const exportToExcel = async () => {
                                       <td className="px-2 py-2 font-medium">{item.price_with_nds?.toLocaleString() || '—'} ₽</td>
                                       {canManageRequest && (
                                         <td className="px-2 py-2">
-                                          <button onClick={() => handleRemoveFromRequest(item.id)} className="text-red-500 hover:text-red-700" title="Удалить из заявки">🗑️</button>
+                                          <button onClick={() => handleRemoveFromRequest(item.id)} className="text-red-500 hover:text-red-700" title="Удалить из заявки"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
                                         </td>
                                       )}
                                     </tr>
@@ -3713,11 +3824,11 @@ const exportToExcel = async () => {
                             {showReqAddSearch && canManageRequest && (
                               <div className="mt-4 border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
                                 <div className="flex justify-between items-center mb-3">
-                                  <h4 className="font-medium text-blue-800">🔍 Поиск ПУ для добавления в заявку</h4>
+                                  <h4 className="font-medium text-blue-800"><Icon name="search" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Поиск ПУ для добавления в заявку</h4>
                                   <button 
                                     onClick={() => { setShowReqAddSearch(false); setReqAddSearchQuery(''); setReqAddSearchResults([]); setSelectedReqAddItems([]) }}
                                     className="px-3 py-1 bg-gray-400 hover:bg-gray-500 text-white rounded-lg text-sm"
-                                  >✕ Закрыть</button>
+                                  ><Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Закрыть</button>
                                 </div>
                                 <div className="flex gap-2 mb-3">
                                   <input 
@@ -3734,7 +3845,7 @@ const exportToExcel = async () => {
                                       disabled={addingToReq}
                                       className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
                                     >
-                                      {addingToReq ? '⏳ Добавление...' : `➕ Добавить (${selectedReqAddItems.length})`}
+                                      {addingToReq ? 'Добавление...' : `Добавить (${selectedReqAddItems.length})`}
                                     </button>
                                   )}
                                 </div>
@@ -3800,7 +3911,7 @@ const exportToExcel = async () => {
       {tab === 'create' && canCreateRequest && (
         <div className="space-y-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-            <span className="text-yellow-700">⚠️ Только согласованные ПУ доступны для формирования заявки</span>
+            <span className="text-yellow-700"><Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Только согласованные ПУ доступны для формирования заявки</span>
           </div>
 
           <div className="bg-white rounded-xl border p-4 space-y-4">
@@ -3833,7 +3944,7 @@ const exportToExcel = async () => {
             
             {lastRequest && (
               <div className="text-sm text-gray-500">
-                💡 Рекомендовано: <span className="font-medium text-blue-600">{lastRequest.suggested}</span>
+                <Icon name="bulb" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Рекомендовано: <span className="font-medium text-blue-600">{lastRequest.suggested}</span>
               </div>
             )}
             
@@ -3940,7 +4051,7 @@ const exportToExcel = async () => {
       <td className="px-3 py-3 text-gray-600 max-w-xs truncate" title={i.pu_type}>{i.pu_type || '—'}</td>
       <td className="px-3 py-3">{i.consumer || '—'}</td>
       <td className="px-3 py-3 text-center">{i.faza || '—'}</td>
-      <td className="px-3 py-3 text-center">{i.trubostoyka ? '✓' : '—'}</td>
+      <td className="px-3 py-3 text-center">{i.trubostoyka ? <Icon name="check" className="w-4 h-4 inline-block text-emerald-600" /> : <span className="text-slate-300">—</span>}</td>
       <td className="px-3 py-3">{i.lsr_va || '—'}</td>
       <td className="px-3 py-3">{i.lsr_truba || '—'}</td>
       <td className="px-3 py-3 text-right font-medium">{i.price_total?.toLocaleString() || '—'} ₽</td>
@@ -4014,7 +4125,7 @@ function MemoPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">📄 Формирование служебных записок</h1>
+      <h1 className="text-2xl font-bold"><Icon name="fileText" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Формирование служебных записок</h1>
 
       <div className="grid grid-cols-2 gap-6">
         {/* ТЗ */}
@@ -4030,7 +4141,7 @@ function MemoPage() {
                     <div className="font-medium">{tz.tz_number}</div>
                     <div className="text-sm text-gray-500">{tz.unit_name} • {tz.count} ПУ</div>
                   </div>
-                  <span className="text-gray-400">→</span>
+                  <span className="text-gray-400"><Icon name="arrowRight" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></span>
                 </div>
               ))}
             </div>
@@ -4050,7 +4161,7 @@ function MemoPage() {
                     <div className="font-medium">{req.request_number}</div>
                     <div className="text-sm text-gray-500">{req.count} ПУ</div>
                   </div>
-                  <span className="text-gray-400">→</span>
+                  <span className="text-gray-400"><Icon name="arrowRight" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></span>
                 </div>
               ))}
             </div>
@@ -4068,7 +4179,7 @@ function MemoPage() {
               <h2 className="font-semibold">Служебная записка</h2>
               <p className="text-sm text-gray-500">{memoData.doc_type} {memoData.doc_number} от {memoData.date}</p>
             </div>
-            <button onClick={exportMemo} className="px-4 py-2 bg-green-600 text-white rounded-lg">📥 Скачать</button>
+            <button onClick={exportMemo} className="px-4 py-2 bg-green-600 text-white rounded-lg"><Icon name="download" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Скачать</button>
           </div>
           
           <div className="p-4 space-y-4">
@@ -4116,26 +4227,26 @@ function SettingsPage() {
   if (!canManageUsers && !isEskAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
 
   const tabs = [
-    { id: 'users', label: '👥 Пользователи', show: isSueAdmin },
-    { id: 'masters', label: '👷 Мастера ЭСК', show: isEskAdmin || isSueAdmin },
-    { id: 'ttr-res', label: '📐 ТТР (РЭС)', show: isSueAdmin || isResUser },
-    { id: 'ttr-esk', label: '📐 ТТР (ЭСК)', show: isSueAdmin || isEskAdmin || isEskUser },
-    { id: 'materials', label: '🔧 Материалы', show: isSueAdmin || isResUser },
-    { id: 'va-nominals', label: '⚡ Номиналы ВА', show: isSueAdmin || isResUser },
-    { id: 'tt-nominals', label: '🔌 Номиналы ТТ', show: isSueAdmin || isResUser },
-    { id: 'pu-types', label: '📦 Типы ПУ', show: isSueAdmin || isResUser || isEskUser },
-    { id: 'bulk-update', label: '📝 Корректировка', show: isSueAdmin },
-    { id: 'system', label: '⚠️ Система', show: isSueAdmin },
+    { id: 'users', icon: 'users', label: 'Пользователи', show: isSueAdmin },
+    { id: 'masters', icon: 'hardhat', label: 'Мастера ЭСК', show: isEskAdmin || isSueAdmin },
+    { id: 'ttr-res', icon: 'ruler', label: 'ТТР (РЭС)', show: isSueAdmin || isResUser },
+    { id: 'ttr-esk', icon: 'ruler', label: 'ТТР (ЭСК)', show: isSueAdmin || isEskAdmin || isEskUser },
+    { id: 'materials', icon: 'wrench', label: 'Материалы', show: isSueAdmin || isResUser },
+    { id: 'va-nominals', icon: 'zap', label: 'Номиналы ВА', show: isSueAdmin || isResUser },
+    { id: 'tt-nominals', icon: 'plug', label: 'Номиналы ТТ', show: isSueAdmin || isResUser },
+    { id: 'pu-types', icon: 'package', label: 'Типы ПУ', show: isSueAdmin || isResUser || isEskUser },
+    { id: 'bulk-update', icon: 'fileEdit', label: 'Корректировка', show: isSueAdmin },
+    { id: 'system', icon: 'settings', label: 'Система', show: isSueAdmin },
   ].filter(t => t.show)
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Настройки</h1>
+      <h1 className="text-2xl font-bold text-slate-900">Настройки</h1>
 
-      <div className="flex gap-2 border-b flex-wrap">
+      <div className="flex gap-1 border-b border-slate-200 flex-wrap">
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`px-4 py-2 border-b-2 whitespace-nowrap ${tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}>
-            {t.label}
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 px-4 py-2.5 border-b-2 whitespace-nowrap text-sm transition-colors ${tab === t.id ? 'border-[#0B4DA2] text-[#0B4DA2] font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            <Icon name={t.icon} className="w-4 h-4" /> {t.label}
           </button>
         ))}
       </div>
@@ -4185,7 +4296,7 @@ function UsersTab() {
   return (
     <>
       <div className="flex justify-end">
-        <button onClick={() => setModal({ user: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        <button onClick={() => setModal({ user: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Добавить</button>
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
@@ -4200,8 +4311,8 @@ function UsersTab() {
                 <td className="px-4 py-3">{u.unit?.name || '—'}</td>
                 <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${u.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>{u.is_active ? 'Активен' : 'Неактивен'}</span></td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setModal({ user: u })} className="mr-2">✏️</button>
-                  <button onClick={() => toggleActive(u)}>{u.is_active ? '🚫' : '✅'}</button>
+                  <button onClick={() => setModal({ user: u })} className="mr-2"><Icon name="edit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+                  <button onClick={() => toggleActive(u)}>{u.is_active ? '' : ''}</button>
                 </td>
               </tr>
             ))}
@@ -4274,7 +4385,7 @@ function MastersTab() {
   return (
     <>
       <div className="flex justify-end">
-        <button onClick={() => setModal({ master: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+        <button onClick={() => setModal({ master: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Добавить</button>
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">
@@ -4286,8 +4397,8 @@ function MastersTab() {
                 <td className="px-4 py-3">{m.full_name}</td>
                 <td className="px-4 py-3">{m.unit_name || '—'}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setModal({ master: m })} className="mr-2">✏️</button>
-                  <button onClick={() => handleDelete(m.id)}>🗑️</button>
+                  <button onClick={() => setModal({ master: m })} className="mr-2"><Icon name="edit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+                  <button onClick={() => handleDelete(m.id)}><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
                 </td>
               </tr>
             ))}
@@ -4358,7 +4469,7 @@ function TTRResTab() {
           <option value="OR">Распред. щит</option>
         </select>
         {isSueAdmin && (
-          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Добавить</button>
         )}
       </div>
 
@@ -4381,10 +4492,10 @@ function TTRResTab() {
         <td className="px-4 py-3">
           {isSueAdmin && (
             <div style={{display: 'flex', gap: '4px', flexWrap: 'nowrap', justifyContent: 'flex-end'}}>
-              <button onClick={() => setModal({ item: i })} title="Редактировать">✏️</button>
-              <button onClick={() => setMaterialsModal(i)} title="Материалы">📦</button>
-              <button onClick={() => setPuTypesModal(i)} title="Типы ПУ">🔌</button>
-              <button onClick={() => setDeleteModal(i)} style={{color: 'red'}} title="Удалить">🗑️</button>
+              <button onClick={() => setModal({ item: i })} title="Редактировать"><Icon name="edit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+              <button onClick={() => setMaterialsModal(i)} title="Материалы"><Icon name="package" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+              <button onClick={() => setPuTypesModal(i)} title="Типы ПУ"><Icon name="plug" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+              <button onClick={() => setDeleteModal(i)} style={{color: 'red'}} title="Удалить"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
             </div>
           )}
         </td>
@@ -4513,7 +4624,7 @@ function TTRMaterialsModal({ ttr, onClose }) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="font-semibold">📦 Материалы для {ttr.code}</h2>
+          <h2 className="font-semibold"><Icon name="package" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Материалы для {ttr.code}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
         </div>
         
@@ -4599,7 +4710,7 @@ function TTRPUTypesModal({ ttr, onClose }) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="font-semibold">📦 Типы ПУ для {ttr.code}</h2>
+          <h2 className="font-semibold"><Icon name="package" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Типы ПУ для {ttr.code}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
         </div>
         
@@ -4643,7 +4754,7 @@ function TTREskTab() {
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
   const [filter, setFilter] = useState('')
-  const [deleteModal, setDeleteModal] = useState(null)  // ← ДОБАВЛЕНО
+  const [deleteModal, setDeleteModal] = useState(null)  // ДОБАВЛЕНО
 
   useEffect(() => { api.get('/ttr/esk').then(r => setItems(r.data)) }, [])
 
@@ -4657,7 +4768,7 @@ function TTREskTab() {
     setModal(null)
   }
 
-  // ← УДАЛЁН старый handleDelete с confirm()
+  // УДАЛЁН старый handleDelete с confirm()
 
   const ttrTypeLabels = { PU: 'ПУ', TRUBOSTOYKA: 'Трубостойка', OTVETVLENIE: 'Ответвление' }
   const vaTypeLabels = { opora: 'Опора', fasad: 'Фасад', trubostoyka: 'Трубостойка' }
@@ -4675,7 +4786,7 @@ function TTREskTab() {
           <option value="OTVETVLENIE">Ответвление</option>
         </select>
         {isSueAdmin && (
-          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Добавить</button>
         )}
       </div>
 
@@ -4713,8 +4824,8 @@ function TTREskTab() {
                 <td className="px-4 py-3">{i.price_with_nds?.toLocaleString() || '—'} ₽</td>
                 {isSueAdmin && (
                   <td className="px-4 py-3">
-                    <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                    <button onClick={() => setDeleteModal(i)} className="text-red-500">🗑️</button>
+                    <button onClick={() => setModal({ item: i })} className="mr-2"><Icon name="edit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+                    <button onClick={() => setDeleteModal(i)} className="text-red-500"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
                   </td>
                 )}
               </tr>
@@ -4732,7 +4843,7 @@ function TTREskTab() {
         </div>
       )}
 
-      {/* ← ДОБАВЛЕНО: Модалка удаления с паролем */}
+      {/* <Icon name="arrowLeft" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ДОБАВЛЕНО: Модалка удаления с паролем */}
       {deleteModal && (
         <DeleteWithCodeModal
           title={`Удалить ТТР "${deleteModal.work_type_name || deleteModal.lsr_number}"?`}
@@ -4836,7 +4947,7 @@ function MaterialsTab() {
     <>
       {isSueAdmin && (
         <div className="flex justify-end">
-          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Добавить</button>
         </div>
       )}
 
@@ -4856,8 +4967,8 @@ function MaterialsTab() {
         <td className="px-4 py-3">{i.unit}</td>
         {isSueAdmin && (
           <td className="px-4 py-3 text-right">
-            <button onClick={() => setModal({ item: i })} className="px-1" title="Редактировать">✏️</button>
-            <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500" title="Удалить">🗑️</button>
+            <button onClick={() => setModal({ item: i })} className="px-1" title="Редактировать"><Icon name="edit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+            <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500" title="Удалить"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
           </td>
         )}
       </tr>
@@ -4912,7 +5023,7 @@ function PUTypesTab() {
   const { isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [modal, setModal] = useState(null)
-  const [deleteModal, setDeleteModal] = useState(null)  // ← добавлено
+  const [deleteModal, setDeleteModal] = useState(null)  // добавлено
 
   useEffect(() => { api.get('/pu-types').then(r => setItems(r.data)) }, [])
 
@@ -4930,7 +5041,7 @@ function PUTypesTab() {
     <>
       {isSueAdmin && (
         <div className="flex justify-end">
-          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Добавить</button>
         </div>
       )}
 
@@ -4954,8 +5065,8 @@ function PUTypesTab() {
                 <td className="px-4 py-3">{i.form_factor === 'split' ? 'Сплит' : i.form_factor === 'classic' ? 'Классика' : '—'}</td>
                 {isSueAdmin && (
                   <td className="px-4 py-3">
-                    <button onClick={() => setModal({ item: i })} className="mr-2">✏️</button>
-                    <button onClick={() => setDeleteModal(i)} className="text-red-500">🗑️</button>
+                    <button onClick={() => setModal({ item: i })} className="mr-2"><Icon name="edit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+                    <button onClick={() => setDeleteModal(i)} className="text-red-500"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
                   </td>
                 )}
               </tr>
@@ -5015,7 +5126,7 @@ function VANominalsTab() {
     <>
       {isSueAdmin && (
         <div className="flex justify-end">
-          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Добавить</button>
         </div>
       )}
 
@@ -5033,8 +5144,8 @@ function VANominalsTab() {
                 <td className="px-4 py-3 font-medium">{i.name}</td>
                 {isSueAdmin && (
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setModal({ item: i })} className="px-1">✏️</button>
-                    <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500">🗑️</button>
+                    <button onClick={() => setModal({ item: i })} className="px-1"><Icon name="edit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+                    <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
                   </td>
                 )}
               </tr>
@@ -5095,7 +5206,7 @@ function TTNominalsTab() {
     <>
       {isSueAdmin && (
         <div className="flex justify-end">
-          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Добавить</button>
+          <button onClick={() => setModal({ item: null })} className="px-4 py-2 bg-blue-600 text-white rounded-lg"><Icon name="plus" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Добавить</button>
         </div>
       )}
 
@@ -5113,8 +5224,8 @@ function TTNominalsTab() {
                 <td className="px-4 py-3 font-medium">{i.name}</td>
                 {isSueAdmin && (
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setModal({ item: i })} className="px-1">✏️</button>
-                    <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500">🗑️</button>
+                    <button onClick={() => setModal({ item: i })} className="px-1"><Icon name="edit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
+                    <button onClick={() => setDeleteModal(i)} className="px-1 text-red-500"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.15em]" /></button>
                   </td>
                 )}
               </tr>
@@ -5240,7 +5351,7 @@ function SystemTab() {
       window.URL.revokeObjectURL(url)
     } catch (err) {
       if (err.response?.status === 404) {
-        alert('✅ Проблем не найдено! Все ПУ в порядке.')
+        alert('Проблем не найдено! Все ПУ в порядке.')
       } else {
         alert(err.response?.data?.detail || 'Ошибка выгрузки')
       }
@@ -5271,7 +5382,7 @@ function SystemTab() {
   const file = e.target.files[0]
   if (!file) return
   
-  const code = prompt('⚠️ ВНИМАНИЕ! Восстановление добавит данные из бэкапа.\n\nВведите код администратора:')
+  const code = prompt('ВНИМАНИЕ! Восстановление добавит данные из бэкапа.\n\nВведите код администратора:')
   if (!code) return
   
   const formData = new FormData()
@@ -5282,7 +5393,7 @@ function SystemTab() {
     const r = await api.post('/admin/restore', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    alert(`✅ Восстановлено:\n• ПУ: ${r.data.restored.pu_items}\n• ТТР РЭС: ${r.data.restored.ttr_res}\n• ТТР ЭСК: ${r.data.restored.ttr_esk}\n• Материалы: ${r.data.restored.materials}\n• Номиналы ВА: ${r.data.restored.va_nominals}\n• Номиналы ТТ: ${r.data.restored.tt_nominals}`)
+    alert(`Восстановлено:\n• ПУ: ${r.data.restored.pu_items}\n• ТТР РЭС: ${r.data.restored.ttr_res}\n• ТТР ЭСК: ${r.data.restored.ttr_esk}\n• Материалы: ${r.data.restored.materials}\n• Номиналы ВА: ${r.data.restored.va_nominals}\n• Номиналы ТТ: ${r.data.restored.tt_nominals}`)
     runHealthCheck()
   } catch (err) {
     alert('Ошибка восстановления: ' + (err.response?.data?.detail || err.message))
@@ -5294,20 +5405,20 @@ function SystemTab() {
     <div className="space-y-6">
       {/* Диагностика */}
       <div className="bg-white rounded-xl border p-6 space-y-4">
-        <h2 className="font-semibold text-blue-600">🔍 Диагностика системы</h2>
+        <h2 className="font-semibold text-blue-600"><Icon name="search" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Диагностика системы</h2>
         
     <div className="flex gap-4 flex-wrap">
       <button onClick={runHealthCheck} disabled={loadingHealth} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-        {loadingHealth ? '⏳ Проверка...' : '🔍 Проверить базу'}
+        {loadingHealth ? 'Проверка...' : 'Проверить базу'}
       </button>
       <button onClick={exportIssues} disabled={loadingIssues} className="px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50">
-        {loadingIssues ? '⏳ Формирование...' : '📥 Выгрузить проблемные ПУ'}
+        {loadingIssues ? 'Формирование...' : 'Выгрузить проблемные ПУ'}
       </button>
       <button onClick={downloadBackup} disabled={loadingBackup} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
-        {loadingBackup ? '⏳ Создание...' : '💾 Скачать бэкап'}
+        {loadingBackup ? 'Создание...' : 'Скачать бэкап'}
       </button>
       <label className="px-4 py-2 bg-orange-500 text-white rounded-lg cursor-pointer hover:bg-orange-600">
-        📥 Восстановить из бэкапа
+        <Icon name="download" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Восстановить из бэкапа
         <input type="file" accept=".json" onChange={handleRestore} className="hidden" />
       </label>
     </div>
@@ -5316,7 +5427,7 @@ function SystemTab() {
           <div className={`p-4 rounded-lg ${healthCheck.status === 'OK' ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
             <div className="flex items-center gap-2 mb-3">
               <span className={`text-xl ${healthCheck.status === 'OK' ? 'text-green-600' : 'text-yellow-600'}`}>
-                {healthCheck.status === 'OK' ? '✅' : '⚠️'}
+                {healthCheck.status === 'OK' ? <Icon name="checkCircle" className="w-5 h-5 inline-block text-emerald-600" /> : <Icon name="alert" className="w-5 h-5 inline-block text-amber-500" />}
               </span>
               <span className="font-semibold">
                 {healthCheck.status === 'OK' ? 'Всё в порядке' : `Найдено проблем: ${healthCheck.issues_count}`}
@@ -5357,7 +5468,7 @@ function SystemTab() {
 
       {/* Опасная зона */}
       <div className="bg-white rounded-xl border p-6 space-y-4">
-        <h2 className="font-semibold text-red-600">⚠️ Опасная зона</h2>
+        <h2 className="font-semibold text-red-600"><Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Опасная зона</h2>
         <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
           <div>
             <div className="font-medium">Очистить базу данных</div>
@@ -5438,37 +5549,37 @@ function BulkUpdateTab() {
           onClick={() => { setMode('types'); resetForm() }} 
           className={`px-4 py-2 rounded-lg ${mode === 'types' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
         >
-          📝 Корректировка типов ПУ
+          <Icon name="fileEdit" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Корректировка типов ПУ
         </button>
         <button 
           onClick={() => { setMode('move'); resetForm() }} 
           className={`px-4 py-2 rounded-lg ${mode === 'move' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
         >
-          📦 Массовое перемещение
+          <Icon name="package" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Массовое перемещение
         </button>
         <button 
           onClick={() => { setMode('naznachenie'); resetForm() }} 
           className={`px-4 py-2 rounded-lg ${mode === 'naznachenie' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
         >
-          🏷️ Загрузка назначений
+          <Icon name="tag" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Загрузка назначений
         </button>
         <button 
           onClick={() => { setMode('autofaza'); resetForm() }} 
           className={`px-4 py-2 rounded-lg ${mode === 'autofaza' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
         >
-          ⚡ Автозаполнение фазы
+          <Icon name="zap" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Автозаполнение фазы
         </button>
         <button 
           onClick={() => { setMode('formfactor'); resetForm() }} 
           className={`px-4 py-2 rounded-lg ${mode === 'formfactor' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
         >
-          📐 Автозаполнение форм-фактора
+          <Icon name="ruler" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Автозаполнение форм-фактора
         </button>
       </div>
 
       {/* Инструкция */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <h3 className="font-medium text-blue-800 mb-2">📋 Формат файла Excel:</h3>
+        <h3 className="font-medium text-blue-800 mb-2"><Icon name="clipboard" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Формат файла Excel:</h3>
         {mode === 'types' ? (
           <ul className="text-blue-700 text-sm space-y-1">
             <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
@@ -5502,7 +5613,7 @@ function BulkUpdateTab() {
       {result ? (
         <div className="bg-white rounded-xl border p-6 space-y-4">
           <div className="text-center">
-            <div className="text-4xl mb-4">✅</div>
+            <div className="mb-4 flex justify-center"><span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-600"><Icon name="checkCircle" className="w-9 h-9" /></span></div>
             <h3 className="text-xl font-semibold text-green-600">
               {mode === 'types' ? 'Обновлено' : 'Перемещено'}: {result.updated || result.moved} ПУ
             </h3>
@@ -5515,7 +5626,7 @@ function BulkUpdateTab() {
           {(result.not_found_pu?.length > 0 || result.not_found?.length > 0) && (
             <div className="bg-yellow-50 rounded-lg p-4">
               <h4 className="font-medium text-yellow-800 mb-2">
-                ⚠️ ПУ не найдены ({(result.not_found_pu || result.not_found).length}):
+                <Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ПУ не найдены ({(result.not_found_pu || result.not_found).length}):
               </h4>
               <div className="text-sm text-yellow-700 max-h-32 overflow-y-auto">
                 {(result.not_found_pu || result.not_found).join(', ')}
@@ -5526,7 +5637,7 @@ function BulkUpdateTab() {
           {result.not_found_unit?.length > 0 && (
             <div className="bg-orange-50 rounded-lg p-4">
               <h4 className="font-medium text-orange-800 mb-2">
-                ⚠️ Подразделения не найдены ({result.not_found_unit.length}):
+                <Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Подразделения не найдены ({result.not_found_unit.length}):
               </h4>
               <div className="text-sm text-orange-700 max-h-32 overflow-y-auto">
                 {result.not_found_unit.map((item, idx) => <div key={idx}>{item}</div>)}
@@ -5536,7 +5647,7 @@ function BulkUpdateTab() {
 
           {result.errors?.length > 0 && (
             <div className="bg-red-50 rounded-lg p-4">
-              <h4 className="font-medium text-red-800 mb-2">❌ Ошибки ({result.errors.length}):</h4>
+              <h4 className="font-medium text-red-800 mb-2"><Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Ошибки ({result.errors.length}):</h4>
               <div className="text-sm text-red-700 max-h-32 overflow-y-auto">
                 {result.errors.map((err, idx) => <div key={idx}>{err}</div>)}
               </div>
@@ -5560,7 +5671,7 @@ function BulkUpdateTab() {
                 onChange={e => setFile(e.target.files[0])}
                 className="w-full px-3 py-2 border rounded-lg"
               />
-              {file && <p className="mt-2 text-sm text-green-600">✓ {file.name}</p>}
+              {file && <p className="mt-2 text-sm text-green-600"><Icon name="check" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> {file.name}</p>}
             </div>
           )}
 
@@ -5580,7 +5691,7 @@ function BulkUpdateTab() {
             disabled={loading || (mode !== 'autofaza' && mode !== 'formfactor' && !file) || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? '⏳ Обработка...' : mode === 'types' ? '📝 Обновить типы ПУ' : mode === 'naznachenie' ? '🏷️ Загрузить назначения' : mode === 'autofaza' ? '⚡ Заполнить фазность' : mode === 'formfactor' ? '📐 Заполнить форм-фактор' : '📦 Переместить ПУ'}
+            {loading ? 'Обработка...' : mode === 'types' ? 'Обновить типы ПУ' : mode === 'naznachenie' ? 'Загрузить назначения' : mode === 'autofaza' ? 'Заполнить фазность' : mode === 'formfactor' ? 'Заполнить форм-фактор' : 'Переместить ПУ'}
           </button>
         </div>
       )}
@@ -5593,7 +5704,7 @@ function ClearDBModal({ onClose, onClear }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-4 text-red-600">⚠️ Очистка базы данных</h2>
+        <h2 className="text-lg font-semibold mb-4 text-red-600"><Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Очистка базы данных</h2>
         <p className="text-gray-600 mb-4">Все ПУ и загрузки будут удалены. Это действие нельзя отменить!</p>
         <input type="password" placeholder="Код администратора" value={code} onChange={e => setCode(e.target.value)} className="w-full px-3 py-2 border rounded-lg mb-4" />
         <div className="flex justify-end gap-2">
@@ -5646,10 +5757,10 @@ function MoveBulkPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">📦 Массовое перемещение ПУ</h1>
+      <h1 className="text-2xl font-bold"><Icon name="package" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Массовое перемещение ПУ</h1>
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <h3 className="font-medium text-blue-800 mb-2">📋 Формат файла Excel:</h3>
+        <h3 className="font-medium text-blue-800 mb-2"><Icon name="clipboard" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Формат файла Excel:</h3>
         <ul className="text-blue-700 text-sm space-y-1">
           <li>• <b>Колонка A:</b> Серийный номер ПУ</li>
           <li>• <b>Колонка B:</b> Название подразделения (ЭСК — напр. «Адлерский ЭСК», ОКС — напр. «ОКС Адлерский РЭС»)</li>
@@ -5659,14 +5770,14 @@ function MoveBulkPage() {
       {result ? (
         <div className="bg-white rounded-xl border p-6 space-y-4">
           <div className="text-center">
-            <div className="text-4xl mb-4">✅</div>
+            <div className="mb-4 flex justify-center"><span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-600"><Icon name="checkCircle" className="w-9 h-9" /></span></div>
             <h3 className="text-xl font-semibold text-green-600">Перемещено: {result.moved} ПУ</h3>
             <p className="text-gray-500">Всего строк в файле: {result.total_rows}</p>
           </div>
 
           {result.not_found_pu.length > 0 && (
             <div className="bg-yellow-50 rounded-lg p-4">
-              <h4 className="font-medium text-yellow-800 mb-2">⚠️ ПУ не найдены ({result.not_found_pu.length}):</h4>
+              <h4 className="font-medium text-yellow-800 mb-2"><Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ПУ не найдены ({result.not_found_pu.length}):</h4>
               <div className="text-sm text-yellow-700 max-h-32 overflow-y-auto">
                 {result.not_found_pu.join(', ')}
               </div>
@@ -5675,7 +5786,7 @@ function MoveBulkPage() {
 
           {result.not_found_unit.length > 0 && (
             <div className="bg-orange-50 rounded-lg p-4">
-              <h4 className="font-medium text-orange-800 mb-2">⚠️ Подразделения не найдены ({result.not_found_unit.length}):</h4>
+              <h4 className="font-medium text-orange-800 mb-2"><Icon name="alert" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Подразделения не найдены ({result.not_found_unit.length}):</h4>
               <div className="text-sm text-orange-700 max-h-32 overflow-y-auto">
                 {result.not_found_unit.map((item, idx) => <div key={idx}>{item}</div>)}
               </div>
@@ -5684,7 +5795,7 @@ function MoveBulkPage() {
 
           {result.errors.length > 0 && (
             <div className="bg-red-50 rounded-lg p-4">
-              <h4 className="font-medium text-red-800 mb-2">❌ Ошибки ({result.errors.length}):</h4>
+              <h4 className="font-medium text-red-800 mb-2"><Icon name="x" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Ошибки ({result.errors.length}):</h4>
               <div className="text-sm text-red-700 max-h-32 overflow-y-auto">
                 {result.errors.map((err, idx) => <div key={idx}>{err}</div>)}
               </div>
@@ -5707,7 +5818,7 @@ function MoveBulkPage() {
               onChange={e => setFile(e.target.files[0])}
               className="w-full px-3 py-2 border rounded-lg"
             />
-            {file && <p className="mt-2 text-sm text-green-600">✓ {file.name}</p>}
+            {file && <p className="mt-2 text-sm text-green-600"><Icon name="check" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> {file.name}</p>}
           </div>
 
           <div>
@@ -5726,7 +5837,7 @@ function MoveBulkPage() {
             disabled={loading || (mode !== 'autofaza' && mode !== 'formfactor' && !file) || !adminCode}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? '⏳ Обработка...' : '📦 Переместить ПУ'}
+            {loading ? 'Обработка...' : 'Переместить ПУ'}
           </button>
         </div>
       )}
@@ -5878,8 +5989,8 @@ const renderBreakdownTable = (units, totals, title, bgColor) => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">📊 Анализ остатков</h1>
-        <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">🔄 Обновить</button>
+        <h1 className="text-2xl font-bold"><Icon name="chart" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Анализ остатков</h1>
+        <button onClick={load} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"><Icon name="refresh" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> Обновить</button>
       </div>
 
       {/* Фильтр по периоду */}
@@ -5907,7 +6018,7 @@ const renderBreakdownTable = (units, totals, title, bgColor) => {
           {/* Общий итог */}
           {isAdmin && data.grand_total && (
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
-              <h2 className="text-lg font-semibold mb-4">🏢 ВСЕГО ФЭС</h2>
+              <h2 className="text-lg font-semibold mb-4"><Icon name="building" className="w-[1em] h-[1em] inline-block align-[-0.15em]" /> ВСЕГО ФЭС</h2>
               <div className="grid grid-cols-4 gap-4">
                 <div className="bg-white/20 rounded-lg p-4 text-center">
                   <div className="text-3xl font-bold">{data.grand_total.total}</div>
@@ -5949,9 +6060,9 @@ const renderBreakdownTable = (units, totals, title, bgColor) => {
           </div>
 
           {/* Таблицы с разбивкой */}
-          {renderBreakdownTable(data.res, data.res_total, '🏢 РЭС (РСК)', 'bg-green-50')}
-          {renderBreakdownTable(data.esk, data.esk_total, '⚡ ЭСК', 'bg-orange-50')}
-          {renderBreakdownTable(data.oks, data.oks_total, '🏗️ ОКС', 'bg-indigo-50')}
+          {renderBreakdownTable(data.res, data.res_total, 'РЭС (РСК)', 'bg-green-50')}
+          {renderBreakdownTable(data.esk, data.esk_total, 'ЭСК', 'bg-orange-50')}
+          {renderBreakdownTable(data.oks, data.oks_total, 'ОКС', 'bg-indigo-50')}
 
           {(!data.res || data.res.length === 0) && (!data.esk || data.esk.length === 0) && (!data.oks || data.oks.length === 0) && (
             <div className="bg-white rounded-xl border p-8 text-center text-gray-500">
