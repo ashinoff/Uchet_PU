@@ -57,6 +57,8 @@ class UnitType(str, enum.Enum):
     ESK = "ESK"          # ЭСК (центральный админ)
     RES = "RES"          # РЭС (7 штук)
     ESK_UNIT = "ESK_UNIT"  # Подразделение ЭСК (7 штук)
+    OKS = "OKS"          # ОКС (центральный, видит все участки ОКС)
+    OKS_UNIT = "OKS_UNIT"  # Участок ОКС (7 штук, по одному на РЭС)
 
 class RoleCode(str, enum.Enum):
     SUE_ADMIN = "SUE_ADMIN"      # СУЭ - видит всё, перемещает РЭС, удаляет, управляет
@@ -64,6 +66,8 @@ class RoleCode(str, enum.Enum):
     ESK_ADMIN = "ESK_ADMIN"      # ЭСК Админ - видит все ЭСК, перемещает между ЭСК
     RES_USER = "RES_USER"        # Пользователь РЭС - только свой РЭС
     ESK_USER = "ESK_USER"        # Пользователь ЭСК - только своё подразделение ЭСК
+    OKS_ADMIN = "OKS_ADMIN"      # ОКС Админ - видит все участки ОКС, перемещает между ними
+    OKS_USER = "OKS_USER"        # Пользователь ОКС - только свой участок ОКС
 
 class PUStatus(str, enum.Enum):
     SKLAD = "SKLAD"          # На складе (по умолчанию)
@@ -368,6 +372,12 @@ def is_res_user(user: User) -> bool:
 def is_esk_user(user: User) -> bool:
     return user.role.code == RoleCode.ESK_USER
 
+def is_oks_admin(user: User) -> bool:
+    return user.role.code == RoleCode.OKS_ADMIN
+
+def is_oks_user(user: User) -> bool:
+    return user.role.code == RoleCode.OKS_USER
+
 # ==================== АВТООПРЕДЕЛЕНИЕ ТИПА ПУ ====================
 
 def normalize_pu_string(s: str) -> str:
@@ -470,6 +480,8 @@ def get_visible_units(user: User, db: Session) -> List[int]:
         return [u.id for u in db.query(Unit).all()]
     if is_esk_admin(user):
         return [u.id for u in db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).all()]
+    if is_oks_admin(user):
+        return [u.id for u in db.query(Unit).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT])).all()]
     if is_lab_user(user):
         return [user.unit_id] if user.unit_id else []
     # RES_USER и ESK_USER видят только своё подразделение
@@ -479,9 +491,9 @@ def can_move_pu(user: User, pu_item, target_unit, db: Session) -> tuple[bool, st
     """Проверка прав на перемещение"""
     if is_sue_admin(user):
         # СУЭ может перемещать только ПУ из РЭС в РЭС
-        if pu_item.current_unit and pu_item.current_unit.unit_type in [UnitType.ESK, UnitType.ESK_UNIT]:
-            return False, "СУЭ не может перемещать ПУ из ЭСК"
-        if target_unit.unit_type in [UnitType.ESK, UnitType.ESK_UNIT]:
+        if pu_item.current_unit and pu_item.current_unit.unit_type in [UnitType.ESK, UnitType.ESK_UNIT, UnitType.OKS, UnitType.OKS_UNIT]:
+            return False, "СУЭ не может перемещать ПУ из ЭСК/ОКС"
+        if target_unit.unit_type in [UnitType.ESK, UnitType.ESK_UNIT, UnitType.OKS, UnitType.OKS_UNIT]:
             return False, "СУЭ может перемещать только в РЭС"
         return True, ""
     
@@ -491,6 +503,14 @@ def can_move_pu(user: User, pu_item, target_unit, db: Session) -> tuple[bool, st
             return False, "ЭСК может перемещать только ПУ из ЭСК"
         if target_unit.unit_type not in [UnitType.ESK, UnitType.ESK_UNIT]:
             return False, "ЭСК может перемещать только в ЭСК"
+        return True, ""
+    
+    if is_oks_admin(user):
+        # ОКС админ может перемещать только между участками ОКС
+        if pu_item.current_unit and pu_item.current_unit.unit_type not in [UnitType.OKS, UnitType.OKS_UNIT]:
+            return False, "ОКС может перемещать только ПУ из ОКС"
+        if target_unit.unit_type not in [UnitType.OKS, UnitType.OKS_UNIT]:
+            return False, "ОКС может перемещать только в ОКС"
         return True, ""
     
     return False, "Нет прав на перемещение"
@@ -790,6 +810,7 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         # Получаем ID РЭС и ЭСК
         res_unit_ids = [u.id for u in db.query(Unit).filter(Unit.unit_type == UnitType.RES).all()]
         esk_unit_ids = [u.id for u in db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).all()]
+        oks_unit_ids = [u.id for u in db.query(Unit).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT])).all()]
         
         def get_stats(unit_ids=None):
             q = db.query(PUItem)
@@ -827,6 +848,9 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         # Статистика по ЭСК
         stats_esk = get_stats(esk_unit_ids)
         
+        # Статистика по ОКС
+        stats_oks = get_stats(oks_unit_ids)
+        
         # Последние загрузки
         reg_q = db.query(PURegister)
         if is_lab_user(user):
@@ -837,18 +861,21 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         pending_approval = 0
         if is_res_user(user) and user.unit_id:
             res_code = user.unit.code if user.unit else ""
-            esk_code = res_code.replace("RES_", "ESK_") if res_code else ""
-            esk_unit = db.query(Unit).filter(Unit.code == esk_code).first()
-            if esk_unit:
-                pending_approval = db.query(PUItem).filter(
-                    PUItem.current_unit_id == esk_unit.id,
-                    PUItem.approval_status == ApprovalStatus.PENDING
-                ).count()
+            if res_code:
+                base = res_code.replace("RES_", "")
+                pending_codes = [f"ESK_{base}", f"OKS_{base}"]
+                pending_unit_ids = [u.id for u in db.query(Unit).filter(Unit.code.in_(pending_codes)).all()]
+                if pending_unit_ids:
+                    pending_approval = db.query(PUItem).filter(
+                        PUItem.current_unit_id.in_(pending_unit_ids),
+                        PUItem.approval_status == ApprovalStatus.PENDING
+                    ).count()
         
         return {
             "all": stats_all,
             "res": stats_res,
             "esk": stats_esk,
+            "oks": stats_oks,
             "pending_approval": pending_approval,
             "recent_registers": [{"id": r.id, "filename": r.filename, "items_count": r.items_count, "uploaded_at": r.uploaded_at} for r in recent]
         }
@@ -1092,6 +1119,9 @@ def get_items(
     elif unit_type_filter == 'esk':
         esk_units = db.query(Unit.id).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT]))
         q = q.filter(PUItem.current_unit_id.in_(esk_units))
+    elif unit_type_filter == 'oks':
+        oks_units = db.query(Unit.id).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT]))
+        q = q.filter(PUItem.current_unit_id.in_(oks_units))
     if contract:
         q = q.filter(PUItem.contract_number.ilike(f"%{contract}%"))
     if ls:
@@ -1892,9 +1922,9 @@ async def move_bulk(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Массовое перемещение ПУ по Excel файлу (ЭСК Админ)"""
-    if not is_esk_admin(user) and not is_sue_admin(user):
-        raise HTTPException(403, "Только ЭСК Админ или СУЭ")
+    """Массовое перемещение ПУ по Excel файлу (ЭСК / ОКС Админ)"""
+    if not is_esk_admin(user) and not is_sue_admin(user) and not is_oks_admin(user):
+        raise HTTPException(403, "Только ЭСК Админ, ОКС Админ или СУЭ")
     
     if admin_code != settings.ADMIN_CODE:
         raise HTTPException(403, "Неверный код администратора")
@@ -1911,15 +1941,20 @@ async def move_bulk(
         first_val = str(df.iloc[0, 0]).lower() if len(df) > 0 else ""
         start_row = 1 if 'номер' in first_val or 'серийн' in first_val or 'пу' in first_val else 0
         
-        # Словарь подразделений ЭСК
-        esk_units = db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).all()
+        # Словарь подразделений: ОКС для ОКС-админа, иначе ЭСК
+        if is_oks_admin(user):
+            move_units = db.query(Unit).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT])).all()
+            strip_suffix = " РЭС"
+        else:
+            move_units = db.query(Unit).filter(Unit.unit_type.in_([UnitType.ESK, UnitType.ESK_UNIT])).all()
+            strip_suffix = " ЭСК"
         units_map = {}
-        for u in esk_units:
+        for u in move_units:
             units_map[u.name.lower()] = u
             if u.code:
                 units_map[u.code.lower()] = u
-            # Короткие варианты: "Адлерский" -> "Адлерский ЭСК"
-            short_name = u.name.replace(" ЭСК", "").lower()
+            # Короткие варианты: "Адлерский" -> подразделение
+            short_name = u.name.replace(strip_suffix, "").lower()
             units_map[short_name] = u
         
         moved = 0
@@ -2590,9 +2625,9 @@ def restore_backup(
 # ==================== API: СОГЛАСОВАНИЕ (ЭСК -> РЭС) ====================
 @app.post("/api/pu/items/{item_id}/send-approval")
 def send_for_approval(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Отправить на согласование (ЭСК)"""
-    if not is_esk_user(user) and not is_esk_admin(user):
-        raise HTTPException(403, "Только ЭСК может отправлять на согласование")
+    """Отправить на согласование (ЭСК / ОКС)"""
+    if not (is_esk_user(user) or is_esk_admin(user) or is_oks_user(user) or is_oks_admin(user)):
+        raise HTTPException(403, "Только ЭСК или ОКС может отправлять на согласование")
     
     item = db.query(PUItem).filter(PUItem.id == item_id).first()
     if not item:
@@ -2605,9 +2640,9 @@ def send_for_approval(item_id: int, db: Session = Depends(get_db), user: User = 
 
 @app.post("/api/pu/send-approval-batch")
 def send_approval_batch(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Массовая отправка на согласование (ЭСК)"""
-    if not is_esk_user(user) and not is_esk_admin(user):
-        raise HTTPException(403, "Только ЭСК может отправлять на согласование")
+    """Массовая отправка на согласование (ЭСК / ОКС)"""
+    if not (is_esk_user(user) or is_esk_admin(user) or is_oks_user(user) or is_oks_admin(user)):
+        raise HTTPException(403, "Только ЭСК или ОКС может отправлять на согласование")
     
     item_ids = data.get("item_ids", [])
     if not item_ids:
@@ -2684,11 +2719,12 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         raise HTTPException(403, "Нет доступа")
     
     if is_res_user(user) and user.unit:
-        esk_code = user.unit.code.replace("RES_", "ESK_") if user.unit.code else ""
-        esk_unit = db.query(Unit).filter(Unit.code == esk_code).first()
-        if esk_unit:
-            items = db.query(PUItem).filter(
-                PUItem.current_unit_id == esk_unit.id,
+        base = user.unit.code.replace("RES_", "") if user.unit.code else ""
+        target_codes = [f"ESK_{base}", f"OKS_{base}"]
+        target_ids = [u.id for u in db.query(Unit).filter(Unit.code.in_(target_codes)).all()]
+        if target_ids:
+            items = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
+                PUItem.current_unit_id.in_(target_ids),
                 PUItem.approval_status == ApprovalStatus.PENDING
             ).all()
         else:
@@ -2696,12 +2732,17 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
     else:
         items = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
     
-    def get_res_name(esk_unit):
-        if not esk_unit or not esk_unit.code:
+    def get_res_name(src_unit):
+        if not src_unit or not src_unit.code:
             return "—"
-        res_code = esk_unit.code.replace("ESK_", "RES_")
+        res_code = src_unit.code.replace("ESK_", "RES_").replace("OKS_", "RES_")
         res_unit = db.query(Unit).filter(Unit.code == res_code).first()
         return res_unit.name if res_unit else "—"
+    
+    def get_source(src_unit):
+        if src_unit and src_unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT):
+            return "ОКС"
+        return "ЭСК"
     
     return [{
         "id": i.id, 
@@ -2709,6 +2750,7 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
         "pu_type": i.pu_type,
         "current_unit_name": i.current_unit.name if i.current_unit else None,
         "res_name": get_res_name(i.current_unit),
+        "source": get_source(i.current_unit),
         "contract_number": i.contract_number, 
         "consumer": i.consumer,
         "address": i.address,
@@ -2728,11 +2770,12 @@ def export_pending_approval(db: Session = Depends(get_db), user: User = Depends(
         raise HTTPException(403, "Нет доступа")
     
     if is_res_user(user) and user.unit:
-        esk_code = user.unit.code.replace("RES_", "ESK_") if user.unit.code else ""
-        esk_unit = db.query(Unit).filter(Unit.code == esk_code).first()
-        if esk_unit:
+        base = user.unit.code.replace("RES_", "") if user.unit.code else ""
+        target_codes = [f"ESK_{base}", f"OKS_{base}"]
+        target_ids = [u.id for u in db.query(Unit).filter(Unit.code.in_(target_codes)).all()]
+        if target_ids:
             items = db.query(PUItem).filter(
-                PUItem.current_unit_id == esk_unit.id,
+                PUItem.current_unit_id.in_(target_ids),
                 PUItem.approval_status == ApprovalStatus.PENDING
             ).all()
         else:
@@ -2740,12 +2783,17 @@ def export_pending_approval(db: Session = Depends(get_db), user: User = Depends(
     else:
         items = db.query(PUItem).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
     
-    def get_res_name(esk_unit):
-        if not esk_unit or not esk_unit.code:
+    def get_res_name(src_unit):
+        if not src_unit or not src_unit.code:
             return "—"
-        res_code = esk_unit.code.replace("ESK_", "RES_")
+        res_code = src_unit.code.replace("ESK_", "RES_").replace("OKS_", "RES_")
         res_unit = db.query(Unit).filter(Unit.code == res_code).first()
         return res_unit.name if res_unit else "—"
+    
+    def get_source(src_unit):
+        if src_unit and src_unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT):
+            return "ОКС"
+        return "ЭСК"
     
     # Создаём Excel
     wb = openpyxl.Workbook()
@@ -2764,6 +2812,7 @@ def export_pending_approval(db: Session = Depends(get_db), user: User = Depends(
     # Заголовки
     headers = [
         ("№", 5),
+        ("Источник", 10),
         ("РЭС", 18),
         ("Серийный номер", 20),
         ("Тип ПУ", 40),
@@ -2791,6 +2840,7 @@ def export_pending_approval(db: Session = Depends(get_db), user: User = Depends(
         row = idx + 1
         data = [
             idx,
+            get_source(item.current_unit),
             get_res_name(item.current_unit),
             item.serial_number or "",
             item.pu_type or "",
@@ -4977,6 +5027,8 @@ def init_db():
         ("ЭСК Администратор", RoleCode.ESK_ADMIN),
         ("Пользователь РЭС", RoleCode.RES_USER),
         ("Пользователь ЭСК", RoleCode.ESK_USER),
+        ("ОКС Администратор", RoleCode.OKS_ADMIN),
+        ("Пользователь ОКС", RoleCode.OKS_USER),
     ]:
         r = db.query(Role).filter(Role.code == code).first()
         if not r:
@@ -4993,6 +5045,7 @@ def init_db():
         ("Служба учета электроэнергии", "SUE", UnitType.SUE),
         ("Лаборатория", "LAB", UnitType.LAB),
         ("ЭСК", "ESK", UnitType.ESK),
+        ("ОКС", "OKS", UnitType.OKS),
     ]:
         u = db.query(Unit).filter(Unit.code == code).first()
         if not u:
@@ -5026,6 +5079,14 @@ def init_db():
         if not esk:
             esk = Unit(name=esk_name, code=esk_code, unit_type=UnitType.ESK_UNIT, short_code=short, parent_id=units["ESK"].id)
             db.add(esk)
+        
+        # Участок ОКС (например "ОКС Адлерский РЭС")
+        oks_code = res_code.replace("RES_", "OKS_")
+        oks_name = f"ОКС {res_name}"
+        oks = db.query(Unit).filter(Unit.code == oks_code).first()
+        if not oks:
+            oks = Unit(name=oks_name, code=oks_code, unit_type=UnitType.OKS_UNIT, short_code=short, parent_id=units["OKS"].id)
+            db.add(oks)
     
     # Тестовые пользователи
     if not db.query(User).filter(User.username == "admin").first():
@@ -5034,6 +5095,8 @@ def init_db():
         db.add(User(username="lab", password_hash=hash_password("lab123"), full_name="Оператор Лаборатории", role_id=roles[RoleCode.LAB_USER].id, unit_id=units["LAB"].id))
     if not db.query(User).filter(User.username == "esk").first():
         db.add(User(username="esk", password_hash=hash_password("esk123"), full_name="Администратор ЭСК", role_id=roles[RoleCode.ESK_ADMIN].id, unit_id=units["ESK"].id))
+    if not db.query(User).filter(User.username == "oks").first():
+        db.add(User(username="oks", password_hash=hash_password("oks123"), full_name="Администратор ОКС", role_id=roles[RoleCode.OKS_ADMIN].id, unit_id=units["OKS"].id))
     
     # Тестовые ТТР для РЭС
     for i in range(1, 8):
@@ -5089,6 +5152,41 @@ def ensure_db_schema():
         # 1. Создаём недостающие таблицы
         Base.metadata.create_all(bind=engine)
         print("✅ Таблицы проверены")
+        
+        # 1.5 Добавляем новые значения в существующие PostgreSQL enum-типы.
+        # Это НЕ покрывается create_all: для уже созданного native enum-типа
+        # новые значения нужно добавлять через ALTER TYPE, иначе вставка
+        # подразделений/ролей ОКС упадёт с "invalid input value for enum".
+        enum_value_additions = {
+            "unittype": ["OKS", "OKS_UNIT"],
+            "rolecode": ["OKS_ADMIN", "OKS_USER"],
+        }
+        try:
+            with engine.connect() as conn:
+                conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+                existing_enum_types = [
+                    r[0] for r in conn.execute(text(
+                        "SELECT typname FROM pg_type WHERE typtype = 'e'"
+                    ))
+                ]
+                for type_name, values in enum_value_additions.items():
+                    # Если тип ещё не создан (свежая БД) — create_all уже
+                    # создал его со всеми актуальными значениями, ничего не делаем.
+                    if type_name not in existing_enum_types:
+                        continue
+                    for val in values:
+                        try:
+                            conn.execute(text(
+                                f"ALTER TYPE {type_name} ADD VALUE IF NOT EXISTS '{val}'"
+                            ))
+                            print(f"  ➕ enum {type_name} += {val}")
+                        except Exception as e:
+                            msg = str(e).lower()
+                            if 'already exists' not in msg and 'duplicate' not in msg:
+                                print(f"  ⚠️ enum {type_name} {val}: {e}")
+        except Exception as e:
+            # Не для PostgreSQL (например SQLite) — enum-типов нет, пропускаем
+            print(f"  ℹ️ Пропуск миграции enum: {e}")
         
         # 2. Добавляем недостающие колонки в существующие таблицы
         for table_name, table in Base.metadata.tables.items():
