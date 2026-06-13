@@ -116,7 +116,7 @@ function Main() {
 
 // ==================== САЙДБАР ====================
 function Sidebar({ page, setPage }) {
-  const { user, logout, canUpload, canManageUsers, canApprove, canCreateTZ, isEskAdmin, isSueAdmin, isResUser, isEskUser } = useAuth()
+  const { user, logout, canUpload, canManageUsers, canApprove, canCreateTZ, isEskAdmin, isSueAdmin, isResUser, isEskUser, isOksAdmin } = useAuth()
   const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
@@ -134,8 +134,8 @@ function Sidebar({ page, setPage }) {
     { id: 'pu-actioned', label: '📋 Актированные ПУ', show: true },
     { id: 'analysis', label: '📊 Анализ остатков', show: true },
     { id: 'approval', label: '✅ Согласование', show: canApprove, badge: pendingCount },
-    { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin },
-    { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin || isEskAdmin || isEskUser },
+    { id: 'tz', label: '📋 Техн. задания', show: isSueAdmin || isOksAdmin },
+    { id: 'requests', label: '📝 Заявки ЭСК', show: isSueAdmin || isEskAdmin || isEskUser || isOksAdmin },
     { id: 'memo', label: '📄 Служебки', show: isSueAdmin },
     { id: 'settings', label: '⚙️ Настройки', show: canManageUsers || isEskAdmin || isResUser || isEskUser },
     ].filter(i => i.show)
@@ -241,8 +241,8 @@ function HomePage({ setPage }) {
     { id: 'pu', icon: '📦', label: 'Приборы учета', desc: 'Просмотр и управление', show: true },
     { id: 'upload', icon: '📤', label: 'Загрузить реестр', desc: 'Импорт из Excel', show: canUpload },
     { id: 'approval', icon: '✅', label: 'Согласование', desc: 'СМР от ЭСК', show: canApprove },
-    { id: 'tz', icon: '📋', label: 'Тех. задания', desc: 'Формирование ТЗ', show: isSueAdmin },
-    { id: 'requests', icon: '📝', label: 'Заявки ЭСК', desc: 'Формирование заявок', show: isSueAdmin },
+    { id: 'tz', icon: '📋', label: 'Тех. задания', desc: 'Формирование ТЗ', show: isSueAdmin || isOksAdmin },
+    { id: 'requests', icon: '📝', label: 'Заявки ЭСК', desc: 'Реестр заявок', show: isSueAdmin || isOksAdmin },
     { id: 'settings', icon: '⚙️', label: 'Настройки', desc: 'Справочники', show: canManageUsers || isEskAdmin },
   ].filter(s => s.show)
 
@@ -2404,7 +2404,7 @@ function RejectModal({ item, onClose, onReject }) {
 
 // ==================== ТЕХНИЧЕСКИЕ ЗАДАНИЯ ====================
 function TZPage() {
-  const { isSueAdmin } = useAuth()
+  const { isSueAdmin, isOksAdmin } = useAuth()
   const [tab, setTab] = useState('list')
   const [tzList, setTzList] = useState([])
   const [tzSort, setTzSort] = useState({ field: 'tz_number', dir: 'desc' })
@@ -2440,7 +2440,7 @@ function TZPage() {
 
   useEffect(() => {
     api.get('/tz/list').then(r => setTzList(r.data))
-    api.get('/units').then(r => setUnits(r.data.filter(u => u.unit_type === 'RES')))
+    api.get('/units').then(r => setUnits(r.data.filter(u => isOksAdmin ? (u.unit_type === 'OKS_UNIT') : (u.unit_type === 'RES'))))
   }, [])
 
   // Загрузка ПУ при изменении фильтров
@@ -2695,7 +2695,7 @@ const saveAllMaterials = async () => {
   // Создать ТЗ (финальный шаг)
   const handleCreate = async () => {
     if (!selectedUnit || selectedItems.length === 0) {
-      alert('Выберите РЭС и ПУ')
+      alert('Выберите подразделение и ПУ')
       return
     }
     if (selectedStatus === 'TECHPRIS' && !selectedPower) {
@@ -2759,10 +2759,15 @@ const saveAllMaterials = async () => {
     setPendingItems([])
   }
 
-  if (!isSueAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
+  if (!isSueAdmin && !isOksAdmin) return <div className="text-center py-12 text-gray-500">Нет доступа</div>
 
   const statusLabels = { TECHPRIS: 'Техприс', ZAMENA: 'Замена', IZHC: 'ИЖЦ' }
   const needPowerCategory = selectedStatus === 'TECHPRIS'
+  // ТЗ ОКС помечены префиксом "ОКС ". Управлять (добавлять/исключать ПУ) можно только своими ТЗ
+  const canManageTz = (tz) => {
+    const isOksTz = (tz.tz_number || '').startsWith('ОКС ')
+    return (isSueAdmin && !isOksTz) || (isOksAdmin && isOksTz)
+  }
 
   return (
     <div className="space-y-6">
@@ -2798,7 +2803,7 @@ const saveAllMaterials = async () => {
                 {availableTypes.map(s => <option key={s} value={s}>{statusLabels[s] || s}</option>)}
               </select>
               <select value={tzFilterUnit} onChange={e => { setTzFilterUnit(e.target.value); setTzFilterTz('') }} className="px-3 py-2 border rounded-lg text-sm">
-                <option value="">Все РЭС</option>
+                <option value="">Все подразделения</option>
                 {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
               <select value={tzFilterTz} onChange={e => setTzFilterTz(e.target.value)} className="px-3 py-2 border rounded-lg text-sm min-w-[200px]">
@@ -2824,7 +2829,7 @@ const saveAllMaterials = async () => {
                   {[
                     { field: 'tz_number', label: 'Номер ТЗ' },
                     { field: 'status', label: 'Тип' },
-                    { field: 'unit_name', label: 'РЭС' },
+                    { field: 'unit_name', label: 'Подразделение' },
                     { field: 'count', label: 'Кол-во ПУ' },
                   ].map(col => (
                     <th key={col.field} className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none" onClick={() => setTzSort(prev => ({ field: col.field, dir: prev.field === col.field && prev.dir === 'asc' ? 'desc' : 'asc' }))}>
@@ -2854,7 +2859,7 @@ const saveAllMaterials = async () => {
                           <div className="flex justify-between items-center mb-3">
                             <span className="font-medium">ПУ в ТЗ {tz.tz_number}</span>
                             <div className="flex gap-2">
-                              {selectedTzItems.length > 0 && (
+                              {canManageTz(tz) && selectedTzItems.length > 0 && (
                                 <button 
                                   onClick={removeFromTz} 
                                   disabled={removingFromTz}
@@ -2863,12 +2868,14 @@ const saveAllMaterials = async () => {
                                   {removingFromTz ? '⏳ Удаление...' : `🗑️ Удалить из ТЗ (${selectedTzItems.length})`}
                                 </button>
                               )}
-                              <button 
-                                onClick={() => { setShowAddSearch(!showAddSearch); setAddSearchQuery(''); setAddSearchResults([]); setSelectedAddItems([]) }}
-                                className={`px-3 py-1 ${showAddSearch ? 'bg-gray-500' : 'bg-blue-600'} text-white rounded-lg text-sm`}
-                              >
-                                {showAddSearch ? '✕ Закрыть поиск' : '➕ Добавить ПУ'}
-                              </button>
+                              {canManageTz(tz) && (
+                                <button 
+                                  onClick={() => { setShowAddSearch(!showAddSearch); setAddSearchQuery(''); setAddSearchResults([]); setSelectedAddItems([]) }}
+                                  className={`px-3 py-1 ${showAddSearch ? 'bg-gray-500' : 'bg-blue-600'} text-white rounded-lg text-sm`}
+                                >
+                                  {showAddSearch ? '✕ Закрыть поиск' : '➕ Добавить ПУ'}
+                                </button>
+                              )}
                               <button onClick={exportToExcel} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">📥 Выгрузить в Excel</button>
                             </div>
                           </div>
@@ -3014,7 +3021,7 @@ const saveAllMaterials = async () => {
                 <option value="IZHC">ИЖЦ</option>
               </select>
               <select value={selectedUnit} onChange={e => { setSelectedUnit(e.target.value); setSelectedItems([]) }} className="px-3 py-2 border rounded-lg">
-                <option value="">Выберите РЭС...</option>
+                <option value="">{isOksAdmin ? 'Выберите участок ОКС...' : 'Выберите РЭС...'}</option>
                 {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
               {needPowerCategory && (
@@ -3064,7 +3071,7 @@ const saveAllMaterials = async () => {
           <div className="bg-white rounded-xl border overflow-hidden">
             {!selectedUnit || (needPowerCategory && !selectedPower) ? (
               <div className="p-8 text-center text-gray-500">
-                {needPowerCategory ? 'Выберите РЭС и категорию мощности' : 'Выберите РЭС'}
+                {needPowerCategory ? (isOksAdmin ? 'Выберите участок ОКС и категорию мощности' : 'Выберите РЭС и категорию мощности') : (isOksAdmin ? 'Выберите участок ОКС' : 'Выберите РЭС')}
               </div>
             ) : pendingItems.length === 0 ? (
               <div className="p-8 text-center text-gray-500">Нет ПУ без ТЗ для выбранных параметров</div>
