@@ -2116,11 +2116,85 @@ function ReviewDetail({ detail, source, loading }) {
   )
 }
 
+function ReviewModal({ item, onClose, onApprove, onReject }) {
+  const [detail, setDetail] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [rejecting, setRejecting] = useState(false)
+  const [comment, setComment] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    api.get(`/pu/items/${item.id}/review`)
+      .then(r => setDetail(r.data))
+      .catch(err => setDetail({ error: err.response?.data?.detail || 'Ошибка загрузки' }))
+      .finally(() => setLoading(false))
+  }, [item.id])
+
+  const doApprove = async () => {
+    setBusy(true)
+    try { await onApprove(item.id) } finally { setBusy(false) }
+  }
+  const doReject = async () => {
+    if (!comment.trim()) { alert('Укажите причину отклонения'); return }
+    setBusy(true)
+    try { await onReject(item.id, comment.trim()) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+          <div>
+            <h2 className="text-lg font-semibold">Рассмотрение карточки ПУ</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium mr-2 ${item.source === 'ОКС' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>{item.source || 'ЭСК'}</span>
+              <span className="font-mono">{item.serial_number}</span>{item.res_name ? ` · ${item.res_name}` : ''}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <ReviewField label="Серийный номер" value={item.serial_number} />
+            <ReviewField label="Тип ПУ" value={item.pu_type} />
+            <ReviewField label="Потребитель" value={item.consumer} />
+            <ReviewField label="Договор" value={item.contract_number} />
+          </div>
+          <hr />
+          <ReviewDetail detail={detail} source={item.source} loading={loading} />
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4">
+          {rejecting ? (
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-red-700">Причина отклонения *</label>
+              <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3} placeholder="Опишите, что нужно исправить..." className="w-full px-3 py-2 border rounded-lg" />
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setRejecting(false)} disabled={busy} className="px-4 py-2 bg-gray-200 rounded-lg">Назад</button>
+                <button onClick={doReject} disabled={busy} className="px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50">Подтвердить отклонение</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose} disabled={busy} className="px-4 py-2 bg-gray-200 rounded-lg">Закрыть</button>
+              <button onClick={() => setRejecting(true)} disabled={busy} className="px-4 py-2 bg-red-500 text-white rounded-lg disabled:opacity-50">✕ Не согласовать</button>
+              <button onClick={doApprove} disabled={busy} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">{busy ? '...' : '✓ Согласовать'}</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ApprovalPage() {
   const { canApprove, isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [rejectModal, setRejectModal] = useState(null)
+  const [reviewModal, setReviewModal] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [details, setDetails] = useState({})
   const [loadingDetail, setLoadingDetail] = useState(false)
@@ -2242,10 +2316,14 @@ function ApprovalPage() {
                   <td className="px-3 py-3">{i.lsr_va || i.lsr_truba || '—'}</td>
                   <td className="px-3 py-3">{i.smr_date || '—'}</td>
                   <td className="px-3 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => handleApprove(i.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">✓ Согласовать</button>
-                      <button onClick={() => setRejectModal(i)} className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm">✕ Отклонить</button>
-                    </div>
+                    {i.source === 'ОКС' ? (
+                      <button onClick={() => setReviewModal(i)} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm whitespace-nowrap">🔍 Рассмотреть</button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button onClick={() => handleApprove(i.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm">✓ Согласовать</button>
+                        <button onClick={() => setRejectModal(i)} className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm">✕ Отклонить</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
                 {expanded === i.id && (
@@ -2267,6 +2345,15 @@ function ApprovalPage() {
           item={rejectModal} 
           onClose={() => setRejectModal(null)} 
           onReject={handleReject} 
+        />
+      )}
+
+      {reviewModal && (
+        <ReviewModal
+          item={reviewModal}
+          onClose={() => setReviewModal(null)}
+          onApprove={async (id) => { await handleApprove(id); setReviewModal(null) }}
+          onReject={async (id, comment) => { await handleReject(id, comment); setReviewModal(null) }}
         />
       )}
     </div>
