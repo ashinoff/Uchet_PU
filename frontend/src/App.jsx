@@ -390,6 +390,10 @@ function PUListPage({ filter = 'all' }) {
   const [unitTypeFilter, setUnitTypeFilter] = useState('all')
   const [contractSearch, setContractSearch] = useState('')
   const [lsSearch, setLsSearch] = useState('')
+  // Debounced-значения поиска (запрос уходит после паузы в наборе, а не на каждую букву)
+  const [debSearch, setDebSearch] = useState('')
+  const [debContract, setDebContract] = useState('')
+  const [debLs, setDebLs] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(1)
@@ -401,28 +405,29 @@ function PUListPage({ filter = 'all' }) {
   const [sortField, setSortField] = useState('created_at')
   const [sortDir, setSortDir] = useState('desc')
 
-  // Debounce для автопоиска
+  // Debounce: после паузы переносим введённое в debounced-значения и сбрасываем на 1-ю страницу
   useEffect(() => {
     const timer = setTimeout(() => {
+      setDebSearch(search)
+      setDebContract(contractSearch)
+      setDebLs(lsSearch)
       setPage(1)
-      
-    }, 500) // 500мс задержка
-  
+    }, 400)
     return () => clearTimeout(timer)
   }, [search, contractSearch, lsSearch])
 
   useEffect(() => { api.get('/units').then(r => setUnits(r.data)) }, [])
-  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter, sortField, sortDir, search, contractSearch, lsSearch])
+  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter, sortField, sortDir, debSearch, debContract, debLs])
 
   const load = async () => {
     setLoading(true)
     const params = { page, size: 50, sort_field: sortField, sort_dir: sortDir }
-    if (search) params.search = search
+    if (debSearch) params.search = debSearch
     if (status) params.status = status
     if (unitFilter) params.unit_id = unitFilter
     if (unitTypeFilter !== 'all') params.unit_type_filter = unitTypeFilter
-    if (contractSearch) params.contract = contractSearch
-    if (lsSearch) params.ls = lsSearch
+    if (debContract) params.contract = debContract
+    if (debLs) params.ls = debLs
     if (filter) params.filter = filter  // all, work, done
     const r = await api.get('/pu/items', { params })
     setItems(r.data.items)
@@ -2853,8 +2858,8 @@ const saveAllMaterials = async () => {
                   const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'ru')
                   return tzSort.dir === 'asc' ? cmp : -cmp
                 }).map((tz, idx) => (
-                  <>
-                    <tr key={idx} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(tz.tz_number)}>
+                  <Fragment key={tz.tz_number || idx}>
+                    <tr className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(tz.tz_number)}>
                       <td className="px-4 py-3">{expandedTz === tz.tz_number ? '▼' : '▶'}</td>
                       <td className="px-4 py-3 font-medium">{tz.tz_number}</td>
                       <td className="px-4 py-3">{statusLabels[tz.status] || tz.status}</td>
@@ -3009,7 +3014,7 @@ const saveAllMaterials = async () => {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
