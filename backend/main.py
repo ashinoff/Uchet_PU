@@ -3901,8 +3901,8 @@ def get_pending_for_tz(
     user: User = Depends(get_current_user)
 ):
     """ПУ без ТЗ для формирования с фильтром по мощности"""
-    if not is_sue_admin(user):
-        raise HTTPException(403, "Только СУЭ может формировать ТЗ")
+    if not is_sue_admin(user) and not is_oks_admin(user):
+        raise HTTPException(403, "Только СУЭ или ОКС может формировать ТЗ")
     
     q = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(
     PUItem.status == status,
@@ -3922,9 +3922,12 @@ def get_pending_for_tz(
         elif power_category == 3:
             q = q.filter(PUItem.power > 150)
     
-    # Только РЭС
-    res_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.RES)
-    q = q.filter(PUItem.current_unit_id.in_(res_units))
+    # СУЭ берёт только ПУ РЭС, ОКС — только ПУ ОКС
+    if is_oks_admin(user):
+        scope_units = db.query(Unit.id).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT]))
+    else:
+        scope_units = db.query(Unit.id).filter(Unit.unit_type == UnitType.RES)
+    q = q.filter(PUItem.current_unit_id.in_(scope_units))
     
     items = q.all()
     return [{
@@ -3937,11 +3940,11 @@ def get_pending_for_tz(
 @app.post("/api/tz/create")
 def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Создать ТЗ с автоматическим номером"""
-    if not is_sue_admin(user):
-        raise HTTPException(403, "Только СУЭ может формировать ТЗ")
+    if not is_sue_admin(user) and not is_oks_admin(user):
+        raise HTTPException(403, "Только СУЭ или ОКС может формировать ТЗ")
     
     item_ids = data["item_ids"]
-    unit_id = data["unit_id"]  # РЭС
+    unit_id = data["unit_id"]  # РЭС (для СУЭ) или участок ОКС (для ОКС)
     status = data["status"]  # TECHPRIS, ZAMENA, IZHC
     power_category = data.get("power_category")  # Только для Техприс
     custom_suffix = data.get("custom_suffix")  # Ручная корректировка окончания
@@ -3949,7 +3952,14 @@ def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(ge
     # Получаем букву РЭС
     unit = db.query(Unit).filter(Unit.id == unit_id).first()
     if not unit or not unit.short_code:
-        raise HTTPException(400, "РЭС не найден или не указан код")
+        raise HTTPException(400, "Подразделение не найдено или не указан код")
+    
+    # Проверка соответствия типа подразделения роли
+    is_oks_unit = unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT)
+    if is_oks_admin(user) and not is_oks_unit:
+        raise HTTPException(403, "ОКС может формировать ТЗ только по своим подразделениям")
+    if is_sue_admin(user) and unit.unit_type != UnitType.RES:
+        raise HTTPException(403, "СУЭ может формировать ТЗ только по РЭС")
     
     # Формируем префикс в зависимости от типа
     if status == 'TECHPRIS':
@@ -3970,7 +3980,9 @@ def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(ge
         year = now.strftime("%y")
         suffix = f"{month}-{year}"
     
-    tz_number = f"{prefix} {unit.short_code}-{suffix}"
+    # Для ОКС добавляем маркер, чтобы отличать от ТЗ РЭС и избежать коллизий номеров
+    oks_marker = "ОКС " if is_oks_unit else ""
+    tz_number = f"{oks_marker}{prefix} {unit.short_code}-{suffix}"
     
     # Проверяем уникальность
     existing = db.query(PUItem).filter(PUItem.tz_number == tz_number).first()
@@ -3984,9 +3996,9 @@ def create_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(ge
 
 @app.post("/api/tz/remove-items")
 def remove_items_from_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Удалить (исключить) ПУ из ТЗ — только СУЭ"""
-    if not is_sue_admin(user):
-        raise HTTPException(403, "Только СУЭ может удалять ПУ из ТЗ")
+    """Удалить (исключить) ПУ из ТЗ — СУЭ или ОКС"""
+    if not is_sue_admin(user) and not is_oks_admin(user):
+        raise HTTPException(403, "Только СУЭ или ОКС может удалять ПУ из ТЗ")
     
     item_ids = data.get("item_ids", [])
     tz_number = data.get("tz_number", "")
@@ -3995,10 +4007,15 @@ def remove_items_from_tz(data: dict, db: Session = Depends(get_db), user: User =
         raise HTTPException(400, "Не выбраны ПУ для удаления из ТЗ")
     
     # Обновляем только ПУ, которые принадлежат указанному ТЗ
-    updated = db.query(PUItem).filter(
+    rm_q = db.query(PUItem).filter(
         PUItem.id.in_(item_ids),
         PUItem.tz_number == tz_number
-    ).update({"tz_number": None}, synchronize_session=False)
+    )
+    # ОКС может исключать только ПУ своих подразделений
+    if is_oks_admin(user):
+        oks_units = db.query(Unit.id).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT]))
+        rm_q = rm_q.filter(PUItem.current_unit_id.in_(oks_units))
+    updated = rm_q.update({"tz_number": None}, synchronize_session=False)
     
     db.commit()
     
@@ -4015,8 +4032,8 @@ def search_available_for_tz(
     user: User = Depends(get_current_user)
 ):
     """Поиск ПУ для добавления в существующий ТЗ"""
-    if not is_sue_admin(user):
-        raise HTTPException(403, "Только СУЭ может добавлять ПУ в ТЗ")
+    if not is_sue_admin(user) and not is_oks_admin(user):
+        raise HTTPException(403, "Только СУЭ или ОКС может добавлять ПУ в ТЗ")
     
     if not q or len(q) < 2:
         return []
@@ -4034,9 +4051,14 @@ def search_available_for_tz(
         PUItem.status == tz_status,
     )
     
-    # Фильтр по РЭС (только из того же подразделения что и ТЗ)
+    # Фильтр по подразделению (только из того же подразделения что и ТЗ)
     if sample.current_unit_id:
         query = query.filter(PUItem.current_unit_id == sample.current_unit_id)
+    
+    # ОКС может добавлять только ПУ своих подразделений
+    if is_oks_admin(user):
+        oks_units = db.query(Unit.id).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT]))
+        query = query.filter(PUItem.current_unit_id.in_(oks_units))
     
     # Поиск по серийному номеру или договору/ЛС
     search_filter = or_(
@@ -4063,9 +4085,9 @@ def search_available_for_tz(
 
 @app.post("/api/tz/add-items")
 def add_items_to_tz(data: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Добавить ПУ в существующий ТЗ — только СУЭ"""
-    if not is_sue_admin(user):
-        raise HTTPException(403, "Только СУЭ может добавлять ПУ в ТЗ")
+    """Добавить ПУ в существующий ТЗ — СУЭ или ОКС"""
+    if not is_sue_admin(user) and not is_oks_admin(user):
+        raise HTTPException(403, "Только СУЭ или ОКС может добавлять ПУ в ТЗ")
     
     item_ids = data.get("item_ids", [])
     tz_number = data.get("tz_number", "")
@@ -4081,10 +4103,15 @@ def add_items_to_tz(data: dict, db: Session = Depends(get_db), user: User = Depe
         raise HTTPException(404, "ТЗ не найден")
     
     # Добавляем только ПУ без ТЗ
-    updated = db.query(PUItem).filter(
+    add_q = db.query(PUItem).filter(
         PUItem.id.in_(item_ids),
         PUItem.tz_number.is_(None)
-    ).update({"tz_number": tz_number}, synchronize_session=False)
+    )
+    # ОКС может добавлять только ПУ своих подразделений
+    if is_oks_admin(user):
+        oks_units = db.query(Unit.id).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT]))
+        add_q = add_q.filter(PUItem.current_unit_id.in_(oks_units))
+    updated = add_q.update({"tz_number": tz_number}, synchronize_session=False)
     
     db.commit()
     
@@ -4127,9 +4154,12 @@ def get_next_tz_number(
     
     next_suffix = f"{month}-{year}"
     
+    # Маркер ОКС для участков ОКС
+    oks_marker = "ОКС " if unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT) else ""
+    
     return {
         "next_suffix": next_suffix,
-        "preview": f"{prefix} {unit.short_code}-{next_suffix}"
+        "preview": f"{oks_marker}{prefix} {unit.short_code}-{next_suffix}"
     }
 
 @app.get("/api/requests/list")
