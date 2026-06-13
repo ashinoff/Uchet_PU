@@ -161,18 +161,24 @@ export default function App() {
 function Main() {
   const { user, loading } = useAuth()
   const [page, setPage] = useState('home')
+  const [puPreset, setPuPreset] = useState(null)
+
+  // Навигация по меню сбрасывает пресет фильтров ПУ
+  const go = (p) => { setPuPreset(null); setPage(p) }
+  // Открыть список ПУ с заранее выставленными фильтрами (клик по цифре на главной)
+  const openPU = (preset) => { setPuPreset(preset); setPage('pu') }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><RossetiLoader /></div>
   if (!user) return <LoginPage />
 
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-800">
-      <Sidebar page={page} setPage={setPage} />
-      <div className="flex-1 ml-60">
+      <Sidebar page={page} setPage={go} />
+      <div className="flex-1 ml-60 min-w-0">
         <Header />
-        <div className="p-6 max-w-[1400px]">
-          {page === 'home' && <HomePage setPage={setPage} />}
-          {page === 'pu' && <PUListPage filter="all" />}
+        <div className="p-4 sm:p-6">
+          {page === 'home' && <HomePage setPage={go} onOpenPU={openPU} />}
+          {page === 'pu' && <PUListPage filter="all" preset={puPreset} />}
           {page === 'pu-sklad' && <PUListPage filter="sklad" />}
           {page === 'pu-done' && <PUListPage filter="done" />}
           {page === 'pu-actioned' && <PUListPage filter="actioned" />}
@@ -319,7 +325,7 @@ function LoginPage() {
 }
 
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
-function HomePage({ setPage }) {
+function HomePage({ setPage, onOpenPU }) {
   const { user, canUpload, canManageUsers, canApprove, isSueAdmin, isEskAdmin, isOksAdmin } = useAuth()
   const [stats, setStats] = useState(null)
   const [error, setError] = useState(null)
@@ -354,67 +360,13 @@ function HomePage({ setPage }) {
       </div>
 
       {stats && (
-  <div className="space-y-5">
-    {/* Все — только для СУЭ */}
-    {isSueAdmin && stats.all && (
-      <div>
-        <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2"><Icon name="chart" className="w-4 h-4" /> Все подразделения</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Всего ПУ" value={stats.all.total || 0} color="blue" />
-          <StatCard label="Установлено" value={stats.all.installed || 0} color="emerald" />
-          <StatCard label="На складе" value={stats.all.sklad || 0} color="gray" />
-          <StatCard label="Техприс" value={stats.all.techpris || 0} color="green" />
-          <StatCard label="Замена" value={stats.all.zamena || 0} color="yellow" />
-          <StatCard label="ИЖЦ" value={stats.all.izhc || 0} color="purple" />
+        <div className="space-y-2">
+          {isSueAdmin && <StatRow icon="chart" title="Все подразделения" data={stats.all} unitType="all" onPick={onOpenPU} />}
+          {isSueAdmin && <StatRow icon="building" title="РЭС (РСК)" data={stats.res} unitType="res" onPick={onOpenPU} />}
+          {(isSueAdmin || isEskAdmin) && <StatRow icon="zap" title="ЭСК" data={stats.esk} unitType="esk" onPick={onOpenPU} />}
+          {(isSueAdmin || isOksAdmin) && <StatRow icon="crane" title="ОКС" data={stats.oks} unitType="oks" onPick={onOpenPU} />}
         </div>
-      </div>
-    )}
-    
-    {/* РЭС — только для СУЭ */}
-    {isSueAdmin && stats.res && (
-      <div>
-        <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2"><Icon name="building" className="w-4 h-4" /> РЭС (РСК)</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Всего ПУ" value={stats.res.total || 0} color="blue" />
-          <StatCard label="Установлено" value={stats.res.installed || 0} color="emerald" />
-          <StatCard label="На складе" value={stats.res.sklad || 0} color="gray" />
-          <StatCard label="Техприс" value={stats.res.techpris || 0} color="green" />
-          <StatCard label="Замена" value={stats.res.zamena || 0} color="yellow" />
-          <StatCard label="ИЖЦ" value={stats.res.izhc || 0} color="purple" />
-        </div>
-      </div>
-    )}
-    
-    {/* ЭСК — для СУЭ и ЭСК Админа */}
-    {(isSueAdmin || isEskAdmin) && stats.esk && (
-      <div>
-        <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2"><Icon name="zap" className="w-4 h-4" /> ЭСК</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Всего ПУ" value={stats.esk.total || 0} color="blue" />
-          <StatCard label="Установлено" value={stats.esk.installed || 0} color="emerald" />
-          <StatCard label="На складе" value={stats.esk.sklad || 0} color="gray" />
-          <StatCard label="Техприс" value={stats.esk.techpris || 0} color="green" />
-          <StatCard label="Замена" value={stats.esk.zamena || 0} color="yellow" />
-          <StatCard label="ИЖЦ" value={stats.esk.izhc || 0} color="purple" />
-        </div>
-      </div>
-    )}
-    {/* ОКС — для СУЭ и ОКС Админа */}
-    {(isSueAdmin || isOksAdmin) && stats.oks && (
-      <div>
-        <h3 className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2"><Icon name="crane" className="w-4 h-4" /> ОКС</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Всего ПУ" value={stats.oks.total || 0} color="blue" />
-          <StatCard label="Установлено" value={stats.oks.installed || 0} color="emerald" />
-          <StatCard label="На складе" value={stats.oks.sklad || 0} color="gray" />
-          <StatCard label="Техприс" value={stats.oks.techpris || 0} color="green" />
-          <StatCard label="Замена" value={stats.oks.zamena || 0} color="yellow" />
-          <StatCard label="ИЖЦ" value={stats.oks.izhc || 0} color="purple" />
-        </div>
-      </div>
-    )}
-  </div>
-)}
+      )}
       {stats?.pending_approval > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4">
           <div className="flex items-start gap-3">
@@ -490,8 +442,38 @@ function StatCard({ label, value, color = 'blue' }) {
   )
 }
 
+// Компактная строка остатков подразделения: название + кликабельные цифры в один ряд.
+// Клик по цифре открывает список ПУ с соответствующими фильтрами.
+function StatRow({ icon, title, data, unitType, onPick }) {
+  if (!data) return null
+  const metrics = [
+    { key: 'total',     label: 'Всего',       value: data.total || 0,     color: 'text-[#0B4DA2]', preset: { unitType, status: '',         filter: 'all' } },
+    { key: 'installed', label: 'Установлено', value: data.installed || 0, color: 'text-emerald-600', preset: { unitType, status: '',       filter: 'done' } },
+    { key: 'sklad',     label: 'На складе',   value: data.sklad || 0,     color: 'text-slate-600', preset: { unitType, status: 'SKLAD',    filter: 'all' } },
+    { key: 'techpris',  label: 'Техприс',     value: data.techpris || 0,  color: 'text-green-600', preset: { unitType, status: 'TECHPRIS', filter: 'all' } },
+    { key: 'zamena',    label: 'Замена',      value: data.zamena || 0,    color: 'text-amber-500', preset: { unitType, status: 'ZAMENA',   filter: 'all' } },
+    { key: 'izhc',      label: 'ИЖЦ',         value: data.izhc || 0,      color: 'text-violet-600', preset: { unitType, status: 'IZHC',     filter: 'all' } },
+  ]
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 px-4 py-2.5 flex items-center gap-x-4 gap-y-2 flex-wrap">
+      <div className="flex items-center gap-2 min-w-[140px] font-medium text-slate-800 text-sm">
+        <Icon name={icon} className="w-4 h-4 text-slate-400 shrink-0" /> {title}
+      </div>
+      <div className="flex flex-wrap gap-1 flex-1 justify-end">
+        {metrics.map(m => (
+          <button key={m.key} onClick={() => onPick(m.preset)} title={`Открыть: ${m.label}`}
+            className="group flex items-baseline gap-1.5 px-2.5 py-1 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 active:bg-slate-100 transition">
+            <span className="text-[11px] text-slate-400 group-hover:text-slate-600">{m.label}</span>
+            <span className={`text-base font-bold tabular-nums ${m.color}`}>{m.value}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ==================== СПИСОК ПУ ====================
-function PUListPage({ filter = 'all' }) {
+function PUListPage({ filter = 'all', preset = null }) {
   const { canMove, canDelete, isSueAdmin, isEskAdmin, isEskUser, isOksAdmin, isOksUser } = useAuth()
   const [items, setItems] = useState([])
   const [units, setUnits] = useState([])
@@ -501,6 +483,8 @@ function PUListPage({ filter = 'all' }) {
   const [unitTypeFilter, setUnitTypeFilter] = useState('all')
   const [contractSearch, setContractSearch] = useState('')
   const [lsSearch, setLsSearch] = useState('')
+  // Активный «режим» списка (sklad/done/actioned/all). База — из prop filter, может переопределяться пресетом с главной.
+  const [dynFilter, setDynFilter] = useState(filter)
   // Debounced-значения поиска (запрос уходит после паузы в наборе, а не на каждую букву)
   const [debSearch, setDebSearch] = useState('')
   const [debContract, setDebContract] = useState('')
@@ -528,7 +512,24 @@ function PUListPage({ filter = 'all' }) {
   }, [search, contractSearch, lsSearch])
 
   useEffect(() => { api.get('/units').then(r => setUnits(r.data)) }, [])
-  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, filter, sortField, sortDir, debSearch, debContract, debLs])
+
+  // Базовый режим из prop filter (смена раздела меню)
+  useEffect(() => { setDynFilter(filter) }, [filter])
+
+  // Пресет с главной: выставляем фильтры под выбранную цифру
+  useEffect(() => {
+    if (preset) {
+      setUnitTypeFilter(preset.unitType || 'all')
+      setStatus(preset.status || '')
+      setDynFilter(preset.filter || 'all')
+      setUnitFilter('')
+      setSearch(''); setContractSearch(''); setLsSearch('')
+      setDebSearch(''); setDebContract(''); setDebLs('')
+      setPage(1)
+    }
+  }, [preset])
+
+  useEffect(() => { load() }, [page, status, unitFilter, unitTypeFilter, dynFilter, sortField, sortDir, debSearch, debContract, debLs])
 
   const load = async () => {
     setLoading(true)
@@ -539,7 +540,7 @@ function PUListPage({ filter = 'all' }) {
     if (unitTypeFilter !== 'all') params.unit_type_filter = unitTypeFilter
     if (debContract) params.contract = debContract
     if (debLs) params.ls = debLs
-    if (filter) params.filter = filter  // all, work, done
+    if (dynFilter) params.filter = dynFilter  // all, sklad, done, actioned
     const r = await api.get('/pu/items', { params })
     setItems(r.data.items)
     setTotal(r.data.total)
@@ -636,10 +637,10 @@ function PUListPage({ filter = 'all' }) {
     <div className="flex justify-between items-center">
       <div>
         <h1 className="text-2xl font-bold">
-          {filter === 'all' && 'Все приборы учета'}
-          {filter === 'sklad' && 'Склад'}
-          {filter === 'done' && 'Завершённые СМР'}
-          {filter === 'actioned' && 'Актированные ПУ'}
+          {dynFilter === 'all' && 'Все приборы учёта'}
+          {dynFilter === 'sklad' && 'Склад'}
+          {dynFilter === 'done' && 'Завершённые СМР'}
+          {dynFilter === 'actioned' && 'Актированные ПУ'}
         </h1>
         <p className="text-gray-500">Всего: {total}</p>
       </div>
@@ -743,9 +744,9 @@ function PUListPage({ filter = 'all' }) {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border overflow-hidden">
+      <div className="bg-white rounded-xl border overflow-x-auto">
         {loading ? <div className="p-8"><RossetiLoader /></div> : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[820px]">
             <thead className="bg-gray-50">
               <tr>
                 {canMove && <th className="w-10 px-4 py-3"><input type="checkbox" onChange={e => setSelected(e.target.checked ? items.map(i => i.id) : [])} checked={selected.length === items.length && items.length > 0} /></th>}
