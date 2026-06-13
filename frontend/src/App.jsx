@@ -859,6 +859,15 @@ useEffect(() => {
   api.get('/tt-nominals').then(r => setTtNominals(r.data))
 }, [itemId])
 
+// Для ОКС исполнитель СМР всегда "ОКС" (без выбора РСК/ЭСК)
+useEffect(() => {
+  if (!item) return
+  const oks = item.current_unit_type === 'OKS_UNIT' || item.current_unit_type === 'OKS'
+  if (oks && item.smr_executor !== 'ОКС') {
+    setItem(prev => prev ? { ...prev, smr_executor: 'ОКС' } : prev)
+  }
+}, [item?.current_unit_type, item?.id])
+
 // Очищаем материалы когда ВСЕ ТТР сброшены (с задержкой чтобы перекрыть левый вызов)
 useEffect(() => {
   if (item && !item.ttr_ou_id && !item.ttr_ol_id && !item.ttr_or_id && !item.ttr_tt_id) {
@@ -1515,11 +1524,15 @@ const updateMaterialQty = (materialId, qty) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">СМР выполнил</label>
-                  <select value={item.smr_executor || ''} onChange={e => update('smr_executor', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="">—</option>
-                    <option value="РСК">РСК</option>
-                    <option value="ЭСК">ЭСК</option>
-                  </select>
+                  {isOks ? (
+                    <input type="text" value="ОКС" disabled className="w-full px-3 py-2 border rounded-lg bg-gray-50 font-medium" />
+                  ) : (
+                    <select value={item.smr_executor || ''} onChange={e => update('smr_executor', e.target.value)} disabled={!canEdit} className="w-full px-3 py-2 border rounded-lg">
+                      <option value="">—</option>
+                      <option value="РСК">РСК</option>
+                      <option value="ЭСК">ЭСК</option>
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">Дата СМР</label>
@@ -5468,7 +5481,7 @@ function MoveBulkPage() {
   )
 }
 function AnalysisPage() {
-  const { isSueAdmin, isEskAdmin, isResUser, isEskUser } = useAuth()
+  const { isSueAdmin, isEskAdmin, isResUser, isEskUser, isOksAdmin } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
@@ -5494,7 +5507,7 @@ function AnalysisPage() {
   const handleFilter = () => { load() }
   const clearFilter = () => { setDateFrom(''); setDateTo(''); setTimeout(load, 100) }
 
-  const isAdmin = isSueAdmin || isEskAdmin
+  const isAdmin = isSueAdmin || isEskAdmin || isOksAdmin
 
   const nazLabels = { IZHC: 'ИЖЦ', TECHPRIS: 'Техприс', ZAMENA: 'Замены' }
   const sectionLabels = { total: 'Всего ПУ', installed: 'Установлено', actioned: 'Актировано', sklad: 'Остаток склад' }
@@ -5685,8 +5698,9 @@ const renderBreakdownTable = (units, totals, title, bgColor) => {
           {/* Таблицы с разбивкой */}
           {renderBreakdownTable(data.res, data.res_total, '🏢 РЭС (РСК)', 'bg-green-50')}
           {renderBreakdownTable(data.esk, data.esk_total, '⚡ ЭСК', 'bg-orange-50')}
+          {renderBreakdownTable(data.oks, data.oks_total, '🏗️ ОКС', 'bg-indigo-50')}
 
-          {(!data.res || data.res.length === 0) && (!data.esk || data.esk.length === 0) && (
+          {(!data.res || data.res.length === 0) && (!data.esk || data.esk.length === 0) && (!data.oks || data.oks.length === 0) && (
             <div className="bg-white rounded-xl border p-8 text-center text-gray-500">
               Нет данных для отображения
             </div>
