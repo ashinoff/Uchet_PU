@@ -1500,6 +1500,77 @@ def get_item_detail(item_id: int, db: Session = Depends(get_db), user: User = De
         "tt_nominal_name": item.tt_nominal.name if item.tt_nominal else None,
     }
 
+
+@app.get("/api/pu/items/{item_id}/review")
+def get_item_review(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Детали ПУ для проверки на согласовании (РЭС/СУЭ): ТТР, материалы, оборудование"""
+    if not is_res_user(user) and not is_sue_admin(user):
+        raise HTTPException(403, "Нет доступа")
+    
+    item = db.query(PUItem).filter(PUItem.id == item_id).first()
+    if not item:
+        raise HTTPException(404, "ПУ не найден")
+    
+    def ttr_label(ttr_id):
+        if not ttr_id:
+            return None
+        t = db.query(TTR_RES).filter(TTR_RES.id == ttr_id).first()
+        if not t:
+            return None
+        return f"{t.code} — {t.name}" if t.name else t.code
+    
+    # Фактические материалы
+    materials = []
+    for pm in db.query(PUMaterial).filter(PUMaterial.pu_item_id == item_id).all():
+        m = db.query(Material).filter(Material.id == pm.material_id).first()
+        materials.append({
+            "name": m.name if m else "—",
+            "unit": m.unit if m else "",
+            "quantity": pm.quantity,
+            "used": pm.used,
+        })
+    
+    master_name = None
+    if item.smr_master_id:
+        mm = db.query(ESKMaster).filter(ESKMaster.id == item.smr_master_id).first()
+        master_name = mm.full_name if mm else None
+    
+    return {
+        "status": item.status.value if item.status else None,
+        "naznachenie": item.naznachenie,
+        "faza": item.faza,
+        "voltage": item.voltage,
+        "power": item.power,
+        "contract_number": item.contract_number,
+        "contract_date": item.contract_date.isoformat() if item.contract_date else None,
+        "plan_date": item.plan_date.isoformat() if item.plan_date else None,
+        "consumer": item.consumer,
+        "address": item.address,
+        "ls_number": item.ls_number,
+        "smr_executor": item.smr_executor,
+        "smr_date": item.smr_date.isoformat() if item.smr_date else None,
+        "smr_master": master_name,
+        "trubostoyka": item.trubostoyka,
+        # ТТР РЭС (коды)
+        "ttr_ou": ttr_label(item.ttr_ou_id),
+        "ttr_ol": ttr_label(item.ttr_ol_id),
+        "ttr_or": ttr_label(item.ttr_or_id),
+        "ttr_tt": ttr_label(item.ttr_tt_id),
+        # Оборудование
+        "has_va": item.has_va,
+        "va_nominal": item.va_nominal.name if item.va_nominal else None,
+        "va_quantity": item.va_quantity,
+        "has_tt": item.has_tt,
+        "tt_nominal": item.tt_nominal.name if item.tt_nominal else None,
+        # Материалы
+        "materials": materials,
+        # Поля ЭСК (если раскрывают карточку ЭСК)
+        "form_factor": item.form_factor,
+        "va_type": item.va_type,
+        "lsr_va": item.lsr_va,
+        "lsr_truba": item.lsr_truba,
+    }
+
 @app.put("/api/pu/items/{item_id}")
 def update_item(item_id: int, data: PUCardUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Обновление карточки ПУ"""
