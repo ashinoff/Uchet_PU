@@ -59,25 +59,34 @@ function FlickerStyle() {
   return (
     <style>{`
       @keyframes svetFlicker {
-        0%, 14%  { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.65), 0 0 10px rgba(252,211,77,.35); }
-        15%      { opacity: .22;  text-shadow: none; }
-        16%      { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.6); }
-        17%      { opacity: .3;  text-shadow: none; }
-        18%      { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.6); }
-        19%      { opacity: .2;  text-shadow: none; }
-        20%, 52% { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.65), 0 0 10px rgba(252,211,77,.35); }
-        53%      { opacity: .25; text-shadow: none; }
-        54%      { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.6); }
-        55%      { opacity: .3;  text-shadow: none; }
-        56%      { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.6); }
-        58%      { opacity: .12; text-shadow: none; }
-        60%, 66% { opacity: .05; text-shadow: none; }
-        67%      { opacity: .55; text-shadow: 0 0 3px rgba(252,211,77,.4); }
-        68%      { opacity: .12; text-shadow: none; }
-        70%, 100%{ opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.65), 0 0 10px rgba(252,211,77,.35); }
+        0%, 14%   { opacity: 1; }
+        15%       { opacity: .22; }
+        16%       { opacity: 1; }
+        17%       { opacity: .3; }
+        18%       { opacity: 1; }
+        19%       { opacity: .2; }
+        20%, 52%  { opacity: 1; }
+        53%       { opacity: .25; }
+        54%       { opacity: 1; }
+        55%       { opacity: .3; }
+        56%       { opacity: 1; }
+        58%       { opacity: .12; }
+        60%, 66%  { opacity: .05; }
+        67%       { opacity: .55; }
+        68%       { opacity: .12; }
+        70%, 100% { opacity: 1; }
       }
-      .svetlyachok { color: #fcd34d; animation: svetFlicker 5.5s infinite both; will-change: opacity; }
-      @media (prefers-reduced-motion: reduce) { .svetlyachok { animation: none; } }
+      .svetlyachok {
+        color: #ffffff;
+        text-shadow: 0 0 4px rgba(255,255,255,.95), 0 0 10px rgba(255,255,255,.7), 0 0 18px rgba(191,219,254,.6), 0 0 30px rgba(147,197,253,.4);
+        animation: svetFlicker 5.5s infinite both; will-change: opacity;
+      }
+      .svetlyachok-light {
+        color: #0B4DA2;
+        text-shadow: 0 0 4px rgba(37,99,235,.45), 0 0 10px rgba(37,99,235,.3), 0 0 16px rgba(59,130,246,.25);
+        animation: svetFlicker 5.5s infinite both; will-change: opacity;
+      }
+      @media (prefers-reduced-motion: reduce) { .svetlyachok, .svetlyachok-light { animation: none; } }
     `}</style>
   )
 }
@@ -327,7 +336,7 @@ function LoginPage() {
         <div className="flex flex-col items-center text-center mb-8">
           <BrandMark className="w-14 h-14" />
           <h1 className="text-xl font-semibold text-slate-900 mt-4">Система учёта ПУ</h1>
-          <p className="svetlyachok text-sm mt-1">ПК «Светлячок»</p>
+          <p className="svetlyachok-light text-sm mt-1 font-medium">ПК «Светлячок»</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
