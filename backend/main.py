@@ -594,7 +594,7 @@ class PUCardUpdate(BaseModel):
 app = FastAPI(title="Система учета ПУ")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-Base.metadata.create_all(bind=engine)
+# Создание/миграция схемы выполняется в ensure_db_schema() при старте (см. конец файла)
 
 # ==================== API: AUTH ====================
 
@@ -813,7 +813,8 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         oks_unit_ids = [u.id for u in db.query(Unit).filter(Unit.unit_type.in_([UnitType.OKS, UnitType.OKS_UNIT])).all()]
         
         def get_stats(unit_ids=None):
-            q = db.query(PUItem)
+            # Один запрос с группировкой по статусу вместо пяти отдельных COUNT
+            q = db.query(PUItem.status, func.count(PUItem.id))
             if is_lab_user(user):
                 regs = db.query(PURegister.id).filter(PURegister.uploaded_by == user.id)
                 q = q.filter(PUItem.register_id.in_(regs))
@@ -823,12 +824,17 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
             if unit_ids:
                 q = q.filter(PUItem.current_unit_id.in_(unit_ids))
             
-            total = q.count()
-            sklad = q.filter(PUItem.status == PUStatus.SKLAD).count()
-            techpris = q.filter(PUItem.status == PUStatus.TECHPRIS).count()
-            zamena = q.filter(PUItem.status == PUStatus.ZAMENA).count()
-            izhc = q.filter(PUItem.status == PUStatus.IZHC).count()
+            counts = {}
+            for status_val, cnt in q.group_by(PUItem.status).all():
+                key = status_val.value if hasattr(status_val, 'value') else status_val
+                counts[key] = cnt
+            
+            sklad = counts.get('SKLAD', 0)
+            techpris = counts.get('TECHPRIS', 0)
+            zamena = counts.get('ZAMENA', 0)
+            izhc = counts.get('IZHC', 0)
             installed = techpris + zamena + izhc
+            total = sum(counts.values())
             
             return {
                 "total": total,
@@ -911,32 +917,55 @@ def get_analysis(
         faza_classic = ['1ф', '3ф', '3фтт']
         
         def get_unit_stats(unit_id):
-            q = db.query(PUItem).filter(PUItem.current_unit_id == unit_id)
+            base_filters = [PUItem.current_unit_id == unit_id]
             if start_date:
-                q = q.filter(PUItem.created_at >= start_date)
+                base_filters.append(PUItem.created_at >= start_date)
             if end_date:
-                q = q.filter(PUItem.created_at <= end_date)
+                base_filters.append(PUItem.created_at <= end_date)
             
+            actioned_cond = or_(
+                (PUItem.tz_number != None) & (PUItem.tz_number != ""),
+                (PUItem.request_number != None) & (PUItem.request_number != "")
+            )
+            
+            q = db.query(PUItem).filter(*base_filters)
             total = q.count()
             sklad = q.filter(PUItem.status == PUStatus.SKLAD).count()
             installed = q.filter(PUItem.status != PUStatus.SKLAD).count()
-            actioned = q.filter(
-                or_(
-                    (PUItem.tz_number != None) & (PUItem.tz_number != ""),
-                    (PUItem.request_number != None) & (PUItem.request_number != "")
-                )
-            ).count()
+            actioned = q.filter(actioned_cond).count()
             
-            # Детальная разбивка
+            # Группирующие запросы вместо десятков отдельных COUNT.
+            # status_map: (статус, форм-фактор, фаза) -> кол-во (для установленных/актированных)
+            # sklad_map:  (назначение, форм-фактор, фаза) -> кол-во (для склада)
+            def to_str(v):
+                return v.value if hasattr(v, 'value') else v
+            
+            status_rows = db.query(
+                PUItem.status, PUItem.form_factor, PUItem.faza, func.count(PUItem.id)
+            ).filter(*base_filters).group_by(
+                PUItem.status, PUItem.form_factor, PUItem.faza
+            ).all()
+            status_map = {(to_str(s), ff, fz): c for s, ff, fz, c in status_rows}
+            
+            actioned_rows = db.query(
+                PUItem.status, PUItem.form_factor, PUItem.faza, func.count(PUItem.id)
+            ).filter(*base_filters, actioned_cond).group_by(
+                PUItem.status, PUItem.form_factor, PUItem.faza
+            ).all()
+            actioned_map = {(to_str(s), ff, fz): c for s, ff, fz, c in actioned_rows}
+            
+            sklad_rows = db.query(
+                PUItem.naznachenie, PUItem.form_factor, PUItem.faza, func.count(PUItem.id)
+            ).filter(*base_filters, PUItem.status == PUStatus.SKLAD).group_by(
+                PUItem.naznachenie, PUItem.form_factor, PUItem.faza
+            ).all()
+            sklad_map = {(naz, ff, fz): c for naz, ff, fz, c in sklad_rows}
+            
+            # Детальная разбивка (та же логика и те же цифры, что и раньше):
+            # total: склад → по назначению + не-склад → по статусу
+            # installed: по статусу (!= склад); actioned: по статусу + фильтр актирования
+            # sklad: по назначению при статусе склад
             breakdown = {}
-            
-            # Секции: всего, установлено, актировано, склад
-            # ЛОГИКА:
-            # total: склад → по назначению, не-склад → по статусу
-            # installed: только по статусу (статус != СКЛАД)
-            # actioned: только по статусу + фильтр актирования
-            # sklad: только по назначению при статус = СКЛАД
-            
             for section_key in ['total', 'installed', 'actioned', 'sklad']:
                 section = {}
                 for naz in naznachenie_list:
@@ -946,51 +975,13 @@ def get_analysis(
                         ff_data = {}
                         for fz in fazas:
                             if section_key == 'total':
-                                # Склад → по назначению, не-склад → по статусу
-                                count_sklad = q.filter(
-                                    PUItem.status == PUStatus.SKLAD,
-                                    PUItem.naznachenie == naz,
-                                    PUItem.form_factor == ff,
-                                    PUItem.faza == fz
-                                ).count()
-                                count_installed = q.filter(
-                                    PUItem.status != PUStatus.SKLAD,
-                                    PUItem.status == naz,
-                                    PUItem.form_factor == ff,
-                                    PUItem.faza == fz
-                                ).count()
-                                ff_data[fz] = count_sklad + count_installed
-                                
+                                ff_data[fz] = sklad_map.get((naz, ff, fz), 0) + status_map.get((naz, ff, fz), 0)
                             elif section_key == 'installed':
-                                # Только по статусу (факт установки)
-                                ff_data[fz] = q.filter(
-                                    PUItem.status == naz,
-                                    PUItem.status != PUStatus.SKLAD,
-                                    PUItem.form_factor == ff,
-                                    PUItem.faza == fz
-                                ).count()
-                                
+                                ff_data[fz] = status_map.get((naz, ff, fz), 0)
                             elif section_key == 'actioned':
-                                # Только по статусу + актировано
-                                ff_data[fz] = q.filter(
-                                    PUItem.status == naz,
-                                    PUItem.form_factor == ff,
-                                    PUItem.faza == fz,
-                                    or_(
-                                        (PUItem.tz_number != None) & (PUItem.tz_number != ""),
-                                        (PUItem.request_number != None) & (PUItem.request_number != "")
-                                    )
-                                ).count()
-                                
+                                ff_data[fz] = actioned_map.get((naz, ff, fz), 0)
                             elif section_key == 'sklad':
-                                # Только по назначению при статус = СКЛАД
-                                ff_data[fz] = q.filter(
-                                    PUItem.status == PUStatus.SKLAD,
-                                    PUItem.naznachenie == naz,
-                                    PUItem.form_factor == ff,
-                                    PUItem.faza == fz
-                                ).count()
-                                
+                                ff_data[fz] = sklad_map.get((naz, ff, fz), 0)
                         naz_data[ff] = ff_data
                     section[naz] = naz_data
                 breakdown[section_key] = section
@@ -1778,14 +1769,16 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
     count = 0
     skipped_duplicates = 0
     duplicate_serials = []
+    # Предзагружаем все существующие заводские номера одним запросом
+    # (вместо отдельного SELECT на каждую строку файла)
+    existing_serials = set(s for (s,) in db.query(PUItem.serial_number).all())
     for _, row in df.iterrows():
         serial = str(row.get(serial_col, '')).strip()
         if not serial or serial == 'nan':
             continue
     
-        # Проверка дубликата серийного номера
-        existing = db.query(PUItem).filter(PUItem.serial_number == serial).first()
-        if existing:
+        # Проверка дубликата серийного номера (в БД и в пределах текущего файла)
+        if serial in existing_serials:
             skipped_duplicates += 1
             duplicate_serials.append(serial)
             continue
@@ -1830,6 +1823,7 @@ async def upload_register(file: UploadFile = File(...), db: Session = Depends(ge
             voltage=detected.get('voltage')
         )
         db.add(item)
+        existing_serials.add(serial)
         count += 1
     
     register.items_count = count
@@ -2818,12 +2812,13 @@ def get_pending_approval(db: Session = Depends(get_db), user: User = Depends(get
     else:
         items = db.query(PUItem).options(joinedload(PUItem.current_unit)).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
     
+    code_to_name = {u.code: u.name for u in db.query(Unit.code, Unit.name).all()}
+    
     def get_res_name(src_unit):
         if not src_unit or not src_unit.code:
             return "—"
         res_code = src_unit.code.replace("ESK_", "RES_").replace("OKS_", "RES_")
-        res_unit = db.query(Unit).filter(Unit.code == res_code).first()
-        return res_unit.name if res_unit else "—"
+        return code_to_name.get(res_code, "—")
     
     def get_source(src_unit):
         if src_unit and src_unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT):
@@ -2869,12 +2864,13 @@ def export_pending_approval(db: Session = Depends(get_db), user: User = Depends(
     else:
         items = db.query(PUItem).filter(PUItem.approval_status == ApprovalStatus.PENDING).all()
     
+    code_to_name = {u.code: u.name for u in db.query(Unit.code, Unit.name).all()}
+    
     def get_res_name(src_unit):
         if not src_unit or not src_unit.code:
             return "—"
         res_code = src_unit.code.replace("ESK_", "RES_").replace("OKS_", "RES_")
-        res_unit = db.query(Unit).filter(Unit.code == res_code).first()
-        return res_unit.name if res_unit else "—"
+        return code_to_name.get(res_code, "—")
     
     def get_source(src_unit):
         if src_unit and src_unit.unit_type in (UnitType.OKS, UnitType.OKS_UNIT):
@@ -5346,6 +5342,31 @@ def ensure_db_schema():
                         # Игнорируем если колонка уже есть
                         if 'already exists' not in str(e).lower() and 'duplicate' not in str(e).lower():
                             print(f"  ⚠️ Ошибка {table_name}.{column.name}: {e}")
+        
+        # 3. Индексы на часто фильтруемых колонках (ускоряют списки/дашборд/аналитику/согласование)
+        index_defs = [
+            ("ix_pu_items_current_unit_id", "pu_items", "current_unit_id"),
+            ("ix_pu_items_status", "pu_items", "status"),
+            ("ix_pu_items_approval_status", "pu_items", "approval_status"),
+            ("ix_pu_items_tz_number", "pu_items", "tz_number"),
+            ("ix_pu_items_request_number", "pu_items", "request_number"),
+            ("ix_pu_items_contract_number", "pu_items", "contract_number"),
+            ("ix_pu_items_register_id", "pu_items", "register_id"),
+            ("ix_pu_items_target_unit_id", "pu_items", "target_unit_id"),
+            ("ix_pu_materials_pu_item_id", "pu_materials", "pu_item_id"),
+            ("ix_pu_movements_pu_item_id", "pu_movements", "pu_item_id"),
+        ]
+        for idx_name, tbl, col in index_defs:
+            if tbl not in existing_tables:
+                continue
+            try:
+                db.execute(text(f'CREATE INDEX IF NOT EXISTS {idx_name} ON "{tbl}" ("{col}")'))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                if 'already exists' not in str(e).lower():
+                    print(f"  ⚠️ Индекс {idx_name}: {e}")
+        print("✅ Индексы проверены")
         
         print("✅ Схема БД актуальна")
         
