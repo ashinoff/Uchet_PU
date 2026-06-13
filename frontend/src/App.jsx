@@ -54,6 +54,34 @@ function AuthProvider({ children }) {
   }}>{children}</AuthContext.Provider>
 }
 
+// Анимация «полусгоревшей лампочки» для названия «Светлячок»
+function FlickerStyle() {
+  return (
+    <style>{`
+      @keyframes svetFlicker {
+        0%, 14%  { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.65), 0 0 10px rgba(252,211,77,.35); }
+        15%      { opacity: .22;  text-shadow: none; }
+        16%      { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.6); }
+        17%      { opacity: .3;  text-shadow: none; }
+        18%      { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.6); }
+        19%      { opacity: .2;  text-shadow: none; }
+        20%, 52% { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.65), 0 0 10px rgba(252,211,77,.35); }
+        53%      { opacity: .25; text-shadow: none; }
+        54%      { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.6); }
+        55%      { opacity: .3;  text-shadow: none; }
+        56%      { opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.6); }
+        58%      { opacity: .12; text-shadow: none; }
+        60%, 66% { opacity: .05; text-shadow: none; }
+        67%      { opacity: .55; text-shadow: 0 0 3px rgba(252,211,77,.4); }
+        68%      { opacity: .12; text-shadow: none; }
+        70%, 100%{ opacity: 1;   text-shadow: 0 0 4px rgba(252,211,77,.65), 0 0 10px rgba(252,211,77,.35); }
+      }
+      .svetlyachok { color: #fcd34d; animation: svetFlicker 5.5s infinite both; will-change: opacity; }
+      @media (prefers-reduced-motion: reduce) { .svetlyachok { animation: none; } }
+    `}</style>
+  )
+}
+
 const useAuth = () => useContext(AuthContext)
 
 // ==================== ДИЗАЙН-СИСТЕМА ====================
@@ -155,7 +183,7 @@ function RossetiLoader({ size = 'normal' }) {
 
 // ==================== ГЛАВНЫЙ КОМПОНЕНТ ====================
 export default function App() {
-  return <AuthProvider><Main /></AuthProvider>
+  return <AuthProvider><FlickerStyle /><Main /></AuthProvider>
 }
 
 function Main() {
@@ -228,7 +256,7 @@ function Sidebar({ page, setPage }) {
         <BrandMark className="w-9 h-9" />
         <div className="leading-tight">
           <div className="font-semibold text-white text-sm">Система учёта ПУ</div>
-          <div className="text-[11px] text-slate-400">ПК «Светлячок»</div>
+          <div className="text-[11px] svetlyachok">ПК «Светлячок»</div>
         </div>
       </div>
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
@@ -299,7 +327,7 @@ function LoginPage() {
         <div className="flex flex-col items-center text-center mb-8">
           <BrandMark className="w-14 h-14" />
           <h1 className="text-xl font-semibold text-slate-900 mt-4">Система учёта ПУ</h1>
-          <p className="text-slate-400 text-sm mt-1">ПК «Светлячок»</p>
+          <p className="svetlyachok text-sm mt-1">ПК «Светлячок»</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -354,9 +382,9 @@ function HomePage({ setPage, onOpenPU }) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl p-6 text-white bg-gradient-to-r from-[#0B4DA2] to-[#1565C0] shadow-sm">
-        <h1 className="text-2xl font-bold">Добро пожаловать, {user?.full_name}!</h1>
-        <p className="text-blue-100/90 mt-0.5">{user?.unit_name} • {user?.role_name}</p>
+      <div className="rounded-xl px-5 py-3.5 text-white bg-gradient-to-r from-[#0B4DA2] to-[#1565C0] shadow-sm">
+        <h1 className="text-lg font-semibold">Добро пожаловать, {user?.full_name}!</h1>
+        <p className="text-blue-100/90 text-xs mt-0.5">{user?.unit_name} • {user?.role_name}</p>
       </div>
 
       {stats && (
