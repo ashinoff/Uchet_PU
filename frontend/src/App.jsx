@@ -1,5 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react'
-import { Fragment } from 'react'
+import { useState, useEffect, createContext, useContext, Fragment } from 'react'
 import api from './api'
 
 // ==================== КОНТЕКСТ АВТОРИЗАЦИИ ====================
@@ -1736,6 +1735,20 @@ const updateMaterialQty = (materialId, qty) => {
           )}
         </div>
       )}
+
+      {/* Трубостойка — только для ОКС */}
+      {isOks && (
+        <div className="space-y-2">
+          <label className="flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              checked={item?.trubostoyka || false} 
+              onChange={e => setItem(prev => ({ ...prev, trubostoyka: e.target.checked }))} 
+            />
+            <span className="text-sm font-medium">Трубостойка</span>
+          </label>
+        </div>
+      )}
     </div>
   </div>
 )}
@@ -2005,17 +2018,135 @@ function UploadPage() {
 }
 
 // ==================== СОГЛАСОВАНИЕ ====================
+function ReviewField({ label, value }) {
+  return (
+    <div>
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-sm font-medium break-words">{value || '—'}</div>
+    </div>
+  )
+}
+
+function ReviewDetail({ detail, source, loading }) {
+  if (loading) return <div className="py-4 text-center text-gray-500">Загрузка содержимого…</div>
+  if (!detail) return <div className="py-4 text-center text-gray-400">Нет данных</div>
+  if (detail.error) return <div className="py-4 text-center text-red-500">{detail.error}</div>
+
+  const isOks = source === 'ОКС'
+  const statusLabel = detail.status === 'TECHPRIS' ? 'Техприс' : detail.status === 'ZAMENA' ? 'Замена' : detail.status === 'IZHC' ? 'ИЖЦ' : detail.status === 'SKLAD' ? 'Склад' : (detail.status || '—')
+
+  return (
+    <div className="space-y-4">
+      {/* Общие данные */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <ReviewField label="Статус" value={statusLabel} />
+        <ReviewField label="Фазность" value={detail.faza} />
+        <ReviewField label="Напряжение" value={detail.voltage} />
+        <ReviewField label="Мощность, кВт" value={detail.power} />
+        <ReviewField label="Адрес" value={detail.address} />
+        <ReviewField label="Дата СМР" value={detail.smr_date} />
+        <ReviewField label="СМР выполнил" value={detail.smr_executor} />
+        {detail.smr_master && <ReviewField label="Мастер" value={detail.smr_master} />}
+      </div>
+
+      {isOks ? (
+        <>
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-2">📐 ТТР</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <ReviewField label="Орг. учёта" value={detail.ttr_ou} />
+              <ReviewField label="Обуст. линии" value={detail.ttr_ol} />
+              <ReviewField label="Распред. щит" value={detail.ttr_or} />
+              <ReviewField label="ТТ" value={detail.ttr_tt} />
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-2">⚡ Оборудование</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <ReviewField label="ВА (автомат)" value={detail.has_va ? `${detail.va_nominal || '—'}${detail.va_quantity ? ' × ' + detail.va_quantity + ' шт' : ''}` : 'Нет'} />
+              <ReviewField label="ТТ" value={detail.has_tt ? (detail.tt_nominal || 'Да') : 'Нет'} />
+              <ReviewField label="Трубостойка" value={detail.trubostoyka ? 'Да' : 'Нет'} />
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-2">📦 Материалы</div>
+            {(!detail.materials || detail.materials.length === 0) ? (
+              <div className="text-sm text-gray-400">Материалы не указаны</div>
+            ) : (
+              <div className="border rounded-lg overflow-hidden bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Материал</th>
+                      <th className="px-3 py-2 text-left w-16">Ед.</th>
+                      <th className="px-3 py-2 text-center w-24">Факт</th>
+                      <th className="px-3 py-2 text-center w-28">Использован</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.materials.map((m, idx) => (
+                      <tr key={idx} className={`border-t ${!m.used ? 'opacity-50' : ''}`}>
+                        <td className="px-3 py-2">{m.name}</td>
+                        <td className="px-3 py-2 text-gray-500">{m.unit}</td>
+                        <td className="px-3 py-2 text-center">{m.quantity}</td>
+                        <td className="px-3 py-2 text-center">{m.used ? '✓' : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <div>
+          <div className="text-sm font-semibold text-gray-700 mb-2">📐 Параметры ЭСК</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <ReviewField label="Форм-фактор" value={detail.form_factor === 'split' ? 'Сплит' : detail.form_factor === 'classic' ? 'Классика' : detail.form_factor} />
+            <ReviewField label="Щит с ВА" value={detail.va_type} />
+            <ReviewField label="Трубостойка" value={detail.trubostoyka ? 'Да' : 'Нет'} />
+            <ReviewField label="ЛСР ВА" value={detail.lsr_va} />
+            <ReviewField label="ЛСР трубостойки" value={detail.lsr_truba} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ApprovalPage() {
   const { canApprove, isSueAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [rejectModal, setRejectModal] = useState(null)
+  const [expanded, setExpanded] = useState(null)
+  const [details, setDetails] = useState({})
+  const [loadingDetail, setLoadingDetail] = useState(false)
 
   useEffect(() => { load() }, [])
 
   const load = () => {
     setLoading(true)
+    setExpanded(null)
+    setDetails({})
     api.get('/pu/pending-approval').then(r => { setItems(r.data); setLoading(false) })
+  }
+
+  const toggleExpand = async (id) => {
+    if (expanded === id) { setExpanded(null); return }
+    setExpanded(id)
+    if (!details[id]) {
+      setLoadingDetail(true)
+      try {
+        const r = await api.get(`/pu/items/${id}/review`)
+        setDetails(prev => ({ ...prev, [id]: r.data }))
+      } catch (err) {
+        setDetails(prev => ({ ...prev, [id]: { error: err.response?.data?.detail || 'Ошибка загрузки' } }))
+      }
+      setLoadingDetail(false)
+    }
   }
 
   const handleExport = async () => {
@@ -2075,6 +2206,7 @@ function ApprovalPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="w-10 px-2 py-3"></th>
                 <th className="px-3 py-3 text-left">Источник</th>
                 <th className="px-3 py-3 text-left">РЭС</th>
                 <th className="px-3 py-3 text-left">Серийный номер</th>
@@ -2090,7 +2222,13 @@ function ApprovalPage() {
             </thead>
             <tbody>
               {items.map(i => (
-                <tr key={i.id} className="border-t hover:bg-gray-50">
+                <Fragment key={i.id}>
+                <tr className="border-t hover:bg-gray-50">
+                  <td className="px-2 py-3 text-center">
+                    <button onClick={() => toggleExpand(i.id)} className="text-gray-500 hover:text-blue-600 text-lg leading-none" title="Показать содержимое">
+                      {expanded === i.id ? '▾' : '▸'}
+                    </button>
+                  </td>
                   <td className="px-3 py-3">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${i.source === 'ОКС' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>{i.source || 'ЭСК'}</span>
                   </td>
@@ -2110,6 +2248,14 @@ function ApprovalPage() {
                     </div>
                   </td>
                 </tr>
+                {expanded === i.id && (
+                  <tr className="bg-slate-50 border-t">
+                    <td colSpan={12} className="px-6 py-4">
+                      <ReviewDetail detail={details[i.id]} source={i.source} loading={loadingDetail && !details[i.id]} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
