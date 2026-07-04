@@ -5415,7 +5415,7 @@ function SystemTab() {
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `backup_${new Date().toISOString().slice(0,10)}.json`)
+      link.setAttribute('download', `backup_full_${new Date().toISOString().slice(0,10)}.json.gz`)
       document.body.appendChild(link)
       link.click()
       link.remove()

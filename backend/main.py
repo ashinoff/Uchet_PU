@@ -18,6 +18,7 @@ import bcrypt as _bcrypt
 import pandas as pd
 import io
 import json
+import gzip
 import enum
 import re
 import openpyxl
@@ -2298,17 +2299,16 @@ def create_backup(admin_code: str, db: Session = Depends(get_db), user: User = D
         "tables": tables,
     }
 
-    # Возвращаем JSON файл
-    output = io.BytesIO()
-    output.write(json.dumps(backup, ensure_ascii=False, indent=2).encode('utf-8'))
+    # Возвращаем сжатый JSON файл
+    raw = json.dumps(backup, ensure_ascii=False).encode("utf-8")
+    compressed = gzip.compress(raw)
+    output = io.BytesIO(compressed)
     output.seek(0)
-
-    filename = f"backup_full_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
-
+    filename = f"backup_full_{datetime.now().strftime('%Y%m%d_%H%M')}.json.gz"
     return StreamingResponse(
         output,
-        media_type="application/json",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        media_type="application/gzip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 @app.get("/api/admin/health-check")
