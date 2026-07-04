@@ -2246,6 +2246,19 @@ def clear_database(data: dict, db: Session = Depends(get_db), user: User = Depen
     
     return {"message": "База очищена"}
 
+def _serialize_row(obj):
+    """Все колонки модели -> dict. Даты/enum -> строки."""
+    out = {}
+    for col in obj.__table__.columns:
+        val = getattr(obj, col.name)
+        if isinstance(val, (datetime, date)):
+            val = val.isoformat()
+        elif isinstance(val, enum.Enum):
+            val = val.value
+        out[col.name] = val
+    return out
+
+
 @app.get("/api/admin/backup")
 def create_backup(admin_code: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Создать бэкап базы в JSON"""
@@ -2253,79 +2266,45 @@ def create_backup(admin_code: str, db: Session = Depends(get_db), user: User = D
         raise HTTPException(403, "Неверный код")
     if not is_sue_admin(user):
         raise HTTPException(403, "Нет доступа")
-    
+
+    # Порядок ключей = порядок восстановления (сначала справочники, потом зависимые)
+    tables_map = [
+        ("units", Unit),
+        ("roles", Role),
+        ("users", User),                # включая password_hash — нужен для входа
+        ("pu_registers", PURegister),
+        ("esk_masters", ESKMaster),
+        ("va_nominals", VA_Nominal),    # ВСЕ, не только is_active
+        ("tt_nominals", TT_Nominal),    # ВСЕ
+        ("materials", Material),        # ВСЕ
+        ("pu_type_reference", PUTypeReference),
+        ("ttr_res", TTR_RES),           # ВСЕ поля, включая pu_types
+        ("ttr_esk", TTR_ESK),           # ВСЕ поля
+        ("ttr_materials", TTR_Material),
+        ("ttr_pu_types", TTR_PUType),
+        ("pu_items", PUItem),           # ВСЕ ~50 полей через _serialize_row
+        ("pu_materials", PUMaterial),
+        ("pu_movements", PUMovement),
+    ]
+
+    tables = {}
+    for name, model in tables_map:
+        tables[name] = [_serialize_row(row) for row in db.query(model).all()]
+
     backup = {
+        "format": "full",
+        "version": 2,
         "created_at": datetime.now().isoformat(),
-        "pu_items": [],
-        "users": [],
-        "units": [],
-        "ttr_res": [],
-        "ttr_esk": [],
-        "materials": [],
-        "va_nominals": [],
-        "tt_nominals": [],
+        "tables": tables,
     }
-    
-    # ПУ
-    for item in db.query(PUItem).all():
-        backup["pu_items"].append({
-            "id": item.id,
-            "serial_number": item.serial_number,
-            "pu_type": item.pu_type,
-            "status": item.status.value if item.status else None,
-            "current_unit_id": item.current_unit_id,
-            "contract_number": item.contract_number,
-            "consumer": item.consumer,
-            "address": item.address,
-            "faza": item.faza,
-            "voltage": item.voltage,
-            "power": item.power,
-            "form_factor": item.form_factor,
-            "trubostoyka": item.trubostoyka,
-            "va_type": item.va_type,
-            "has_va": item.has_va,
-            "va_nominal_id": item.va_nominal_id,
-            "has_tt": item.has_tt,
-            "tt_nominal_id": item.tt_nominal_id,
-            "approval_status": item.approval_status.value if item.approval_status else None,
-            "tz_number": item.tz_number,
-            "request_number": item.request_number,
-        })
-    
-    # Номиналы ВА
-    for item in db.query(VA_Nominal).filter(VA_Nominal.is_active == True).all():
-        backup["va_nominals"].append({"id": item.id, "name": item.name})
-    
-    # Номиналы ТТ
-    for item in db.query(TT_Nominal).filter(TT_Nominal.is_active == True).all():
-        backup["tt_nominals"].append({"id": item.id, "name": item.name})
-    
-    # Материалы
-    for item in db.query(Material).filter(Material.is_active == True).all():
-        backup["materials"].append({"id": item.id, "name": item.name, "unit": item.unit})
-    
-    # ТТР РЭС
-    for item in db.query(TTR_RES).filter(TTR_RES.is_active == True).all():
-        backup["ttr_res"].append({
-            "id": item.id, "code": item.code, "name": item.name, 
-            "ttr_type": item.ttr_type, "use_tt": item.use_tt
-        })
-    
-    # ТТР ЭСК
-    for item in db.query(TTR_ESK).filter(TTR_ESK.is_active == True).all():
-        backup["ttr_esk"].append({
-            "id": item.id, "ttr_type": item.ttr_type, "work_type_name": item.work_type_name,
-            "faza": item.faza, "form_factor": item.form_factor, "va_type": item.va_type,
-            "lsr_number": item.lsr_number, "price_no_nds": item.price_no_nds, "price_with_nds": item.price_with_nds
-        })
-    
+
     # Возвращаем JSON файл
     output = io.BytesIO()
     output.write(json.dumps(backup, ensure_ascii=False, indent=2).encode('utf-8'))
     output.seek(0)
-    
-    filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
-    
+
+    filename = f"backup_full_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+
     return StreamingResponse(
         output,
         media_type="application/json",
