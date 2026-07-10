@@ -110,6 +110,7 @@ class User(Base):
     username = Column(String(50), unique=True)
     password_hash = Column(String(255))
     full_name = Column(String(200))
+    email = Column(String(200), nullable=True)
     role_id = Column(Integer, ForeignKey("roles.id"))
     unit_id = Column(Integer, ForeignKey("units.id"))
     is_active = Column(Boolean, default=True)
@@ -788,7 +789,7 @@ def get_users(db: Session = Depends(get_db), user: User = Depends(get_current_us
         raise HTTPException(403, "Нет доступа")
     users = db.query(User).all()
     return [{
-        "id": u.id, "username": u.username, "full_name": u.full_name, "is_active": u.is_active,
+        "id": u.id, "username": u.username, "full_name": u.full_name, "email": u.email, "is_active": u.is_active,
         "role": {"id": u.role.id, "name": u.role.name, "code": u.role.code.value} if u.role else None,
         "unit": {"id": u.unit.id, "name": u.unit.name, "unit_type": u.unit.unit_type.value} if u.unit else None
     } for u in users]
@@ -801,7 +802,8 @@ def create_user(data: dict, db: Session = Depends(get_db), user: User = Depends(
         raise HTTPException(400, "Логин уже занят")
     new_user = User(
         username=data["username"], password_hash=hash_password(data["password"]),
-        full_name=data["full_name"], role_id=data["role_id"], unit_id=data.get("unit_id")
+        full_name=data["full_name"], role_id=data["role_id"], unit_id=data.get("unit_id"),
+        email=(data.get("email") or None)
     )
     db.add(new_user)
     db.commit()
