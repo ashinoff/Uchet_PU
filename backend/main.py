@@ -2682,116 +2682,194 @@ def restore_backup(
         backup = {**backup["tables"], **{k: v for k, v in backup.items() if k != "tables"}}
     
     restored = {
-        "va_nominals": 0,
-        "tt_nominals": 0,
-        "materials": 0,
-        "contractors": 0,
-        "users": 0,
-        "ttr_res": 0,
-        "ttr_esk": 0,
-        "pu_items": 0,
+        "va_nominals": {"created": 0, "updated": 0},
+        "tt_nominals": {"created": 0, "updated": 0},
+        "materials": {"created": 0, "updated": 0},
+        "contractors": {"created": 0, "updated": 0},
+        "users": {"created": 0, "updated": 0},
+        "pu_type_reference": {"created": 0, "updated": 0},
+        "ttr_res": {"created": 0, "updated": 0},
+        "ttr_esk": {"created": 0, "updated": 0},
+        "pu_items": {"created": 0, "updated": 0},
     }
-    
-    # 1. Восстанавливаем номиналы ВА
-    for item in backup.get("va_nominals", []):
-        existing = db.query(VA_Nominal).filter(VA_Nominal.id == item["id"]).first()
-        if not existing:
-            db.add(VA_Nominal(id=item["id"], name=item["name"], is_active=True))
-            restored["va_nominals"] += 1
-    
-    # 2. Восстанавливаем номиналы ТТ
-    for item in backup.get("tt_nominals", []):
-        existing = db.query(TT_Nominal).filter(TT_Nominal.id == item["id"]).first()
-        if not existing:
-            db.add(TT_Nominal(id=item["id"], name=item["name"], is_active=True))
-            restored["tt_nominals"] += 1
-    
-    # 3. Восстанавливаем материалы
-    for item in backup.get("materials", []):
-        existing = db.query(Material).filter(Material.id == item["id"]).first()
-        if not existing:
-            db.add(Material(id=item["id"], name=item["name"], unit=item["unit"], is_active=True))
-            restored["materials"] += 1
-    
-    # 3.1 Восстанавливаем подрядчиков (СМР ОКС)
-    for item in backup.get("contractors", []):
-        existing = db.query(Contractor).filter(Contractor.id == item["id"]).first()
-        if not existing:
-            db.add(Contractor(id=item["id"], name=item["name"], is_active=True))
-            restored["contractors"] += 1
 
-    # 3.2 Восстанавливаем пользователей (по username; пароль-хэш как есть,
-    # чтобы логины пережили перенос). Существующих не трогаем — только добавляем.
-    for item in backup.get("users", []):
-        existing = db.query(User).filter(User.username == item["username"]).first()
-        if not existing:
+    # id из бэкапа -> актуальный id в этой базе (справочники сверяем по
+    # естественным ключам: id баз разъехались). Ремап применяем к FK в pu_items.
+    va_map, tt_map, mat_map, contr_map, ttr_res_map, ttr_esk_map, putype_map = {}, {}, {}, {}, {}, {}, {}
+
+    def _remap(old, mapping):
+        return mapping.get(old) if old is not None else None
+
+    # 1. Номиналы ВА — по name
+    for rec in backup.get("va_nominals", []):
+        name = rec.get("name")
+        existing = db.query(VA_Nominal).filter(VA_Nominal.name == name).first() if name else None
+        if existing:
+            va_map[rec.get("id")] = existing.id
+        else:
+            obj = VA_Nominal(name=name, is_active=rec.get("is_active", True))
+            db.add(obj); db.flush()
+            va_map[rec.get("id")] = obj.id
+            restored["va_nominals"]["created"] += 1
+
+    # 2. Номиналы ТТ — по name
+    for rec in backup.get("tt_nominals", []):
+        name = rec.get("name")
+        existing = db.query(TT_Nominal).filter(TT_Nominal.name == name).first() if name else None
+        if existing:
+            tt_map[rec.get("id")] = existing.id
+        else:
+            obj = TT_Nominal(name=name, is_active=rec.get("is_active", True))
+            db.add(obj); db.flush()
+            tt_map[rec.get("id")] = obj.id
+            restored["tt_nominals"]["created"] += 1
+
+    # 3. Материалы — по name
+    for rec in backup.get("materials", []):
+        name = rec.get("name")
+        existing = db.query(Material).filter(Material.name == name).first() if name else None
+        if existing:
+            mat_map[rec.get("id")] = existing.id
+        else:
+            obj = Material(name=name, unit=rec.get("unit"), is_active=rec.get("is_active", True))
+            db.add(obj); db.flush()
+            mat_map[rec.get("id")] = obj.id
+            restored["materials"]["created"] += 1
+
+    # 3.1 Подрядчики — по name
+    for rec in backup.get("contractors", []):
+        name = rec.get("name")
+        existing = db.query(Contractor).filter(Contractor.name == name).first() if name else None
+        if existing:
+            contr_map[rec.get("id")] = existing.id
+        else:
+            obj = Contractor(name=name, is_active=rec.get("is_active", True))
+            db.add(obj); db.flush()
+            contr_map[rec.get("id")] = obj.id
+            restored["contractors"]["created"] += 1
+
+    # 3.2 Пользователи — по username. Дозаполняем пустой email; пароль не трогаем.
+    for rec in backup.get("users", []):
+        username = rec.get("username")
+        existing = db.query(User).filter(User.username == username).first() if username else None
+        if existing:
+            if not existing.email and rec.get("email"):
+                existing.email = rec.get("email")
+                restored["users"]["updated"] += 1
+        else:
             db.add(User(
-                username=item["username"],
-                password_hash=item["password_hash"],
-                full_name=item.get("full_name"),
-                role_id=item.get("role_id"),
-                unit_id=item.get("unit_id"),
-                email=item.get("email"),
-                is_active=item.get("is_active", True),
+                username=username,
+                password_hash=rec.get("password_hash"),
+                full_name=rec.get("full_name"),
+                role_id=rec.get("role_id"),
+                unit_id=rec.get("unit_id"),
+                email=rec.get("email"),
+                is_active=rec.get("is_active", True),
             ))
-            restored["users"] += 1
+            restored["users"]["created"] += 1
 
-    # 4. Восстанавливаем ТТР РЭС
-    for item in backup.get("ttr_res", []):
-        existing = db.query(TTR_RES).filter(TTR_RES.id == item["id"]).first()
-        if not existing:
-            db.add(TTR_RES(
-                id=item["id"], code=item["code"], name=item["name"],
-                ttr_type=item["ttr_type"], use_tt=item.get("use_tt", False), is_active=True
-            ))
-            restored["ttr_res"] += 1
-    
-    # 5. Восстанавливаем ТТР ЭСК
-    for item in backup.get("ttr_esk", []):
-        existing = db.query(TTR_ESK).filter(TTR_ESK.id == item["id"]).first()
-        if not existing:
-            db.add(TTR_ESK(
-                id=item["id"], ttr_type=item.get("ttr_type"), work_type_name=item.get("work_type_name"),
-                faza=item.get("faza"), form_factor=item.get("form_factor"), va_type=item.get("va_type"),
-                lsr_number=item.get("lsr_number"), price_no_nds=item.get("price_no_nds"),
-                price_with_nds=item.get("price_with_nds"), is_active=True
-            ))
-            restored["ttr_esk"] += 1
-    
+    # 3.3 Справочник типов ПУ — по pattern. Дозаполняем пустой connection_type.
+    for rec in backup.get("pu_type_reference", []):
+        pattern = rec.get("pattern")
+        existing = db.query(PUTypeReference).filter(PUTypeReference.pattern == pattern).first() if pattern else None
+        if existing:
+            putype_map[rec.get("id")] = existing.id
+            if not existing.connection_type and rec.get("connection_type"):
+                existing.connection_type = rec.get("connection_type")
+                restored["pu_type_reference"]["updated"] += 1
+        else:
+            obj = PUTypeReference(
+                pattern=pattern, faza=rec.get("faza"), voltage=rec.get("voltage"),
+                form_factor=rec.get("form_factor"), connection_type=rec.get("connection_type"),
+                is_active=rec.get("is_active", True),
+            )
+            db.add(obj); db.flush()
+            putype_map[rec.get("id")] = obj.id
+            restored["pu_type_reference"]["created"] += 1
+
+    # 4. ТТР РЭС — по code
+    for rec in backup.get("ttr_res", []):
+        code = rec.get("code")
+        existing = db.query(TTR_RES).filter(TTR_RES.code == code).first() if code else None
+        if existing:
+            ttr_res_map[rec.get("id")] = existing.id
+        else:
+            obj = TTR_RES(
+                code=code, name=rec.get("name"), ttr_type=rec.get("ttr_type"),
+                use_tt=rec.get("use_tt", False), is_active=rec.get("is_active", True),
+            )
+            db.add(obj); db.flush()
+            ttr_res_map[rec.get("id")] = obj.id
+            restored["ttr_res"]["created"] += 1
+
+    # 5. ТТР ЭСК — по комбинации (ttr_type, work_type_name, faza, form_factor, va_type, lsr_number)
+    for rec in backup.get("ttr_esk", []):
+        existing = db.query(TTR_ESK).filter(
+            TTR_ESK.ttr_type == rec.get("ttr_type"),
+            TTR_ESK.work_type_name == rec.get("work_type_name"),
+            TTR_ESK.faza == rec.get("faza"),
+            TTR_ESK.form_factor == rec.get("form_factor"),
+            TTR_ESK.va_type == rec.get("va_type"),
+            TTR_ESK.lsr_number == rec.get("lsr_number"),
+        ).first()
+        if existing:
+            ttr_esk_map[rec.get("id")] = existing.id
+        else:
+            obj = TTR_ESK(
+                ttr_type=rec.get("ttr_type"), work_type_name=rec.get("work_type_name"),
+                pu_pattern=rec.get("pu_pattern"), faza=rec.get("faza"), form_factor=rec.get("form_factor"),
+                va_type=rec.get("va_type"), lsr_number=rec.get("lsr_number"),
+                price_no_nds=rec.get("price_no_nds"), price_with_nds=rec.get("price_with_nds"),
+                is_active=rec.get("is_active", True),
+            )
+            db.add(obj); db.flush()
+            ttr_esk_map[rec.get("id")] = obj.id
+            restored["ttr_esk"]["created"] += 1
+
     db.commit()
-    
-    # 6. Восстанавливаем ПУ
-    for item in backup.get("pu_items", []):
-        existing = db.query(PUItem).filter(PUItem.serial_number == item["serial_number"]).first()
-        if not existing:
+
+    # 6. ПУ — по serial_number. Ссылки на справочники ремапим по картам выше.
+    for rec in backup.get("pu_items", []):
+        existing = db.query(PUItem).filter(PUItem.serial_number == rec.get("serial_number")).first()
+        if existing:
+            # connection_type — строка, не FK: дозаполняем пустое
+            if not existing.connection_type and rec.get("connection_type"):
+                existing.connection_type = rec.get("connection_type")
+                restored["pu_items"]["updated"] += 1
+        else:
             pu = PUItem(
-                serial_number=item["serial_number"],
-                pu_type=item.get("pu_type"),
-                status=PUStatus(item["status"]) if item.get("status") else PUStatus.SKLAD,
-                current_unit_id=item.get("current_unit_id"),
-                contract_number=item.get("contract_number"),
-                consumer=item.get("consumer"),
-                address=item.get("address"),
-                faza=item.get("faza"),
-                voltage=item.get("voltage"),
-                power=item.get("power"),
-                form_factor=item.get("form_factor"),
-                connection_type=item.get("connection_type"),
-                smr_method=item.get("smr_method"),
-                contractor_id=item.get("contractor_id"),
-                trubostoyka=item.get("trubostoyka"),
-                va_type=item.get("va_type"),
-                has_va=item.get("has_va", False),
-                va_nominal_id=item.get("va_nominal_id"),
-                has_tt=item.get("has_tt", False),
-                tt_nominal_id=item.get("tt_nominal_id"),
-                approval_status=ApprovalStatus(item["approval_status"]) if item.get("approval_status") else None,
-                tz_number=item.get("tz_number"),
-                request_number=item.get("request_number"),
+                serial_number=rec.get("serial_number"),
+                pu_type=rec.get("pu_type"),
+                status=PUStatus(rec["status"]) if rec.get("status") else PUStatus.SKLAD,
+                current_unit_id=rec.get("current_unit_id"),
+                contract_number=rec.get("contract_number"),
+                consumer=rec.get("consumer"),
+                address=rec.get("address"),
+                faza=rec.get("faza"),
+                voltage=rec.get("voltage"),
+                power=rec.get("power"),
+                form_factor=rec.get("form_factor"),
+                connection_type=rec.get("connection_type"),
+                smr_method=rec.get("smr_method"),
+                contractor_id=_remap(rec.get("contractor_id"), contr_map),
+                trubostoyka=rec.get("trubostoyka"),
+                va_type=rec.get("va_type"),
+                has_va=rec.get("has_va", False),
+                va_nominal_id=_remap(rec.get("va_nominal_id"), va_map),
+                has_tt=rec.get("has_tt", False),
+                tt_nominal_id=_remap(rec.get("tt_nominal_id"), tt_map),
+                ttr_ou_id=_remap(rec.get("ttr_ou_id"), ttr_res_map),
+                ttr_ol_id=_remap(rec.get("ttr_ol_id"), ttr_res_map),
+                ttr_or_id=_remap(rec.get("ttr_or_id"), ttr_res_map),
+                ttr_tt_id=_remap(rec.get("ttr_tt_id"), ttr_res_map),
+                ttr_esk_id=_remap(rec.get("ttr_esk_id"), ttr_esk_map),
+                approval_status=ApprovalStatus(rec["approval_status"]) if rec.get("approval_status") else None,
+                tz_number=rec.get("tz_number"),
+                request_number=rec.get("request_number"),
             )
             db.add(pu)
-            restored["pu_items"] += 1
-    
+            restored["pu_items"]["created"] += 1
+
     db.commit()
     
     return {
