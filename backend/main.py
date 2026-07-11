@@ -2686,6 +2686,7 @@ def restore_backup(
         "tt_nominals": 0,
         "materials": 0,
         "contractors": 0,
+        "users": 0,
         "ttr_res": 0,
         "ttr_esk": 0,
         "pu_items": 0,
@@ -2718,7 +2719,23 @@ def restore_backup(
         if not existing:
             db.add(Contractor(id=item["id"], name=item["name"], is_active=True))
             restored["contractors"] += 1
-    
+
+    # 3.2 Восстанавливаем пользователей (по username; пароль-хэш как есть,
+    # чтобы логины пережили перенос). Существующих не трогаем — только добавляем.
+    for item in backup.get("users", []):
+        existing = db.query(User).filter(User.username == item["username"]).first()
+        if not existing:
+            db.add(User(
+                username=item["username"],
+                password_hash=item["password_hash"],
+                full_name=item.get("full_name"),
+                role_id=item.get("role_id"),
+                unit_id=item.get("unit_id"),
+                email=item.get("email"),
+                is_active=item.get("is_active", True),
+            ))
+            restored["users"] += 1
+
     # 4. Восстанавливаем ТТР РЭС
     for item in backup.get("ttr_res", []):
         existing = db.query(TTR_RES).filter(TTR_RES.id == item["id"]).first()
